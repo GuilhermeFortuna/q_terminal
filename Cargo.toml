@@ -1,0 +1,25 @@
+[package]
+name = "q_terminal"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["Guilherme Fortuna <guilhermefortuna.dev@gmail.com>"]
+
+[dependencies]
+cxx = "1.0.142"
+cxx-qt = "0.10.0"
+cxx-qt-lib = { version = "0.10.0", features = ["qt_gui", "qt_qml"] }
+q-qt = { git = "https://github.com/GuilhermeFortuna/q_core.git", tag = "v2026.09.12", package = "q-qt" }
+
+[build-dependencies]
+cxx-qt-build = { version = "0.10.0", features = ["link_qt_object_files"] }
+qt-build-utils = { version = "0.10.0", features = ["qt_minimal"] }
+qt-version = { version = "0.1.5", features = ["qt_version_at_least_6_5"] }
+
+[lints.clippy]
+float_cmp = "deny"
+float_cmp_const = "deny"
+imprecise_flops = "deny"
+suboptimal_flops = "deny"
+disallowed_types = "deny"
+disallowed_methods = "deny"
