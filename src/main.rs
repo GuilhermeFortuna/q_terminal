@@ -31,6 +31,10 @@ pub fn run_windowed() -> i32 {
 }
 
 fn main() {
+    cxx_qt::init_crate!(q_qt);
+    cxx_qt::init_crate!(cxx_qt_lib);
+    cxx_qt::init_crate!(cxx_qt);
+
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|arg| arg == "--headless-report") {
         std::process::exit(headless_report());
