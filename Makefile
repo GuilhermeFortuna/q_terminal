@@ -1,9 +1,9 @@
-.PHONY: check fmt fmt-check lint test build run contracts contracts-check
+.PHONY: check fmt fmt-check lint test build run qml-lint contracts contracts-check
 
 CONTRACTS_REPO ?= https://github.com/GuilhermeFortuna/q_contracts.git
 QMLLINT ?= $(shell command -v qmllint 2>/dev/null || find $(HOME)/.local/share/qt_minimal_download -name "qmllint" -type f 2>/dev/null | head -n 1)
 
-check: fmt-check lint qml-lint test build contracts-check
+check: fmt-check lint build qml-lint test contracts-check
 	cargo run -- --headless-report
 	@echo "All terminal checks passed successfully."
 
@@ -16,18 +16,18 @@ fmt-check:
 lint:
 	cargo clippy --all-targets -- -D warnings
 
-qml-lint:
+build:
+	cargo build
+
+qml-lint: build
 	@if [ -z "$(QMLLINT)" ]; then \
 		echo "qmllint not found; please install qt6-declarative-dev-tools or use qt_minimal"; \
 		exit 1; \
 	fi; \
-	$(QMLLINT) -W 0 qml/Main.qml
+	$(QMLLINT) -W 0 -i target/cxxqt/qml_modules/qml/qmldir qml/Main.qml
 
 test:
 	cargo test
-
-build:
-	cargo build
 
 run:
 	cargo run

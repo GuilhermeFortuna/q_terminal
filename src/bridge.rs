@@ -1,17 +1,25 @@
 #[cxx_qt::bridge]
 pub mod ffi {
+    #[allow(dead_code)]
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
+
+        include!("cxx-qt-lib/qqmlapplicationengine.h");
+        type QQmlApplicationEngine = cxx_qt_lib::QQmlApplicationEngine;
+
+        include!("render_backend.h");
+        fn setup_window(engine: Pin<&mut QQmlApplicationEngine>);
+        fn query_graphics_api(engine: Pin<&mut QQmlApplicationEngine>) -> QString;
     }
 
     extern "RustQt" {
         #[qobject]
         #[qml_element]
-        #[qproperty(QString, app_version)]
-        #[qproperty(QString, core_version)]
-        #[qproperty(QString, contracts_rev)]
-        #[qproperty(QString, render_backend)]
+        #[qproperty(QString, app_version)] // this repository's version
+        #[qproperty(QString, core_version)] // from q_core::CoreInfo
+        #[qproperty(QString, contracts_rev)] // from CONTRACTS_REV
+        #[qproperty(QString, render_backend)] // QSGRendererInterface graphics API in use
         type AppInfo = super::AppInfoRust;
     }
 }

@@ -1,5 +1,7 @@
 pub mod bridge;
 
+use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
+
 /// Prints app version, core version, contracts rev and render backend, then exits 0.
 /// Opens no window; the path CI and an agent session take.
 pub fn headless_report() -> i32 {
@@ -13,7 +15,19 @@ pub fn headless_report() -> i32 {
 
 /// Loads qml/Main.qml into a QQmlApplicationEngine and runs the event loop.
 pub fn run_windowed() -> i32 {
-    0
+    let mut app = QGuiApplication::new();
+    let mut engine = QQmlApplicationEngine::new();
+
+    let uri = QString::from("target/cxxqt/qml_modules");
+    engine.as_mut().unwrap().add_import_path(&uri);
+
+    let qml_file = QString::from("qml/Main.qml");
+    let qml_url = QUrl::from_local_file(&qml_file);
+    engine.as_mut().unwrap().load(&qml_url);
+
+    bridge::ffi::setup_window(engine.as_mut().unwrap());
+
+    app.as_mut().unwrap().exec()
 }
 
 fn main() {
