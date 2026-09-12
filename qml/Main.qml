@@ -1,8 +1,7 @@
 import qml
 import QtQuick
-import QtQuick.Controls
 
-ApplicationWindow {
+Window {
     id: window
     visible: true
     width: 640
@@ -20,15 +19,19 @@ ApplicationWindow {
 
         Text {
             text: "Application: " + appInfo.app_version
+            font.pixelSize: 16
         }
         Text {
             text: "Core: " + appInfo.core_version
+            font.pixelSize: 16
         }
         Text {
             text: "Contracts: " + appInfo.contracts_rev
+            font.pixelSize: 16
         }
         Text {
             text: "Render Backend: " + appInfo.render_backend
+            font.pixelSize: 16
         }
     }
 }
