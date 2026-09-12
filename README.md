@@ -55,7 +55,7 @@ Building and running `q_terminal` requires:
 2. **C++ Compiler & Build Tools**:
    - `g++` with C++17 support
    - `make`, `git`, `curl`
-   - Debian/Ubuntu packages: `build-essential`
+   - Debian/Ubuntu packages: `build-essential`, `lld`
 
 3. **Qt 6 Libraries & Tooling**:
    - On Debian/Ubuntu:
