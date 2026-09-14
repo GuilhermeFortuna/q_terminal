@@ -94,7 +94,10 @@ make run
 
 ## Validation Suite
 
-The standing validation command runs all checks headless without requiring a display:
+The standing validation command runs all checks headless without requiring a display.
+Locally it enters the host user `ci.slice` when available, caps Cargo at half the
+logical CPUs (`CARGO_BUILD_JOBS`), and lowers CPU/IO priority — do not wrap it in
+`systemd-run`.
 
 ```bash
 env -u WAYLAND_DISPLAY -u DISPLAY make check

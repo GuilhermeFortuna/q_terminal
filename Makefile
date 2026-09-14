@@ -1,9 +1,14 @@
-.PHONY: check fmt fmt-check lint test build run qml-lint contracts contracts-check
+.PHONY: check check-suite fmt fmt-check lint test build run qml-lint contracts contracts-check
 
 CONTRACTS_REPO ?= https://github.com/GuilhermeFortuna/q_contracts.git
 QMLLINT ?= $(shell command -v qmllint 2>/dev/null || find $(HOME)/.local/share/qt_minimal_download -name "qmllint" -type f 2>/dev/null | head -n 1)
 
-check: fmt-check lint build qml-lint test contracts-check
+# Public entrypoint: routes through scripts/ci.sh for host ci.slice prioritization.
+check:
+	@./scripts/ci.sh
+
+# Actual suite body (invoked by scripts/ci.sh after optional slice enter).
+check-suite: fmt-check lint build qml-lint test contracts-check
 	cargo run -- --headless-report
 	@echo "All terminal checks passed successfully."
 
