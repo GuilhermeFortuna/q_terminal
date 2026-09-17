@@ -197,7 +197,7 @@ pub struct BarSink { /* CxxQtThread<BarFeed>, coalescing slot for forming bars *
    `lagging` and `cursor_expired` emitting `ReSnapshot`; a forming-topic gap
    emitting `ReSnapshot` rather than `FetchHistory`; an entry for another symbol
    emitting `Drop`. Implement `topic_state.rs`. Confirm they pass. Commit.
-- [ ] 6. Write failing tests for the sink: 1,000 forming deliveries between two
+- [x] 6. Write failing tests for the sink: 1,000 forming deliveries between two
    drains leave one bar, the newest; 1,000 completed deliveries leave 1,000 in
    order; a completed bar and a superseding forming bar drain in that order.
    Implement `BarSink`. Confirm they pass. Commit.
