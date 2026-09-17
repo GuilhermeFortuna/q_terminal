@@ -173,7 +173,7 @@ pub struct BarSink { /* CxxQtThread<BarFeed>, coalescing slot for forming bars *
    has a `q_core` release tag; pin `q-qt` to it, update the core-version
    assertions in `tests/test_bridge.rs` and `tests/test_headless_report.rs`, and
    confirm `make check` passes before adding anything. Commit.
-- [ ] 2. Add `tokio`, `tokio-tungstenite`, `reqwest` (rustls, json), `serde`,
+- [x] 2. Add `tokio`, `tokio-tungstenite`, `reqwest` (rustls, json), `serde`,
    `serde_json` and `arrow` to `Cargo.toml`, with default features off where
    they pull in a TLS or time-zone stack. Confirm `make build` and the headless
    report still work. Commit.
