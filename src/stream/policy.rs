@@ -105,7 +105,11 @@ where
         return Err(PolicyError::CoalesceKeyMismatch {
             topic: "bars.completed".to_string(),
             expected: vec![],
-            actual: completed.coalesce_key.iter().map(|s| s.to_string()).collect(),
+            actual: completed
+                .coalesce_key
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
         });
     }
 

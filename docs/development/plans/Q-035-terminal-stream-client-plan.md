@@ -220,7 +220,7 @@ pub struct BarSink { /* CxxQtThread<BarFeed>, coalescing slot for forming bars *
 - [x] 11. Add the startup assertion that both topics are declared with the
    expected class and coalesce key, with a test for a policy that disagrees.
    Commit.
-- [ ] 12. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run,
+- [x] 12. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run,
    commit.
 - [ ] 13. **Human:** run the research stack and the terminal against a real
    symbol for thirty minutes; restart Redis under it; stop and restart the API
