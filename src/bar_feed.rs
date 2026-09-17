@@ -1,7 +1,12 @@
+use std::sync::Arc;
 use std::time::Instant;
 
+use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 use q_buffers::frame::{BarColumns, TimeLabel};
+
+use crate::config::Config;
+use crate::history::{HistoryController, Loaded, DEFAULT_HISTORY_BARS};
 
 #[derive(Debug, Clone)]
 pub enum BarDelivery {
@@ -54,7 +59,18 @@ pub mod ffi {
         #[qproperty(i64, dropped)]
         #[qproperty(i64, gaps_closed)]
         #[qproperty(i64, resnapshots)]
+        #[qproperty(bool, history_loading)]
+        #[qproperty(f64, history_progress)]
+        #[qproperty(QString, history_source)]
+        #[qproperty(QString, history_dataset_id)]
+        #[qproperty(QString, history_published_at)]
+        #[qproperty(QString, history_error)]
+        #[qproperty(i64, history_bars)]
+        #[qproperty(i64, history_shortfall)]
         type BarFeed = super::BarFeedRust;
+
+        #[qinvokable]
+        fn load_history(self: Pin<&mut BarFeed>) -> bool;
     }
 
     impl cxx_qt::Threading for BarFeed {}
@@ -69,12 +85,29 @@ pub struct BarFeedRust {
     pub gaps_closed: i64,
     pub resnapshots: i64,
 
+    pub history_loading: bool,
+    pub history_progress: f64,
+    pub history_source: QString,
+    pub history_dataset_id: QString,
+    pub history_published_at: QString,
+    pub history_error: QString,
+    pub history_bars: i64,
+    pub history_shortfall: i64,
+
     pub series: q_qt::BarSeriesRust,
     pub last_applied_instant: Option<Instant>,
+    history: Arc<HistoryController>,
+    config: Option<Config>,
+    history_bar_count: usize,
+    pending_deliveries: Vec<BarDelivery>,
 }
 
 impl BarFeedRust {
     pub fn new(symbol: &str, timeframe: &str) -> Self {
+        Self::with_config(symbol, timeframe, None)
+    }
+
+    pub fn with_config(symbol: &str, timeframe: &str, config: Option<Config>) -> Self {
         Self {
             connection_state: QString::from("connecting"),
             last_error: QString::from(""),
@@ -83,9 +116,25 @@ impl BarFeedRust {
             dropped: 0,
             gaps_closed: 0,
             resnapshots: 0,
+            history_loading: false,
+            history_progress: 0.0,
+            history_source: QString::from("none"),
+            history_dataset_id: QString::from(""),
+            history_published_at: QString::from(""),
+            history_error: QString::from(""),
+            history_bars: 0,
+            history_shortfall: 0,
             series: q_qt::BarSeriesRust::new(symbol, timeframe, 500_000),
             last_applied_instant: None,
+            history: Arc::new(HistoryController::new()),
+            config,
+            history_bar_count: DEFAULT_HISTORY_BARS,
+            pending_deliveries: Vec::new(),
         }
+    }
+
+    pub fn history_controller(&self) -> &Arc<HistoryController> {
+        &self.history
     }
 
     pub fn set_connection_state(&mut self, state: &str) {
@@ -110,7 +159,103 @@ impl BarFeedRust {
         }
     }
 
+    pub fn sync_history_properties(&mut self) {
+        let snapshot = self.history.snapshot();
+        self.history_loading = snapshot.loading;
+        self.history_progress = snapshot.progress;
+        self.history_source = QString::from(&snapshot.source);
+        self.history_dataset_id = QString::from(&snapshot.dataset_id);
+        self.history_published_at = QString::from(&snapshot.published_at);
+        self.history_error = QString::from(&snapshot.error);
+        self.history_bars = snapshot.bars;
+        self.history_shortfall = snapshot.shortfall;
+    }
+
+    pub fn start_history_load(&mut self) -> Result<(), String> {
+        let config = self
+            .config
+            .clone()
+            .ok_or_else(|| "configuration missing".to_string())?;
+
+        self.history.begin_load()?;
+        self.sync_history_properties();
+
+        let bars = self.history_bar_count;
+        let controller = Arc::clone(&self.history);
+        let progress_controller = Arc::clone(&self.history);
+        controller.spawn_load(
+            config,
+            bars,
+            move |loaded| {
+                let _ = loaded;
+            },
+            move |progress| {
+                progress_controller.set_progress(progress);
+            },
+        );
+        Ok(())
+    }
+
+    pub fn start_history_load_with_handlers(
+        &mut self,
+        on_loaded: impl FnOnce(Loaded) + Send + 'static,
+        on_progress: impl Fn(f64) + Send + Sync + 'static,
+    ) -> Result<(), String> {
+        let config = self
+            .config
+            .clone()
+            .ok_or_else(|| "configuration missing".to_string())?;
+
+        self.history.begin_load()?;
+        self.sync_history_properties();
+
+        let controller = Arc::clone(&self.history);
+        controller.spawn_load(config, self.history_bar_count, on_loaded, on_progress);
+        Ok(())
+    }
+
+    pub fn complete_history_load(&mut self, loaded: Loaded) {
+        let Loaded {
+            bars,
+            source,
+            dataset,
+            shortfall,
+            reason,
+        } = loaded;
+        let bar_count = bars.time.len();
+        if bar_count > 0 {
+            let _ = self.series.load_history(bars);
+        }
+        self.history.finish_load(
+            Loaded {
+                bars: make_bar_columns(0, 0.0, 0.0, 0.0, 0.0),
+                source,
+                dataset,
+                shortfall,
+                reason,
+            },
+            bar_count,
+        );
+        self.sync_history_properties();
+
+        let pending = std::mem::take(&mut self.pending_deliveries);
+        for delivery in pending {
+            self.apply_delivery_now(delivery);
+        }
+    }
+
     pub fn apply_delivery(&mut self, delivery: BarDelivery) {
+        if let Some(time) = delivery_first_time(&delivery) {
+            self.history.record_stream_time(time);
+        }
+        if !self.history.gate_open() {
+            self.pending_deliveries.push(delivery);
+            return;
+        }
+        self.apply_delivery_now(delivery);
+    }
+
+    fn apply_delivery_now(&mut self, delivery: BarDelivery) {
         match delivery {
             BarDelivery::Completed(bars) => {
                 let count = bars.time.len() as i64;
@@ -137,9 +282,62 @@ impl BarFeedRust {
     }
 }
 
+impl ffi::BarFeed {
+    pub fn load_history(mut self: std::pin::Pin<&mut Self>) -> bool {
+        let qt_thread = self.qt_thread();
+        let config = match self.as_ref().rust().config.clone() {
+            Some(config) => config,
+            None => {
+                self.as_mut().rust_mut().history_error = QString::from("configuration missing");
+                return false;
+            }
+        };
+
+        {
+            let mut rust = self.as_mut().rust_mut();
+            if rust.history.begin_load().is_err() {
+                rust.history_error = QString::from("history load already running");
+                return false;
+            }
+            rust.sync_history_properties();
+        }
+
+        let controller = Arc::clone(&self.as_ref().rust().history);
+        let progress_controller = Arc::clone(&self.as_ref().rust().history);
+        let bars = self.as_ref().rust().history_bar_count;
+        let qt_for_loaded = qt_thread.clone();
+        controller.spawn_load(
+            config,
+            bars,
+            move |loaded| {
+                qt_for_loaded
+                    .queue(move |mut feed| {
+                        feed.as_mut().rust_mut().complete_history_load(loaded);
+                    })
+                    .ok();
+            },
+            move |progress| {
+                progress_controller.set_progress(progress);
+                qt_thread
+                    .queue(move |mut feed| {
+                        feed.as_mut().rust_mut().sync_history_properties();
+                    })
+                    .ok();
+            },
+        );
+        true
+    }
+}
+
 impl Default for BarFeedRust {
     fn default() -> Self {
         Self::new("DEFAULT", "1m")
+    }
+}
+
+fn delivery_first_time(delivery: &BarDelivery) -> Option<i64> {
+    match delivery {
+        BarDelivery::Completed(bars) | BarDelivery::Forming(bars) => bars.time.first().copied(),
     }
 }
 
@@ -160,9 +358,20 @@ pub fn make_bar_columns(t: i64, open: f64, high: f64, low: f64, close: f64) -> B
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::history::{source_label, Source};
+    use std::sync::Mutex;
+    use std::time::Duration;
 
     fn test_bar(t: i64, close: f64) -> BarColumns {
         make_bar_columns(t, 10.0, close + 1.0, 9.0, close)
+    }
+
+    fn test_config(api_base: &str) -> Config {
+        Config {
+            api_base: api_base.to_string(),
+            symbol: "PETR4".to_string(),
+            timeframe: "1m".to_string(),
+        }
     }
 
     #[test]
@@ -179,6 +388,8 @@ mod tests {
         assert_eq!(feed.series.revision, 0);
         assert_eq!(feed.series.symbol.to_string(), "PETR4");
         assert_eq!(feed.series.timeframe.to_string(), "1m");
+        assert_eq!(feed.history_source.to_string(), "none");
+        assert!(!feed.history_loading);
     }
 
     #[test]
@@ -188,6 +399,7 @@ mod tests {
             .map(|i| BarDelivery::Completed(test_bar(i * 60, 10.0 + i as f64)))
             .collect();
 
+        feed.history.open_gate();
         feed.apply_deliveries(deliveries);
 
         assert_eq!(feed.applied, 5);
@@ -201,6 +413,7 @@ mod tests {
     #[test]
     fn test_bar_feed_drain_forming_advances_series() {
         let mut feed = BarFeedRust::new("PETR4", "1m");
+        feed.history.open_gate();
 
         feed.apply_delivery(BarDelivery::Completed(test_bar(60, 10.0)));
         assert_eq!(feed.series.bar_count, 1);
@@ -209,7 +422,7 @@ mod tests {
 
         feed.apply_delivery(BarDelivery::Forming(test_bar(120, 10.5)));
         assert_eq!(feed.applied, 2);
-        assert_eq!(feed.series.bar_count, 1); // Completed count doesn't change
+        assert_eq!(feed.series.bar_count, 1);
         assert!(feed.series.has_forming);
         assert_eq!(feed.series.revision, 2);
         assert_eq!(feed.series.last_price.to_bits(), 10.5f64.to_bits());
@@ -218,6 +431,7 @@ mod tests {
     #[test]
     fn test_bar_feed_forming_coalescing_and_completed_in_order() {
         let mut feed = BarFeedRust::new("PETR4", "1m");
+        feed.history.open_gate();
 
         let deliveries = vec![
             BarDelivery::Completed(test_bar(60, 10.0)),
@@ -255,10 +469,87 @@ mod tests {
         feed.update_data_age();
         assert_eq!(feed.data_age_ms, -1);
 
+        feed.history.open_gate();
         feed.apply_delivery(BarDelivery::Completed(test_bar(60, 10.0)));
         assert_eq!(feed.data_age_ms, 0);
         std::thread::sleep(std::time::Duration::from_millis(5));
         feed.update_data_age();
         assert!(feed.data_age_ms >= 4);
+    }
+
+    #[test]
+    fn test_history_load_refuses_concurrent_request() {
+        let mut feed =
+            BarFeedRust::with_config("PETR4", "1m", Some(test_config("http://127.0.0.1:1")));
+        feed.history.begin_load().unwrap();
+        let err = feed.start_history_load().unwrap_err();
+        assert!(err.contains("already running"));
+    }
+
+    #[test]
+    fn test_history_load_runs_off_ui_thread() {
+        let mut feed =
+            BarFeedRust::with_config("PETR4", "1m", Some(test_config("http://127.0.0.1:1")));
+        feed.start_history_load().unwrap();
+        for _ in 0..100 {
+            if feed.history_controller().ran_off_ui_thread() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        panic!("history load did not run off the UI thread");
+    }
+
+    #[test]
+    fn test_history_holds_stream_until_loaded() {
+        let mut feed = BarFeedRust::new("PETR4", "1m");
+        feed.apply_delivery(BarDelivery::Completed(test_bar(300, 12.0)));
+        assert_eq!(feed.series.bar_count, 0);
+        assert_eq!(feed.applied, 0);
+
+        feed.complete_history_load(Loaded {
+            bars: make_bar_columns(60, 10.0, 11.0, 9.0, 10.5),
+            source: Source::Api,
+            dataset: None,
+            shortfall: 0,
+            reason: None,
+        });
+
+        assert_eq!(feed.series.bar_count, 1);
+        assert_eq!(feed.series.last_time, 60);
+        assert_eq!(feed.applied, 1);
+    }
+
+    #[test]
+    fn test_history_progress_is_monotonic() {
+        let mut feed =
+            BarFeedRust::with_config("PETR4", "1m", Some(test_config("http://127.0.0.1:1")));
+        let progress = Arc::new(Mutex::new(Vec::new()));
+        let progress_capture = Arc::clone(&progress);
+        let controller = Arc::clone(feed.history_controller());
+        feed.start_history_load_with_handlers(
+            move |_| {},
+            move |value| {
+                progress_capture.lock().unwrap().push(value);
+                controller.set_progress(value);
+            },
+        )
+        .unwrap();
+
+        for _ in 0..200 {
+            feed.sync_history_properties();
+            if (feed.history_progress - 1.0).abs() < f64::EPSILON {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        let values = progress.lock().unwrap().clone();
+        assert!(!values.is_empty());
+        for window in values.windows(2) {
+            assert!(window[0] <= window[1]);
+        }
+        assert!((values.last().copied().unwrap_or(0.0) - 1.0).abs() < f64::EPSILON);
+        assert_eq!(feed.history_source.to_string(), source_label(Source::None));
     }
 }

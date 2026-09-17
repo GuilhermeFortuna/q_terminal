@@ -5,6 +5,8 @@ pub mod contracts_stream;
 pub mod bridge;
 #[path = "../src/config.rs"]
 pub mod config;
+#[path = "../src/history/mod.rs"]
+pub mod history;
 #[path = "../src/stream/mod.rs"]
 pub mod stream;
 
@@ -90,6 +92,7 @@ async fn test_stream_benchmark() {
     assert_eq!(client.connection_state(), ConnectionState::Live);
 
     let mut feed = bridge::bar_feed::BarFeedRust::new("PETR4", "1m");
+    feed.history_controller().open_gate();
     sink.drain_into(&mut feed);
 
     let initial_ticks = get_cpu_ticks();

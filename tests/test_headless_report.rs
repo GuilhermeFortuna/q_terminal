@@ -1,5 +1,12 @@
 #[path = "../src/bridge.rs"]
+#[allow(dead_code)]
 mod bridge;
+#[path = "../src/config.rs"]
+#[allow(dead_code)]
+mod config;
+#[path = "../src/history/mod.rs"]
+#[allow(dead_code)]
+mod history;
 
 use std::process::Command;
 

@@ -1,4 +1,5 @@
 #[path = "bar_feed.rs"]
+#[allow(clippy::float_cmp)]
 pub mod bar_feed;
 
 #[cxx_qt::bridge]

@@ -1,5 +1,10 @@
 #[path = "../src/bridge.rs"]
 mod bridge;
+#[path = "../src/config.rs"]
+#[allow(dead_code)]
+mod config;
+#[path = "../src/history/mod.rs"]
+mod history;
 
 #[test]
 fn test_app_info_core_version_matches_core_info() {

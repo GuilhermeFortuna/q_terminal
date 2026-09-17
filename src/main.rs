@@ -3,6 +3,7 @@ pub mod contracts_stream;
 
 pub mod bridge;
 pub mod config;
+pub mod history;
 pub mod stream;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
