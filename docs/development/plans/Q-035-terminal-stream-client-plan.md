@@ -189,7 +189,7 @@ pub struct BarSink { /* CxxQtThread<BarFeed>, coalescing slot for forming bars *
    classifies as an envelope; a frame whose `payload_schema` is not the topic's
    is rejected. Implement `split_binary` and `classify_text`. Confirm they pass.
    Commit.
-- [ ] 5. Write failing table-driven tests for `on_event` covering: buffer before
+- [x] 5. Write failing table-driven tests for `on_event` covering: buffer before
    snapshot; discard at or below the watermark; apply above it in order; a
    duplicate sequence applied once; a gap emitting `FetchHistory` and holding
    later entries; history closing the gap and releasing the buffer; expired
