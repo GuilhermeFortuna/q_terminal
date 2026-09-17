@@ -217,7 +217,7 @@ pub struct BarSink { /* CxxQtThread<BarFeed>, coalescing slot for forming bars *
 - [x] 10. Add a measurement test behind `make bench-stream`: a synthetic
    full-rate stream for sixty seconds, reporting process CPU, the 95th-percentile
    socket-to-revision delay, and steady-state allocations per entry. Commit.
-- [ ] 11. Add the startup assertion that both topics are declared with the
+- [x] 11. Add the startup assertion that both topics are declared with the
    expected class and coalesce key, with a test for a policy that disagrees.
    Commit.
 - [ ] 12. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run,

@@ -120,6 +120,9 @@ pub struct StreamClient {
 
 impl StreamClient {
     pub fn start(config: Config, sink: BarSink) -> Self {
+        crate::stream::policy::assert_topic_policies(crate::stream::policy::KNOWN_TOPICS)
+            .expect("topic policy assertion failed");
+
         let shared = Arc::new(ClientShared::new());
         let (shutdown_tx, _) = broadcast::channel::<()>(1);
         let is_shutdown = Arc::new(AtomicBool::new(false));
