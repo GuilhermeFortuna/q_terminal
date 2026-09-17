@@ -214,7 +214,7 @@ pub struct BarSink { /* CxxQtThread<BarFeed>, coalescing slot for forming bars *
 - [x] 9. Write failing tests for shutdown: the runtime thread joins, and a
    delivery queued during teardown lands nowhere. Implement. Confirm they pass.
    Commit.
-- [ ] 10. Add a measurement test behind `make bench-stream`: a synthetic
+- [x] 10. Add a measurement test behind `make bench-stream`: a synthetic
    full-rate stream for sixty seconds, reporting process CPU, the 95th-percentile
    socket-to-revision delay, and steady-state allocations per entry. Commit.
 - [ ] 11. Add the startup assertion that both topics are declared with the
