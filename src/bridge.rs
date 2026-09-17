@@ -1,3 +1,6 @@
+#[path = "bar_feed.rs"]
+pub mod bar_feed;
+
 #[cxx_qt::bridge]
 pub mod ffi {
     #[allow(dead_code)]

@@ -168,20 +168,20 @@ pub struct BarSink { /* CxxQtThread<BarFeed>, coalescing slot for forming bars *
 
 ## Ordered implementation
 
-- [ ] 1. Work on the branch `Q-035-terminal-stream-client` in `q_terminal`,
+- [x] 1. Work on the branch `Q-035-terminal-stream-client` in `q_terminal`,
    created from `development` by `./work start`. Confirm Q-034 has merged and
    has a `q_core` release tag; pin `q-qt` to it, update the core-version
    assertions in `tests/test_bridge.rs` and `tests/test_headless_report.rs`, and
    confirm `make check` passes before adding anything. Commit.
-- [ ] 2. Add `tokio`, `tokio-tungstenite`, `reqwest` (rustls, json), `serde`,
+- [x] 2. Add `tokio`, `tokio-tungstenite`, `reqwest` (rustls, json), `serde`,
    `serde_json` and `arrow` to `Cargo.toml`, with default features off where
    they pull in a TLS or time-zone stack. Confirm `make build` and the headless
    report still work. Commit.
-- [ ] 3. Write failing tests for `config.rs`: a complete file loads; a missing
+- [x] 3. Write failing tests for `config.rs`: a complete file loads; a missing
    file with the environment variables set loads; a missing address is an error
    naming the field; no address is baked in. Implement. Confirm they pass.
    Commit.
-- [ ] 4. Write failing tests in `stream/frame.rs` against bytes built in the
+- [x] 4. Write failing tests in `stream/frame.rs` against bytes built in the
    test: a well-formed binary frame splits into header and Arrow bytes; a
    three-byte frame, a `header_len` past the end, a non-JSON header, and a
    header missing `seq` each give a `FrameError`; a text frame with `type` of
@@ -189,7 +189,7 @@ pub struct BarSink { /* CxxQtThread<BarFeed>, coalescing slot for forming bars *
    classifies as an envelope; a frame whose `payload_schema` is not the topic's
    is rejected. Implement `split_binary` and `classify_text`. Confirm they pass.
    Commit.
-- [ ] 5. Write failing table-driven tests for `on_event` covering: buffer before
+- [x] 5. Write failing table-driven tests for `on_event` covering: buffer before
    snapshot; discard at or below the watermark; apply above it in order; a
    duplicate sequence applied once; a gap emitting `FetchHistory` and holding
    later entries; history closing the gap and releasing the buffer; expired
@@ -197,30 +197,30 @@ pub struct BarSink { /* CxxQtThread<BarFeed>, coalescing slot for forming bars *
    `lagging` and `cursor_expired` emitting `ReSnapshot`; a forming-topic gap
    emitting `ReSnapshot` rather than `FetchHistory`; an entry for another symbol
    emitting `Drop`. Implement `topic_state.rs`. Confirm they pass. Commit.
-- [ ] 6. Write failing tests for the sink: 1,000 forming deliveries between two
+- [x] 6. Write failing tests for the sink: 1,000 forming deliveries between two
    drains leave one bar, the newest; 1,000 completed deliveries leave 1,000 in
    order; a completed bar and a superseding forming bar drain in that order.
    Implement `BarSink`. Confirm they pass. Commit.
-- [ ] 7. Add the `BarFeed` bridge owning the Q-034 `BarSeries`, with the
+- [x] 7. Add the `BarFeed` bridge owning the Q-034 `BarSeries`, with the
    properties and the drain that applies deliveries on the UI thread. Write
    failing tests that drive it headless and assert the series advances and the
    counters move. Implement. Confirm they pass. Commit.
-- [ ] 8. Write a fake stream server in the test support module: it speaks the
+- [x] 8. Write a fake stream server in the test support module: it speaks the
    framing, serves `latest` and `history`, and can be told to send a gap, an
    epoch change, a lagging notice, an expired history range, a 503, or to close
    mid-stream. Write failing end-to-end tests for connect-snapshot-live, each
    fault, and reconnection with capped backoff. Implement `client.rs`. Confirm
    they pass. Commit.
-- [ ] 9. Write failing tests for shutdown: the runtime thread joins, and a
+- [x] 9. Write failing tests for shutdown: the runtime thread joins, and a
    delivery queued during teardown lands nowhere. Implement. Confirm they pass.
    Commit.
-- [ ] 10. Add a measurement test behind `make bench-stream`: a synthetic
+- [x] 10. Add a measurement test behind `make bench-stream`: a synthetic
    full-rate stream for sixty seconds, reporting process CPU, the 95th-percentile
    socket-to-revision delay, and steady-state allocations per entry. Commit.
-- [ ] 11. Add the startup assertion that both topics are declared with the
+- [x] 11. Add the startup assertion that both topics are declared with the
    expected class and coalesce key, with a test for a policy that disagrees.
    Commit.
-- [ ] 12. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run,
+- [x] 12. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run,
    commit.
 - [ ] 13. **Human:** run the research stack and the terminal against a real
    symbol for thirty minutes; restart Redis under it; stop and restart the API

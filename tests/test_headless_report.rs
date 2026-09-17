@@ -18,7 +18,7 @@ fn test_headless_report() {
 
     assert_eq!(lines.len(), 4, "Expected 4 lines of output, got: {stdout}");
     assert_eq!(lines[0], env!("CARGO_PKG_VERSION"));
-    assert_eq!(lines[1], "2026.9.12");
+    assert_eq!(lines[1], "2026.9.16");
     assert_eq!(lines[2], include_str!("../CONTRACTS_REV").trim());
     assert_eq!(lines[3], "headless");
 }
