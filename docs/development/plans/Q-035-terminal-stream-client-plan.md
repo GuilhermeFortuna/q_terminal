@@ -181,7 +181,7 @@ pub struct BarSink { /* CxxQtThread<BarFeed>, coalescing slot for forming bars *
    file with the environment variables set loads; a missing address is an error
    naming the field; no address is baked in. Implement. Confirm they pass.
    Commit.
-- [ ] 4. Write failing tests in `stream/frame.rs` against bytes built in the
+- [x] 4. Write failing tests in `stream/frame.rs` against bytes built in the
    test: a well-formed binary frame splits into header and Arrow bytes; a
    three-byte frame, a `header_len` past the end, a non-JSON header, and a
    header missing `seq` each give a `FrameError`; a text frame with `type` of
