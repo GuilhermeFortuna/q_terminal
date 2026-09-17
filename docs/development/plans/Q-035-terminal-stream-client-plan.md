@@ -168,7 +168,7 @@ pub struct BarSink { /* CxxQtThread<BarFeed>, coalescing slot for forming bars *
 
 ## Ordered implementation
 
-- [ ] 1. Work on the branch `Q-035-terminal-stream-client` in `q_terminal`,
+- [x] 1. Work on the branch `Q-035-terminal-stream-client` in `q_terminal`,
    created from `development` by `./work start`. Confirm Q-034 has merged and
    has a `q_core` release tag; pin `q-qt` to it, update the core-version
    assertions in `tests/test_bridge.rs` and `tests/test_headless_report.rs`, and
