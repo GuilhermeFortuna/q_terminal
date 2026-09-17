@@ -177,7 +177,7 @@ pub struct BarSink { /* CxxQtThread<BarFeed>, coalescing slot for forming bars *
    `serde_json` and `arrow` to `Cargo.toml`, with default features off where
    they pull in a TLS or time-zone stack. Confirm `make build` and the headless
    report still work. Commit.
-- [ ] 3. Write failing tests for `config.rs`: a complete file loads; a missing
+- [x] 3. Write failing tests for `config.rs`: a complete file loads; a missing
    file with the environment variables set loads; a missing address is an error
    naming the field; no address is baked in. Implement. Confirm they pass.
    Commit.
