@@ -137,6 +137,18 @@ pub fn split_binary(bytes: &[u8]) -> Result<BinaryFrame<'_>, FrameError> {
     Ok(BinaryFrame { header, arrow })
 }
 
+pub fn make_binary_frame(header: &EnvelopeHeader, arrow_bytes: &[u8]) -> Vec<u8> {
+    let header_json = serde_json::to_string(header).expect("valid header json");
+    let header_bytes = header_json.as_bytes();
+    let header_len = header_bytes.len() as u32;
+
+    let mut buf = Vec::with_capacity(4 + header_bytes.len() + arrow_bytes.len());
+    buf.extend_from_slice(&header_len.to_le_bytes());
+    buf.extend_from_slice(header_bytes);
+    buf.extend_from_slice(arrow_bytes);
+    buf
+}
+
 pub fn classify_text(text: &str) -> Result<ServerFrame, FrameError> {
     let val: serde_json::Value =
         serde_json::from_str(text).map_err(|e| FrameError::InvalidJson(e.to_string()))?;

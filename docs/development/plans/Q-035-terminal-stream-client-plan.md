@@ -205,13 +205,13 @@ pub struct BarSink { /* CxxQtThread<BarFeed>, coalescing slot for forming bars *
    properties and the drain that applies deliveries on the UI thread. Write
    failing tests that drive it headless and assert the series advances and the
    counters move. Implement. Confirm they pass. Commit.
-- [ ] 8. Write a fake stream server in the test support module: it speaks the
+- [x] 8. Write a fake stream server in the test support module: it speaks the
    framing, serves `latest` and `history`, and can be told to send a gap, an
    epoch change, a lagging notice, an expired history range, a 503, or to close
    mid-stream. Write failing end-to-end tests for connect-snapshot-live, each
    fault, and reconnection with capped backoff. Implement `client.rs`. Confirm
    they pass. Commit.
-- [ ] 9. Write failing tests for shutdown: the runtime thread joins, and a
+- [x] 9. Write failing tests for shutdown: the runtime thread joins, and a
    delivery queued during teardown lands nowhere. Implement. Confirm they pass.
    Commit.
 - [ ] 10. Add a measurement test behind `make bench-stream`: a synthetic
