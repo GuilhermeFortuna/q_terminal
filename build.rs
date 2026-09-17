@@ -40,10 +40,23 @@ fn link_q_qt_headers(build_dir: &Path) {
     let link_path = manifest_dir.join("cpp/q-qt");
     let q_qt_headers = q_qt_include_dir(build_dir).join("q-qt");
 
-    if link_path.exists() {
-        std::fs::remove_dir_all(&link_path).expect("remove stale q-qt header symlink");
+    if link_path.symlink_metadata().is_ok() {
+        let current = std::fs::read_link(&link_path).ok();
+        if current.as_ref() == Some(&q_qt_headers) {
+            return;
+        }
+        std::fs::remove_file(&link_path)
+            .or_else(|_| std::fs::remove_dir_all(&link_path))
+            .expect("remove stale q-qt header symlink");
     }
-    std::os::unix::fs::symlink(&q_qt_headers, &link_path).expect("symlink q-qt headers into cpp/");
+    match std::os::unix::fs::symlink(&q_qt_headers, &link_path) {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+            let current = std::fs::read_link(&link_path).expect("read concurrent q-qt symlink");
+            assert_eq!(current, q_qt_headers, "stale q-qt header symlink");
+        }
+        Err(err) => panic!("symlink q-qt headers into cpp/: {err}"),
+    }
     println!("cargo:rerun-if-changed={}", q_qt_headers.display());
 }
 
@@ -57,6 +70,7 @@ fn main() {
         .include_dir("cpp")
         .file("src/bridge.rs")
         .file("src/chart_bridge.rs")
+        .file("src/bar_feed.rs")
         .cpp_file("src/render_backend.cpp")
         .cpp_file("cpp/bar_chart_node.cpp")
         .cpp_file("cpp/bar_chart_item.h")

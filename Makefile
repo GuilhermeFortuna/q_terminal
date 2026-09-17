@@ -1,4 +1,4 @@
-.PHONY: check check-suite fmt fmt-check lint test build run qml-lint contracts contracts-check bench-frames
+.PHONY: check check-suite fmt fmt-check lint test build run qml-lint contracts contracts-check bench-stream bench-frames
 
 CONTRACTS_REPO ?= https://github.com/GuilhermeFortuna/q_contracts.git
 QMLLINT ?= $(shell command -v qmllint 2>/dev/null || find $(HOME)/.local/share/qt_minimal_download -name "qmllint" -type f 2>/dev/null | head -n 1)
@@ -33,6 +33,9 @@ qml-lint: build
 
 test:
 	cargo test
+
+bench-stream:
+	cargo test --release --test bench_stream -- --nocapture --ignored
 
 run:
 	cargo run
