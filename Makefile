@@ -1,4 +1,4 @@
-.PHONY: check check-suite fmt fmt-check lint test build run qml-lint contracts contracts-check
+.PHONY: check check-suite fmt fmt-check lint test build run qml-lint contracts contracts-check bench-frames
 
 CONTRACTS_REPO ?= https://github.com/GuilhermeFortuna/q_contracts.git
 QMLLINT ?= $(shell command -v qmllint 2>/dev/null || find $(HOME)/.local/share/qt_minimal_download -name "qmllint" -type f 2>/dev/null | head -n 1)
@@ -36,6 +36,9 @@ test:
 
 run:
 	cargo run
+
+bench-frames:
+	cargo run -- --bench-frames --buckets $${BENCH_BUCKETS:-2000} --bars $${BENCH_BARS:-500000} --duration-ms $${BENCH_DURATION_MS:-300000}
 
 contracts:
 	contracts_tmp="$$(mktemp -d)"; \

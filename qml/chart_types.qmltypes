@@ -1,0 +1,35 @@
+    Component {
+        name: "BarSeries"
+        accessSemantics: "reference"
+        prototype: "QObject"
+        exports: ["qml/BarSeries 1.0"]
+        Property { name: "symbol"; type: "QString"; index: 0 }
+        Property { name: "timeframe"; type: "QString"; index: 1 }
+        Property { name: "bar_count"; type: "int"; index: 2 }
+        Property { name: "revision"; type: "int"; index: 3 }
+        Property { name: "last_price"; type: "double"; index: 4 }
+        Property { name: "has_forming"; type: "bool"; index: 5 }
+        Property { name: "first_time"; type: "int"; index: 6 }
+        Property { name: "last_time"; type: "int"; index: 7 }
+        Property { name: "low"; type: "double"; index: 8 }
+        Property { name: "high"; type: "double"; index: 9 }
+        Method { name: "load_history_sample"; type: "bool"; Parameter { name: "count"; type: "int" } }
+        Method { name: "set_viewport"; Parameter { name: "first_bar"; type: "int" } Parameter { name: "last_bar"; type: "int" } Parameter { name: "low"; type: "double" } Parameter { name: "high"; type: "double" } }
+        Method { name: "set_surface"; Parameter { name: "width_px"; type: "double" } Parameter { name: "height_px"; type: "double" } }
+    }
+    Component {
+        name: "BarChartItem"
+        accessSemantics: "reference"
+        prototype: "QObject"
+        exports: ["qml/BarChartItem 1.0"]
+        Property { name: "series"; type: "QObject"; index: 0 }
+        Property { name: "firstBar"; type: "int"; index: 1 }
+        Property { name: "lastBar"; type: "int"; index: 2 }
+        Property { name: "lowPrice"; type: "double"; index: 3 }
+        Property { name: "highPrice"; type: "double"; index: 4 }
+        Property { name: "risingColor"; type: "QColor"; index: 5 }
+        Property { name: "fallingColor"; type: "QColor"; index: 6 }
+        Property { name: "formingColor"; type: "QColor"; index: 7 }
+        Property { name: "width"; type: "double"; index: 8 }
+        Property { name: "height"; type: "double"; index: 9 }
+    }
