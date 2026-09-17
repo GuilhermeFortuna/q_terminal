@@ -201,7 +201,7 @@ pub struct BarSink { /* CxxQtThread<BarFeed>, coalescing slot for forming bars *
    drains leave one bar, the newest; 1,000 completed deliveries leave 1,000 in
    order; a completed bar and a superseding forming bar drain in that order.
    Implement `BarSink`. Confirm they pass. Commit.
-- [ ] 7. Add the `BarFeed` bridge owning the Q-034 `BarSeries`, with the
+- [x] 7. Add the `BarFeed` bridge owning the Q-034 `BarSeries`, with the
    properties and the drain that applies deliveries on the UI thread. Write
    failing tests that drive it headless and assert the series advances and the
    counters move. Implement. Confirm they pass. Commit.

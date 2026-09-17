@@ -1748,6 +1748,7 @@ dependencies = [
  "cxx-qt",
  "cxx-qt-build",
  "cxx-qt-lib",
+ "q-buffers",
  "q-qt",
  "qt-build-utils",
  "qt-version",
