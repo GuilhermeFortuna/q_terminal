@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
-use q_buffers::frame::{BarColumns, TimeLabel};
+use q_buffers::frame::{BarColumns, TimeLabel, VolumeSet};
 
 use crate::config::Config;
 use crate::history::{HistoryController, Loaded, DEFAULT_HISTORY_BARS};
@@ -129,6 +129,12 @@ pub mod ffi {
         fn rebuild_geometry(self: Pin<&mut BarFeed>);
 
         #[qinvokable]
+        fn bar_times_len(self: &BarFeed) -> i32;
+
+        #[qinvokable]
+        fn bar_time_at(self: &BarFeed, index: i32) -> i64;
+
+        #[qinvokable]
         fn vertex_ptr(self: &BarFeed) -> i64;
 
         #[qinvokable]
@@ -209,7 +215,10 @@ pub struct BarFeedRust {
     pub low: f64,
     pub high: f64,
 
+    pub bar_times: Vec<i64>,
     pub series: q_qt::BarSeriesRust,
+    pub series_label: TimeLabel,
+    pub series_vols: VolumeSet,
     pub last_applied_instant: Option<Instant>,
     history: Arc<HistoryController>,
     config: Option<Config>,
@@ -254,7 +263,14 @@ impl BarFeedRust {
             last_time: series.last_time,
             low: series.low,
             high: series.high,
+            bar_times: Vec::new(),
             series,
+            series_label: TimeLabel::Utc,
+            series_vols: VolumeSet {
+                tick_volume: false,
+                spread: false,
+                real_volume: false,
+            },
             last_applied_instant: None,
             history: Arc::new(HistoryController::new()),
             config,
@@ -394,6 +410,9 @@ impl BarFeedRust {
         } = loaded;
         let bar_count = bars.time.len();
         if bar_count > 0 {
+            self.series_label = bars.label;
+            self.series_vols = VolumeSet::from_bars(&bars);
+            self.bar_times.extend_from_slice(&bars.time);
             let _ = self.series.load_history(bars);
         }
         self.history.finish_load(
@@ -416,6 +435,36 @@ impl BarFeedRust {
         }
     }
 
+    fn adapt_bars(&self, bars: BarColumns) -> BarColumns {
+        let c = bars.time.len();
+        let tick_volume = if self.series_vols.tick_volume {
+            bars.tick_volume.or_else(|| Some(vec![0; c]))
+        } else {
+            None
+        };
+        let spread = if self.series_vols.spread {
+            bars.spread.or_else(|| Some(vec![0; c]))
+        } else {
+            None
+        };
+        let real_volume = if self.series_vols.real_volume {
+            bars.real_volume.or_else(|| Some(vec![0; c]))
+        } else {
+            None
+        };
+        BarColumns {
+            time: bars.time,
+            open: bars.open,
+            high: bars.high,
+            low: bars.low,
+            close: bars.close,
+            tick_volume,
+            spread,
+            real_volume,
+            label: self.series_label,
+        }
+    }
+
     pub fn apply_delivery(&mut self, delivery: BarDelivery) {
         if let Some(time) = delivery_first_time(&delivery) {
             self.history.record_stream_time(time);
@@ -431,7 +480,20 @@ impl BarFeedRust {
         match delivery {
             BarDelivery::Completed(bars) => {
                 let count = bars.time.len() as i64;
-                if self.series.ingest_completed(bars).is_ok() {
+                let adapted = self.adapt_bars(bars);
+                let times = adapted.time.clone();
+                if self.series.ingest_completed(adapted).is_ok() {
+                    for t in times {
+                        if let Some(&last) = self.bar_times.last() {
+                            if t > last {
+                                self.bar_times.push(t);
+                            } else if t == last {
+                                *self.bar_times.last_mut().unwrap() = t;
+                            }
+                        } else {
+                            self.bar_times.push(t);
+                        }
+                    }
                     self.applied += count;
                     self.last_applied_instant = Some(Instant::now());
                     self.data_age_ms = 0;
@@ -441,7 +503,8 @@ impl BarFeedRust {
                 }
             }
             BarDelivery::Forming(bars) => {
-                if self.series.ingest_forming(bars).is_ok() {
+                let adapted = self.adapt_bars(bars);
+                if self.series.ingest_forming(adapted).is_ok() {
                     self.applied += 1;
                     self.last_applied_instant = Some(Instant::now());
                     self.data_age_ms = 0;
@@ -576,6 +639,18 @@ impl ffi::BarFeed {
 
     pub fn rebuild_geometry(mut self: std::pin::Pin<&mut Self>) {
         self.as_mut().rust_mut().series.rebuild_geometry();
+    }
+
+    pub fn bar_times_len(&self) -> i32 {
+        self.rust().bar_times.len() as i32
+    }
+
+    pub fn bar_time_at(&self, index: i32) -> i64 {
+        if index >= 0 && (index as usize) < self.rust().bar_times.len() {
+            self.rust().bar_times[index as usize]
+        } else {
+            0
+        }
     }
 
     pub fn vertex_ptr(&self) -> i64 {

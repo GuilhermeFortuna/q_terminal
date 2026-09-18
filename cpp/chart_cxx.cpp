@@ -8,9 +8,11 @@
 
 #include <mutex>
 
+#include <QtCore/QAbstractEventDispatcher>
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDebug>
 #include <QtCore/QFileInfo>
+#include <QtCore/QThread>
 #include <QtCore/QTimer>
 #include <QtCore/QUrl>
 #include <QtGui/QGuiApplication>
@@ -162,6 +164,12 @@ int exec_application() {
         return app->exec();
     }
     return 0;
+}
+
+void process_events() {
+    if (auto* app = QCoreApplication::instance()) {
+        app->processEvents();
+    }
 }
 
 void reset_chart_probe_state() {
@@ -581,6 +589,60 @@ void post_feed_forming_bar(
         feed->ingest_forming_bar(time, open, high, low, close);
     }, Qt::QueuedConnection);
 }
+
+int feed_bar_times_len(BarFeed* feed) {
+    if (!feed) return 0;
+    return feed->bar_times_len();
+}
+
+std::int64_t feed_bar_time_at(BarFeed* feed, int index) {
+    if (!feed) return 0;
+    return feed->bar_time_at(index);
+}
+
+int feed_vertex_len(BarFeed* feed) {
+    if (!feed) return 0;
+    return static_cast<int>(feed->vertex_len());
+}
+
+ProbeVertex feed_vertex_at(BarFeed* feed, std::size_t index) {
+    const auto* source = reinterpret_cast<const BarVertex*>(feed->vertex_ptr());
+    const BarVertex& vertex = source[index];
+    return ProbeVertex{vertex.x, vertex.y, vertex.direction, vertex.forming};
+}
+
+void feed_rebuild_geometry(BarFeed* feed, int first_bar, int last_bar, double low, double high, float width, float height) {
+    if (!feed) return;
+    feed->set_surface(width, height);
+    feed->set_viewport(first_bar, last_bar, low, high);
+    feed->rebuild_geometry();
+}
+
+rust::String feed_history_source(BarFeed* feed) {
+    if (!feed) return "";
+    return rust::String(feed->getHistory_source().toStdString());
+}
+
+rust::String feed_history_error(BarFeed* feed) {
+    if (!feed) return "";
+    return rust::String(feed->getHistory_error().toStdString());
+}
+
+bool feed_history_loading(BarFeed* feed) {
+    if (!feed) return false;
+    return feed->getHistory_loading();
+}
+
+std::int64_t feed_bar_count(BarFeed* feed) {
+    if (!feed) return 0;
+    return feed->getBar_count();
+}
+
+std::int64_t feed_rest_calls(BarFeed* feed) {
+    if (!feed) return 0;
+    return feed->getRest_calls();
+}
+
 
 
 

@@ -135,6 +135,7 @@ void post_feed_forming_bar(
 
 void ensure_application();
 int exec_application();
+void process_events();
 void register_bar_chart_types();
 
 BarSeries* make_test_series(int bar_count);
@@ -173,6 +174,17 @@ ProbeVertex chart_series_vertex_at(BarSeries* series, std::size_t index);
 void ensure_test_app();
 
 void reset_chart_probe_state();
+
+int feed_bar_times_len(BarFeed* feed);
+std::int64_t feed_bar_time_at(BarFeed* feed, int index);
+int feed_vertex_len(BarFeed* feed);
+ProbeVertex feed_vertex_at(BarFeed* feed, std::size_t index);
+void feed_rebuild_geometry(BarFeed* feed, int first_bar, int last_bar, double low, double high, float width, float height);
+rust::String feed_history_source(BarFeed* feed);
+rust::String feed_history_error(BarFeed* feed);
+bool feed_history_loading(BarFeed* feed);
+std::int64_t feed_bar_count(BarFeed* feed);
+std::int64_t feed_rest_calls(BarFeed* feed);
 
 #endif // Q_TERMINAL_CHART_CXX_H
 

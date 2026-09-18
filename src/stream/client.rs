@@ -184,17 +184,23 @@ impl StreamClient {
         let shutdown_rx = shutdown_tx.subscribe();
         let is_shutdown_clone = is_shutdown.clone();
 
-        let runtime_thread = std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(2)
-                .enable_all()
-                .build()
-                .expect("failed to build tokio runtime");
+        let runtime_thread = std::thread::Builder::new()
+            .name("stream-client".into())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let rt = tokio::runtime::Builder::new_multi_thread()
+                    .worker_threads(2)
+                    .thread_stack_size(8 * 1024 * 1024)
+                    .enable_all()
+                    .build()
+                    .expect("failed to build tokio runtime");
 
-            rt.block_on(async move {
-                run_client_loop(config, sink, shared_clone, shutdown_rx, is_shutdown_clone).await;
-            });
-        });
+                rt.block_on(async move {
+                    run_client_loop(config, sink, shared_clone, shutdown_rx, is_shutdown_clone)
+                        .await;
+                });
+            })
+            .expect("spawn stream client thread");
 
         Self {
             shared,
@@ -273,10 +279,14 @@ async fn fetch_and_apply_snapshot(
         Ok(r) => r,
         Err(_) => return,
     };
+    let prev_seq = state.last_applied_seq;
     if resp.status().is_success() {
         if let Ok(latest) = resp.json::<LatestResponse>().await {
             for entry in latest.entries.values() {
                 if is_shutdown.load(Ordering::SeqCst) {
+                    return;
+                }
+                if Some(entry.seq) == prev_seq {
                     return;
                 }
                 if let Some(payload_str) = entry.payload.as_str() {

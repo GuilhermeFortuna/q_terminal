@@ -36,6 +36,8 @@ pub struct FakeServer {
     epoch: Arc<RwLock<String>>,
     snapshots: Arc<RwLock<HashMap<String, SnapshotEntry>>>,
     history: Arc<RwLock<HistoryMap>>,
+    catalog_json: Arc<RwLock<Option<String>>>,
+    rest_calls: Arc<std::sync::atomic::AtomicUsize>,
     command_tx: mpsc::Sender<ServerCommand>,
     shutdown_tx: mpsc::Sender<()>,
 }
@@ -51,6 +53,8 @@ impl FakeServer {
         let epoch = Arc::new(RwLock::new("epoch-1".to_string()));
         let snapshots = Arc::new(RwLock::new(HashMap::<String, SnapshotEntry>::new()));
         let history = Arc::new(RwLock::new(HashMap::<String, Vec<(i64, BarColumns)>>::new()));
+        let catalog_json = Arc::new(RwLock::new(None::<String>));
+        let rest_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
         let (cmd_tx, mut cmd_rx) = mpsc::channel::<ServerCommand>(100);
         let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
@@ -90,6 +94,8 @@ impl FakeServer {
         let ep_arc = epoch.clone();
         let snap_arc = snapshots.clone();
         let hist_arc = history.clone();
+        let cat_arc = catalog_json.clone();
+        let rest_cnt = rest_calls.clone();
 
         tokio::spawn(async move {
             loop {
@@ -105,6 +111,8 @@ impl FakeServer {
                             let ep_arc = ep_arc.clone();
                             let snap_arc = snap_arc.clone();
                             let hist_arc = hist_arc.clone();
+                            let cat_arc = cat_arc.clone();
+                            let rest_cnt = rest_cnt.clone();
                             let ws_sender_clone = ws_sender_clone.clone();
 
                             tokio::spawn(async move {
@@ -204,6 +212,8 @@ impl FakeServer {
                                 // Consume REST request bytes
                                 let _ = socket.read(&mut buf[..n]).await;
 
+                                rest_cnt.fetch_add(1, Ordering::SeqCst);
+
                                 // Handle REST requests
                                 let parts: Vec<&str> = first_line.split_whitespace().collect();
                                 if parts.len() < 2 {
@@ -211,6 +221,20 @@ impl FakeServer {
                                 }
                                 let path_and_query = parts[1];
                                 let path = path_and_query.split('?').next().unwrap_or("");
+
+                                if path.contains("/api/v1/catalog/datasets") {
+                                    let cat_guard = cat_arc.read().await;
+                                    if let Some(body) = cat_guard.as_ref() {
+                                        let resp = format!(
+                                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                            body.len(),
+                                            body
+                                        );
+                                        let _ = socket.write_all(resp.as_bytes()).await;
+                                        let _ = socket.shutdown().await;
+                                        return;
+                                    }
+                                }
 
                                 if path.ends_with("/latest") {
                                     let topic = path.trim_start_matches("/api/v1/stream/").trim_end_matches("/latest");
@@ -325,6 +349,8 @@ impl FakeServer {
             epoch,
             snapshots,
             history,
+            catalog_json,
+            rest_calls,
             command_tx: cmd_tx,
             shutdown_tx,
         }
@@ -332,6 +358,15 @@ impl FakeServer {
 
     pub fn api_base(&self) -> String {
         format!("http://127.0.0.1:{}", self.addr.port())
+    }
+
+    pub async fn set_catalog(&self, catalog_body: &str) {
+        let mut guard = self.catalog_json.write().await;
+        *guard = Some(catalog_body.to_string());
+    }
+
+    pub fn rest_calls(&self) -> usize {
+        self.rest_calls.load(Ordering::SeqCst)
     }
 
     pub fn set_deny_503(&self, val: bool) {
@@ -380,6 +415,7 @@ impl FakeServer {
         timeframe: &str,
         bars: BarColumns,
     ) {
+        self.set_snapshot(topic, seq, bars.clone()).await;
         let cur_ep = self.epoch.read().await.clone();
         let header = EnvelopeHeader {
             topic: topic.to_string(),

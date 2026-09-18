@@ -2,6 +2,7 @@
 
 #include "bar_chart_node.h"
 
+#include <mutex>
 #include <QtQml/qqml.h>
 
 #include "q-qt/src/bar_series.cxxqt.h"
@@ -171,6 +172,9 @@ int BarChartItem::takeFrameUploads() {
 }
 
 void register_bar_chart_types() {
-    qmlRegisterType<BarSeries>("qml", 1, 0, "BarSeries");
-    qmlRegisterType<BarChartItem>("qml", 1, 0, "BarChartItem");
+    static std::once_flag once;
+    std::call_once(once, []() {
+        qmlRegisterType<BarSeries>("qml", 1, 0, "BarSeries");
+        qmlRegisterType<BarChartItem>("qml", 1, 0, "BarChartItem");
+    });
 }
