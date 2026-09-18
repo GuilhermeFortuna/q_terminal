@@ -1,7 +1,7 @@
-.PHONY: check check-suite fmt fmt-check lint test build run qml-lint contracts contracts-check bench-stream bench-frames
+.PHONY: check check-suite fmt fmt-check lint test build run qml-lint contracts contracts-check bench-stream bench-history-load bench-frames
 
 CONTRACTS_REPO ?= https://github.com/GuilhermeFortuna/q_contracts.git
-QMLLINT ?= $(shell command -v qmllint 2>/dev/null || find $(HOME)/.local/share/qt_minimal_download -name "qmllint" -type f 2>/dev/null | head -n 1)
+QMLLINT ?= $(shell find $(HOME)/.local/share/qt_minimal_download -name "qmllint" -type f 2>/dev/null | head -n 1 || command -v qmllint 2>/dev/null)
 
 # Public entrypoint: routes through scripts/ci.sh for host ci.slice prioritization.
 check:
@@ -31,11 +31,18 @@ qml-lint: build
 	fi; \
 	$(QMLLINT) -W 0 -i target/cxxqt/qml_modules/qml/qmldir qml/Main.qml
 
+RUST_HOST := $(shell rustc -vV | awk '/^host:/ {print $$2}')
+RUST_GCC_LD := $(shell rustc --print sysroot)/lib/rustlib/$(RUST_HOST)/bin/gcc-ld
+CARGO_TEST_RUSTFLAGS := -C link-arg=-fuse-ld=lld -C link-arg=-B$(RUST_GCC_LD)
+
 test:
-	cargo test
+	RUSTFLAGS="$(CARGO_TEST_RUSTFLAGS)" cargo test
 
 bench-stream:
-	cargo test --release --test bench_stream -- --nocapture --ignored
+	RUSTFLAGS="$(CARGO_TEST_RUSTFLAGS)" cargo test --release --test bench_stream -- --nocapture --ignored
+
+bench-history-load:
+	RUSTFLAGS="$(CARGO_TEST_RUSTFLAGS)" cargo test --release --test bench_history_load -- --nocapture --ignored
 
 run:
 	cargo run

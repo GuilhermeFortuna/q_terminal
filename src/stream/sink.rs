@@ -177,6 +177,7 @@ mod tests {
     fn test_drain_into_bar_feed() {
         let sink = BarSink::new();
         let mut feed = crate::bridge::bar_feed::BarFeedRust::new("PETR4", "1m");
+        feed.history_controller().open_gate();
 
         sink.deliver_completed(dummy_bar(60, 10.0));
         sink.deliver_forming(dummy_bar(120, 10.5));

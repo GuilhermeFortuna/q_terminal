@@ -5,6 +5,8 @@ pub mod contracts_stream;
 pub mod bridge;
 #[path = "../src/config.rs"]
 pub mod config;
+#[path = "../src/history/mod.rs"]
+pub mod history;
 #[path = "../src/stream/mod.rs"]
 pub mod stream;
 
