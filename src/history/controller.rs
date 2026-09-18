@@ -1,6 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
 
 use crate::config::Config;
 use crate::history::{load, source_label, trim_to_seam, ApiClient, Loaded, Source, VerifiedSet};
@@ -146,29 +145,33 @@ impl HistoryController {
         on_progress: impl Fn(f64) + Send + Sync + 'static,
     ) {
         let controller = Arc::clone(self);
-        thread::spawn(move || {
-            controller.ran_off_ui_thread.store(true, Ordering::SeqCst);
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("history runtime");
+        let _ = std::thread::Builder::new()
+            .name("history-load".into())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                controller.ran_off_ui_thread.store(true, Ordering::SeqCst);
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .thread_stack_size(8 * 1024 * 1024)
+                    .enable_all()
+                    .build()
+                    .expect("history runtime");
 
-            rt.block_on(async move {
-                on_progress(0.05);
-                let api = ApiClient::new(&config.api_base);
-                let loaded = load(&api, &config, bars, &controller.verify_cache).await;
-                on_progress(0.9);
-                let first_streamed = *controller.first_streamed_time.lock().unwrap();
-                let trimmed = Loaded {
-                    bars: trim_to_seam(loaded.bars, first_streamed),
-                    source: loaded.source,
-                    dataset: loaded.dataset,
-                    shortfall: loaded.shortfall,
-                    reason: loaded.reason,
-                };
-                on_progress(1.0);
-                on_loaded(trimmed);
+                rt.block_on(async move {
+                    on_progress(0.05);
+                    let api = ApiClient::new(&config.api_base);
+                    let loaded = load(&api, &config, bars, &controller.verify_cache).await;
+                    on_progress(0.9);
+                    let first_streamed = *controller.first_streamed_time.lock().unwrap();
+                    let trimmed = Loaded {
+                        bars: trim_to_seam(loaded.bars, first_streamed),
+                        source: loaded.source,
+                        dataset: loaded.dataset,
+                        shortfall: loaded.shortfall,
+                        reason: loaded.reason,
+                    };
+                    on_progress(1.0);
+                    on_loaded(trimmed);
+                });
             });
-        });
     }
 }

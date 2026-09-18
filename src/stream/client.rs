@@ -28,6 +28,7 @@ pub struct Counters {
     pub dropped: u64,
     pub gaps_closed: u64,
     pub resnapshots: u64,
+    pub rest_calls: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -57,6 +58,7 @@ pub struct ClientShared {
     counters: RwLock<Counters>,
     last_error: RwLock<String>,
     last_applied_instant: RwLock<Option<Instant>>,
+    change_listener: RwLock<Option<Arc<dyn Fn() + Send + Sync + 'static>>>,
 }
 
 impl Default for ClientShared {
@@ -72,42 +74,93 @@ impl ClientShared {
             counters: RwLock::new(Counters::default()),
             last_error: RwLock::new(String::new()),
             last_applied_instant: RwLock::new(None),
+            change_listener: RwLock::new(None),
+        }
+    }
+
+    pub fn set_listener(&self, listener: Arc<dyn Fn() + Send + Sync + 'static>) {
+        let mut guard = self.change_listener.write().unwrap();
+        *guard = Some(listener);
+    }
+
+    fn notify_change(&self) {
+        let listener = self.change_listener.read().unwrap().clone();
+        if let Some(l) = listener {
+            l();
         }
     }
 
     pub fn set_state(&self, state: ConnectionState) {
-        let mut guard = self.connection_state.write().unwrap();
-        *guard = state;
+        {
+            let mut guard = self.connection_state.write().unwrap();
+            *guard = state;
+        }
+        self.notify_change();
     }
 
     pub fn set_last_error(&self, err: &str) {
-        let mut guard = self.last_error.write().unwrap();
-        *guard = err.to_string();
+        {
+            let mut guard = self.last_error.write().unwrap();
+            *guard = err.to_string();
+        }
+        self.notify_change();
     }
 
     pub fn inc_applied(&self) {
-        let mut guard = self.counters.write().unwrap();
-        guard.applied += 1;
+        {
+            let mut guard = self.counters.write().unwrap();
+            guard.applied += 1;
+        }
+        self.notify_change();
     }
 
     pub fn inc_dropped(&self) {
-        let mut guard = self.counters.write().unwrap();
-        guard.dropped += 1;
+        {
+            let mut guard = self.counters.write().unwrap();
+            guard.dropped += 1;
+        }
+        self.notify_change();
     }
 
     pub fn inc_gaps_closed(&self) {
-        let mut guard = self.counters.write().unwrap();
-        guard.gaps_closed += 1;
+        {
+            let mut guard = self.counters.write().unwrap();
+            guard.gaps_closed += 1;
+        }
+        self.notify_change();
     }
 
     pub fn inc_resnapshots(&self) {
-        let mut guard = self.counters.write().unwrap();
-        guard.resnapshots += 1;
+        {
+            let mut guard = self.counters.write().unwrap();
+            guard.resnapshots += 1;
+        }
+        self.notify_change();
+    }
+
+    pub fn inc_rest_calls(&self) {
+        {
+            let mut guard = self.counters.write().unwrap();
+            guard.rest_calls += 1;
+        }
+        self.notify_change();
     }
 
     pub fn record_applied(&self) {
         let mut guard = self.last_applied_instant.write().unwrap();
         *guard = Some(Instant::now());
+    }
+
+    pub fn connection_state(&self) -> ConnectionState {
+        self.connection_state.read().unwrap().clone()
+    }
+
+    pub fn counters(&self) -> Counters {
+        *self.counters.read().unwrap()
+    }
+
+    pub fn last_error(&self) -> String {
+        self.last_error.read().unwrap().clone()
     }
 }
 
@@ -131,17 +184,23 @@ impl StreamClient {
         let shutdown_rx = shutdown_tx.subscribe();
         let is_shutdown_clone = is_shutdown.clone();
 
-        let runtime_thread = std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(2)
-                .enable_all()
-                .build()
-                .expect("failed to build tokio runtime");
+        let runtime_thread = std::thread::Builder::new()
+            .name("stream-client".into())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let rt = tokio::runtime::Builder::new_multi_thread()
+                    .worker_threads(2)
+                    .thread_stack_size(8 * 1024 * 1024)
+                    .enable_all()
+                    .build()
+                    .expect("failed to build tokio runtime");
 
-            rt.block_on(async move {
-                run_client_loop(config, sink, shared_clone, shutdown_rx, is_shutdown_clone).await;
-            });
-        });
+                rt.block_on(async move {
+                    run_client_loop(config, sink, shared_clone, shutdown_rx, is_shutdown_clone)
+                        .await;
+                });
+            })
+            .expect("spawn stream client thread");
 
         Self {
             shared,
@@ -153,6 +212,14 @@ impl StreamClient {
 
     pub fn connection_state(&self) -> ConnectionState {
         self.shared.connection_state.read().unwrap().clone()
+    }
+
+    pub fn shared(&self) -> Arc<ClientShared> {
+        self.shared.clone()
+    }
+
+    pub fn set_listener(&self, listener: Arc<dyn Fn() + Send + Sync + 'static>) {
+        self.shared.set_listener(listener);
     }
 
     pub fn counters(&self) -> Counters {
@@ -207,14 +274,19 @@ async fn fetch_and_apply_snapshot(
         return;
     }
     let url = format!("{api_base}/api/v1/stream/{topic}/latest");
+    shared.inc_rest_calls();
     let resp = match http.get(&url).send().await {
         Ok(r) => r,
         Err(_) => return,
     };
+    let prev_seq = state.last_applied_seq;
     if resp.status().is_success() {
         if let Ok(latest) = resp.json::<LatestResponse>().await {
             for entry in latest.entries.values() {
                 if is_shutdown.load(Ordering::SeqCst) {
+                    return;
+                }
+                if Some(entry.seq) == prev_seq {
                     return;
                 }
                 if let Some(payload_str) = entry.payload.as_str() {
@@ -281,6 +353,7 @@ async fn handle_actions(
                     let url = format!(
                         "{api_base}/api/v1/stream/{topic}/history?epoch={epoch}&from_seq={from_seq}&limit=500"
                     );
+                    shared.inc_rest_calls();
                     let resp = http.get(&url).send().await;
                     match resp {
                         Ok(r) if r.status().as_u16() == 410 => {

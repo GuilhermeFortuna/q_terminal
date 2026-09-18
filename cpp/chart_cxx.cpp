@@ -1,12 +1,25 @@
 #include "chart_cxx.h"
 
 #include "bar_chart_item.h"
+#include "bar_chart_node.h"
 #include "bar_chart_probe.h"
 #include "q-qt/src/bar_series.cxxqt.h"
+#include "q_terminal/src/bar_feed.cxxqt.h"
 
 #include <mutex>
 
+#include <QtCore/QAbstractEventDispatcher>
 #include <QtCore/QCoreApplication>
+#include <QtCore/QDebug>
+#include <QtCore/QFileInfo>
+#include <QtCore/QThread>
+#include <QtCore/QTimer>
+#include <QtCore/QUrl>
+#include <QtGui/QGuiApplication>
+#include <QtQml/QQmlApplicationEngine>
+#include <QtQml/QQmlComponent>
+#include <QtQml/QQmlEngine>
+#include <QtQuick/QQuickWindow>
 
 #include "q_terminal/src/chart_bridge.cxx.h"
 
@@ -119,14 +132,517 @@ void ensure_test_app() {
     static std::once_flag once;
     std::call_once(once, []() {
         if (QCoreApplication::instance() == nullptr) {
-            static int argc = 1;
+            qputenv("QT_QPA_PLATFORM", QByteArrayLiteral("offscreen"));
+            static int argc = 3;
             static char arg0[] = "q_terminal_test";
-            static char* argv[] = {arg0, nullptr};
-            new QCoreApplication(argc, argv);
+            static char arg1[] = "-platform";
+            static char arg2[] = "offscreen";
+            static char* argv[] = {arg0, arg1, arg2, nullptr};
+            new QGuiApplication(argc, argv);
         }
+        register_bar_chart_types();
     });
+}
+
+void ensure_application() {
+    if (QCoreApplication::instance() == nullptr) {
+        if (qEnvironmentVariableIsEmpty("DISPLAY") &&
+            qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY") &&
+            qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) {
+            qputenv("QT_QPA_PLATFORM", QByteArrayLiteral("offscreen"));
+        }
+        static int argc = 1;
+        static char arg0[] = "q_terminal";
+        static char* argv[] = {arg0, nullptr};
+        new QGuiApplication(argc, argv);
+    }
+    register_bar_chart_types();
+}
+
+int exec_application() {
+    if (auto* app = QCoreApplication::instance()) {
+        return app->exec();
+    }
+    return 0;
+}
+
+void process_events() {
+    if (auto* app = QCoreApplication::instance()) {
+        app->processEvents();
+    }
 }
 
 void reset_chart_probe_state() {
     reset_probe_node();
 }
+
+struct ViewportProbe::Impl {
+    QQmlEngine engine;
+    QObject* viewport{nullptr};
+};
+
+ViewportProbe::ViewportProbe() : m_impl(std::make_unique<Impl>()) {
+    ensure_test_app();
+    m_impl->engine.addImportPath(QStringLiteral("target/cxxqt/qml_modules"));
+
+    QQmlComponent component(&m_impl->engine);
+    QFileInfo fileInfo(QStringLiteral("qml/Viewport.qml"));
+    if (fileInfo.exists()) {
+        component.loadUrl(QUrl::fromLocalFile(fileInfo.absoluteFilePath()));
+    } else {
+        component.loadUrl(QUrl(QStringLiteral("qrc:/qt/qml/qml/Viewport.qml")));
+    }
+    if (component.isError()) {
+        qWarning() << "ViewportProbe component error:" << component.errorString();
+    }
+    m_impl->viewport = component.create();
+    if (!m_impl->viewport && component.isError()) {
+        qWarning() << "ViewportProbe create error:" << component.errorString();
+    }
+}
+
+ViewportProbe::~ViewportProbe() {
+    if (m_impl->viewport) {
+        delete m_impl->viewport;
+    }
+}
+
+void ViewportProbe::set_bars_visible(int count) {
+    if (m_impl->viewport) {
+        m_impl->viewport->setProperty("barsVisible", count);
+    }
+}
+
+void ViewportProbe::set_price_margin(double margin) {
+    if (m_impl->viewport) {
+        m_impl->viewport->setProperty("priceMargin", margin);
+    }
+}
+
+void ViewportProbe::update(int bar_count, double low, double high, int revision) {
+    if (m_impl->viewport) {
+        m_impl->viewport->setProperty("barCount", bar_count);
+        m_impl->viewport->setProperty("low", low);
+        m_impl->viewport->setProperty("high", high);
+        m_impl->viewport->setProperty("revision", revision);
+    }
+}
+
+ViewportProbeResult ViewportProbe::result() const {
+    ViewportProbeResult out{};
+    if (m_impl->viewport) {
+        out.first_bar = m_impl->viewport->property("firstBar").toInt();
+        out.last_bar = m_impl->viewport->property("lastBar").toInt();
+        out.low_price = m_impl->viewport->property("lowPrice").toDouble();
+        out.high_price = m_impl->viewport->property("highPrice").toDouble();
+        out.empty = m_impl->viewport->property("empty").toBool();
+    }
+    return out;
+}
+
+std::unique_ptr<ViewportProbe> make_viewport_probe() {
+    return std::make_unique<ViewportProbe>();
+}
+
+struct ChartPaneProbe::Impl {
+    QQmlEngine engine;
+    QObject* pane{nullptr};
+    BarChartNode* node{nullptr};
+};
+
+ChartPaneProbe::ChartPaneProbe() : m_impl(std::make_unique<Impl>()) {
+    ensure_test_app();
+    m_impl->engine.addImportPath(QStringLiteral("target/cxxqt/qml_modules"));
+
+    QQmlComponent component(&m_impl->engine);
+    QFileInfo fileInfo(QStringLiteral("qml/ChartPane.qml"));
+    if (fileInfo.exists()) {
+        component.loadUrl(QUrl::fromLocalFile(fileInfo.absoluteFilePath()));
+    } else {
+        component.loadUrl(QUrl(QStringLiteral("qrc:/qt/qml/qml/ChartPane.qml")));
+    }
+    if (component.isError()) {
+        qWarning() << "ChartPaneProbe component error:" << component.errorString();
+    }
+    m_impl->pane = component.create();
+    if (!m_impl->pane && component.isError()) {
+        qWarning() << "ChartPaneProbe create error:" << component.errorString();
+    }
+}
+
+ChartPaneProbe::~ChartPaneProbe() {
+    if (m_impl->node) {
+        delete m_impl->node;
+    }
+    if (m_impl->pane) {
+        delete m_impl->pane;
+    }
+}
+
+void ChartPaneProbe::set_series(BarSeries* series) {
+    if (m_impl->pane) {
+        m_impl->pane->setProperty("feed", QVariant::fromValue(static_cast<QObject*>(series)));
+    }
+}
+
+void ChartPaneProbe::set_feed(BarFeed* feed) {
+    if (m_impl->pane) {
+        m_impl->pane->setProperty("feed", QVariant::fromValue(static_cast<QObject*>(feed)));
+    }
+}
+
+void ChartPaneProbe::set_size(float width, float height) {
+    if (m_impl->pane) {
+        m_impl->pane->setProperty("width", width);
+        m_impl->pane->setProperty("height", height);
+    }
+}
+
+void ChartPaneProbe::set_bars_visible(int count) {
+    if (m_impl->pane) {
+        m_impl->pane->setProperty("barsVisible", count);
+    }
+}
+
+void ChartPaneProbe::set_price_margin(double margin) {
+    if (m_impl->pane) {
+        m_impl->pane->setProperty("priceMargin", margin);
+    }
+}
+
+ChartPaneProbeResult ChartPaneProbe::result() const {
+    ChartPaneProbeResult out{};
+    if (m_impl->pane) {
+        out.top_price_label = rust::String(m_impl->pane->property("topPriceLabel").toString().toStdString());
+        out.bottom_price_label = rust::String(m_impl->pane->property("bottomPriceLabel").toString().toStdString());
+        out.empty = m_impl->pane->property("empty").toBool();
+
+        auto* chartItem = m_impl->pane->findChild<BarChartItem*>();
+        if (chartItem) {
+            chartItem->setSize(QSizeF(m_impl->pane->property("width").toFloat(),
+                                      m_impl->pane->property("height").toFloat()));
+            auto* node = static_cast<BarChartNode*>(chartItem->testUpdatePaintNode(m_impl->node));
+            m_impl->node = node;
+            if (node) {
+                out.vertex_count = node->risingVertexCount() + node->fallingVertexCount() + node->formingVertexCount();
+            }
+        }
+    }
+    return out;
+}
+
+std::unique_ptr<ChartPaneProbe> make_chart_pane_probe() {
+    return std::make_unique<ChartPaneProbe>();
+}
+
+struct StatusStripProbe::Impl {
+    QQmlEngine engine;
+    QObject* strip{nullptr};
+};
+
+StatusStripProbe::StatusStripProbe() : m_impl(std::make_unique<Impl>()) {
+    ensure_test_app();
+    m_impl->engine.addImportPath(QStringLiteral("target/cxxqt/qml_modules"));
+
+    QQmlComponent component(&m_impl->engine);
+    QFileInfo fileInfo(QStringLiteral("qml/StatusStrip.qml"));
+    if (fileInfo.exists()) {
+        component.loadUrl(QUrl::fromLocalFile(fileInfo.absoluteFilePath()));
+    } else {
+        component.loadUrl(QUrl(QStringLiteral("qrc:/qt/qml/qml/StatusStrip.qml")));
+    }
+    m_impl->strip = component.create();
+}
+
+StatusStripProbe::~StatusStripProbe() {
+    if (m_impl->strip) {
+        delete m_impl->strip;
+    }
+}
+
+void StatusStripProbe::set_feed(BarFeed* feed) {
+    if (m_impl->strip) {
+        m_impl->strip->setProperty("feed", QVariant::fromValue(static_cast<QObject*>(feed)));
+    }
+}
+
+StatusStripProbeResult StatusStripProbe::result() const {
+    StatusStripProbeResult out{};
+    if (m_impl->strip) {
+        auto* stateObj = m_impl->strip->findChild<QObject*>("connectionStateText");
+        if (stateObj) {
+            out.connection_state = rust::String(stateObj->property("text").toString().toStdString());
+        }
+        auto* errorObj = m_impl->strip->findChild<QObject*>("errorText");
+        if (errorObj) {
+            out.last_error = rust::String(errorObj->property("text").toString().toStdString());
+        }
+        auto* histObj = m_impl->strip->findChild<QObject*>("historyText");
+        if (histObj) {
+            out.history_text = rust::String(histObj->property("text").toString().toStdString());
+        }
+        auto* staleBadge = m_impl->strip->findChild<QObject*>("staleBadge");
+        if (staleBadge) {
+            out.stale_visible = staleBadge->property("visible").toBool();
+        }
+        auto* staleText = m_impl->strip->findChild<QObject*>("staleText");
+        if (staleText) {
+            out.stale_text = rust::String(staleText->property("text").toString().toStdString());
+        }
+        auto* liveBadge = m_impl->strip->findChild<QObject*>("liveOnlyBadge");
+        if (liveBadge) {
+            out.live_only_visible = liveBadge->property("visible").toBool();
+        }
+    }
+    return out;
+}
+
+std::unique_ptr<StatusStripProbe> make_status_strip_probe() {
+    return std::make_unique<StatusStripProbe>();
+}
+
+struct EmptyStateProbe::Impl {
+    QQmlEngine engine;
+    QObject* emptyState{nullptr};
+};
+
+EmptyStateProbe::EmptyStateProbe() : m_impl(std::make_unique<Impl>()) {
+    ensure_test_app();
+    m_impl->engine.addImportPath(QStringLiteral("target/cxxqt/qml_modules"));
+
+    QQmlComponent component(&m_impl->engine);
+    QFileInfo fileInfo(QStringLiteral("qml/EmptyState.qml"));
+    if (fileInfo.exists()) {
+        component.loadUrl(QUrl::fromLocalFile(fileInfo.absoluteFilePath()));
+    } else {
+        component.loadUrl(QUrl(QStringLiteral("qrc:/qt/qml/qml/EmptyState.qml")));
+    }
+    m_impl->emptyState = component.create();
+}
+
+EmptyStateProbe::~EmptyStateProbe() {
+    if (m_impl->emptyState) {
+        delete m_impl->emptyState;
+    }
+}
+
+void EmptyStateProbe::set_feed(BarFeed* feed) {
+    if (m_impl->emptyState) {
+        m_impl->emptyState->setProperty("feed", QVariant::fromValue(static_cast<QObject*>(feed)));
+    }
+}
+
+EmptyStateProbeResult EmptyStateProbe::result() const {
+    EmptyStateProbeResult out{};
+    if (m_impl->emptyState) {
+        auto* msgObj = m_impl->emptyState->findChild<QObject*>("emptyMessageText");
+        if (msgObj) {
+            out.message = rust::String(msgObj->property("text").toString().toStdString());
+        }
+        auto* reasonObj = m_impl->emptyState->findChild<QObject*>("emptyReasonText");
+        if (reasonObj) {
+            out.reason = rust::String(reasonObj->property("text").toString().toStdString());
+        }
+    }
+    return out;
+}
+
+std::unique_ptr<EmptyStateProbe> make_empty_state_probe() {
+    return std::make_unique<EmptyStateProbe>();
+}
+
+BarFeed* make_test_feed() {
+    return new BarFeed();
+}
+
+void feed_set_connection_state(BarFeed* feed, rust::Str state) {
+    feed->setConnection_state(QString::fromUtf8(state.data(), static_cast<int>(state.size())));
+}
+
+void feed_set_last_error(BarFeed* feed, rust::Str error) {
+    feed->setLast_error(QString::fromUtf8(error.data(), static_cast<int>(error.size())));
+}
+
+void feed_set_stale(BarFeed* feed, bool stale) {
+    feed->setStale(stale);
+}
+
+void feed_set_data_age_ms(BarFeed* feed, std::int64_t ms) {
+    feed->setData_age_ms(ms);
+}
+
+void feed_set_live_only(BarFeed* feed, bool live_only) {
+    feed->setLive_only(live_only);
+}
+
+void feed_set_history(BarFeed* feed, rust::Str source, std::int64_t shortfall) {
+    feed->setHistory_source(QString::fromUtf8(source.data(), static_cast<int>(source.size())));
+    feed->setHistory_shortfall(shortfall);
+}
+
+void feed_set_bar_count(BarFeed* feed, std::int64_t count) {
+    feed->setBar_count(count);
+}
+
+BarFeed* find_window_feed(QQmlApplicationEngine& engine) {
+    for (QObject* root : engine.rootObjects()) {
+        if (auto* feed = root->findChild<BarFeed*>("barFeed")) {
+            return feed;
+        }
+        if (auto* feed = root->findChild<BarFeed*>()) {
+            return feed;
+        }
+    }
+    return nullptr;
+}
+
+void setup_window_feed(QQmlApplicationEngine& engine, BarFeed* feed) {
+    if (!feed) return;
+    for (QObject* root : engine.rootObjects()) {
+        root->setProperty("feed", QVariant::fromValue(static_cast<QObject*>(feed)));
+    }
+}
+
+void setup_window_auto_close(QQmlApplicationEngine& engine, int ms) {
+    if (ms <= 0) return;
+    for (QObject* root : engine.rootObjects()) {
+        if (auto* window = qobject_cast<QQuickWindow*>(root)) {
+            auto* timer = new QTimer(window);
+            timer->setSingleShot(true);
+            QObject::connect(timer, &QTimer::timeout, window, [window]() {
+                window->close();
+            });
+            timer->start(ms);
+        }
+    }
+}
+
+void feed_set_symbol(BarFeed* feed, rust::Str symbol) {
+    if (!feed) return;
+    feed->setSymbol(QString::fromUtf8(symbol.data(), static_cast<int>(symbol.size())));
+}
+
+void feed_set_timeframe(BarFeed* feed, rust::Str timeframe, std::int64_t timeframe_ms) {
+    if (!feed) return;
+    feed->setTimeframe(QString::fromUtf8(timeframe.data(), static_cast<int>(timeframe.size())));
+    feed->setTimeframe_ms(timeframe_ms);
+}
+
+void feed_setup_and_load(BarFeed* feed, rust::Str api_base, rust::Str symbol, rust::Str timeframe) {
+    if (!feed) return;
+    feed->setup_config(
+        QString::fromUtf8(api_base.data(), static_cast<int>(api_base.size())),
+        QString::fromUtf8(symbol.data(), static_cast<int>(symbol.size())),
+        QString::fromUtf8(timeframe.data(), static_cast<int>(timeframe.size()))
+    );
+    feed->load_history();
+}
+
+void post_feed_stream_state(
+    BarFeed* feed,
+    rust::Str state,
+    rust::Str last_error,
+    std::int64_t applied,
+    std::int64_t dropped,
+    std::int64_t gaps_closed,
+    std::int64_t resnapshots,
+    std::int64_t rest_calls
+) {
+    if (!feed) return;
+    QString qstate = QString::fromUtf8(state.data(), static_cast<int>(state.size()));
+    QString qerr = QString::fromUtf8(last_error.data(), static_cast<int>(last_error.size()));
+    QMetaObject::invokeMethod(feed, [feed, qstate, qerr, applied, dropped, gaps_closed, resnapshots, rest_calls]() {
+        feed->setConnection_state(qstate);
+        feed->setLast_error(qerr);
+        feed->setApplied(applied);
+        feed->setDropped(dropped);
+        feed->setGaps_closed(gaps_closed);
+        feed->setResnapshots(resnapshots);
+        feed->setRest_calls(rest_calls);
+    }, Qt::QueuedConnection);
+}
+
+void post_feed_completed_bar(
+    BarFeed* feed,
+    std::int64_t time,
+    double open,
+    double high,
+    double low,
+    double close
+) {
+    if (!feed) return;
+    QMetaObject::invokeMethod(feed, [feed, time, open, high, low, close]() {
+        feed->ingest_completed_bar(time, open, high, low, close);
+    }, Qt::QueuedConnection);
+}
+
+void post_feed_forming_bar(
+    BarFeed* feed,
+    std::int64_t time,
+    double open,
+    double high,
+    double low,
+    double close
+) {
+    if (!feed) return;
+    QMetaObject::invokeMethod(feed, [feed, time, open, high, low, close]() {
+        feed->ingest_forming_bar(time, open, high, low, close);
+    }, Qt::QueuedConnection);
+}
+
+int feed_bar_times_len(BarFeed* feed) {
+    if (!feed) return 0;
+    return feed->bar_times_len();
+}
+
+std::int64_t feed_bar_time_at(BarFeed* feed, int index) {
+    if (!feed) return 0;
+    return feed->bar_time_at(index);
+}
+
+int feed_vertex_len(BarFeed* feed) {
+    if (!feed) return 0;
+    return static_cast<int>(feed->vertex_len());
+}
+
+ProbeVertex feed_vertex_at(BarFeed* feed, std::size_t index) {
+    const auto* source = reinterpret_cast<const BarVertex*>(feed->vertex_ptr());
+    const BarVertex& vertex = source[index];
+    return ProbeVertex{vertex.x, vertex.y, vertex.direction, vertex.forming};
+}
+
+void feed_rebuild_geometry(BarFeed* feed, int first_bar, int last_bar, double low, double high, float width, float height) {
+    if (!feed) return;
+    feed->set_surface(width, height);
+    feed->set_viewport(first_bar, last_bar, low, high);
+    feed->rebuild_geometry();
+}
+
+rust::String feed_history_source(BarFeed* feed) {
+    if (!feed) return "";
+    return rust::String(feed->getHistory_source().toStdString());
+}
+
+rust::String feed_history_error(BarFeed* feed) {
+    if (!feed) return "";
+    return rust::String(feed->getHistory_error().toStdString());
+}
+
+bool feed_history_loading(BarFeed* feed) {
+    if (!feed) return false;
+    return feed->getHistory_loading();
+}
+
+std::int64_t feed_bar_count(BarFeed* feed) {
+    if (!feed) return 0;
+    return feed->getBar_count();
+}
+
+std::int64_t feed_rest_calls(BarFeed* feed) {
+    if (!feed) return 0;
+    return feed->getRest_calls();
+}
+
+
+
+

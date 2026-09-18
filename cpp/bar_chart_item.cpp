@@ -2,9 +2,11 @@
 
 #include "bar_chart_node.h"
 
+#include <mutex>
 #include <QtQml/qqml.h>
 
 #include "q-qt/src/bar_series.cxxqt.h"
+#include "q_terminal/src/bar_feed.cxxqt.h"
 
 BarChartItem::BarChartItem(QQuickItem* parent) : QQuickItem(parent) {
     setFlag(QQuickItem::ItemHasContents, true);
@@ -19,7 +21,17 @@ void BarChartItem::setSeries(QObject* series) {
     if (m_series == series) {
         return;
     }
+    if (m_series != nullptr) {
+        disconnect(m_series, nullptr, this, nullptr);
+    }
     m_series = series;
+    if (m_series != nullptr) {
+        if (auto* barFeed = qobject_cast<BarFeed*>(m_series)) {
+            connect(barFeed, &BarFeed::revisionChanged, this, &BarChartItem::scheduleUpdate);
+        } else if (auto* barSeries = qobject_cast<BarSeries*>(m_series)) {
+            connect(barSeries, &BarSeries::revisionChanged, this, &BarChartItem::scheduleUpdate);
+        }
+    }
     emit seriesChanged();
     scheduleUpdate();
 }
@@ -89,7 +101,10 @@ void BarChartItem::setFormingColor(const QColor& value) {
 
 void BarChartItem::geometryChange(const QRectF& newGeometry, const QRectF& oldGeometry) {
     QQuickItem::geometryChange(newGeometry, oldGeometry);
-    if (auto* barSeries = qobject_cast<BarSeries*>(m_series)) {
+    if (auto* barFeed = qobject_cast<BarFeed*>(m_series)) {
+        barFeed->set_surface(static_cast<float>(newGeometry.width()),
+                             static_cast<float>(newGeometry.height()));
+    } else if (auto* barSeries = qobject_cast<BarSeries*>(m_series)) {
         barSeries->set_surface(static_cast<float>(newGeometry.width()),
                                static_cast<float>(newGeometry.height()));
     }
@@ -98,8 +113,7 @@ void BarChartItem::geometryChange(const QRectF& newGeometry, const QRectF& oldGe
 
 namespace {
 
-long long compositeRevision(BarSeries* barSeries, int firstBar, int lastBar, int syncGeneration) {
-    const long long geometryRevision = barSeries ? barSeries->geometry_revision() : 0;
+long long compositeRevision(long long geometryRevision, int firstBar, int lastBar, int syncGeneration) {
     return (geometryRevision << 32) ^ (static_cast<long long>(firstBar) << 16) ^
            static_cast<long long>(lastBar) ^ static_cast<long long>(syncGeneration);
 }
@@ -119,10 +133,24 @@ QSGNode* BarChartItem::testUpdatePaintNode(QSGNode* oldNode) {
     }
     m_chartNode = node;
 
+    auto* barFeed = qobject_cast<BarFeed*>(m_series);
     auto* barSeries = qobject_cast<BarSeries*>(m_series);
-    if (barSeries == nullptr || width() <= 0.0 || height() <= 0.0) {
-        BarVertexView emptyView{nullptr, 0, barSeries ? barSeries->geometry_revision() : 0};
+
+    if ((barFeed == nullptr && barSeries == nullptr) || width() <= 0.0 || height() <= 0.0) {
+        long long rev = barFeed ? barFeed->geometry_revision() : (barSeries ? barSeries->geometry_revision() : 0);
+        BarVertexView emptyView{nullptr, 0, rev};
         node->sync(emptyView, m_risingColor, m_fallingColor, m_formingColor);
+        return node;
+    }
+
+    if (barFeed != nullptr) {
+        barFeed->set_viewport(m_firstBar, m_lastBar, m_lowPrice, m_highPrice);
+        barFeed->rebuild_geometry();
+
+        const auto* source = reinterpret_cast<const BarVertex*>(barFeed->vertex_ptr());
+        BarVertexView view{source, static_cast<std::size_t>(barFeed->vertex_len()),
+                           compositeRevision(barFeed->geometry_revision(), m_firstBar, m_lastBar, m_updateRequestCount)};
+        node->sync(view, m_risingColor, m_fallingColor, m_formingColor);
         return node;
     }
 
@@ -131,7 +159,7 @@ QSGNode* BarChartItem::testUpdatePaintNode(QSGNode* oldNode) {
 
     const BarVertex* source = barSeries->vertex_ptr();
     BarVertexView view{source, barSeries->vertex_len(),
-                       compositeRevision(barSeries, m_firstBar, m_lastBar, m_updateRequestCount)};
+                       compositeRevision(barSeries->geometry_revision(), m_firstBar, m_lastBar, m_updateRequestCount)};
     node->sync(view, m_risingColor, m_fallingColor, m_formingColor);
     return node;
 }
@@ -144,6 +172,9 @@ int BarChartItem::takeFrameUploads() {
 }
 
 void register_bar_chart_types() {
-    qmlRegisterType<BarSeries>("qml", 1, 0, "BarSeries");
-    qmlRegisterType<BarChartItem>("qml", 1, 0, "BarChartItem");
+    static std::once_flag once;
+    std::call_once(once, []() {
+        qmlRegisterType<BarSeries>("qml", 1, 0, "BarSeries");
+        qmlRegisterType<BarChartItem>("qml", 1, 0, "BarChartItem");
+    });
 }

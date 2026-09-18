@@ -65,20 +65,27 @@ fn main() {
     let build_dir = out_dir.ancestors().nth(2).expect("target build directory");
     link_q_qt_headers(build_dir);
 
-    CxxQtBuilder::new_qml_module(QmlModule::new("qml").qml_file("qml/Main.qml"))
-        .qt_module("Quick")
-        .include_dir("cpp")
-        .file("src/bridge.rs")
-        .file("src/chart_bridge.rs")
-        .file("src/bar_feed.rs")
-        .cpp_file("src/render_backend.cpp")
-        .cpp_file("cpp/bar_chart_node.cpp")
-        .cpp_file("cpp/bar_chart_item.h")
-        .cpp_file("cpp/bar_chart_item.cpp")
-        .cpp_file("cpp/bar_chart_probe.cpp")
-        .cpp_file("cpp/chart_cxx.cpp")
-        .cpp_file("cpp/frame_bench.cpp")
-        .build();
+    CxxQtBuilder::new_qml_module(
+        QmlModule::new("qml")
+            .qml_file("qml/Main.qml")
+            .qml_file("qml/Viewport.qml")
+            .qml_file("qml/ChartPane.qml")
+            .qml_file("qml/EmptyState.qml")
+            .qml_file("qml/StatusStrip.qml"),
+    )
+    .qt_module("Quick")
+    .include_dir("cpp")
+    .file("src/bridge.rs")
+    .file("src/chart_bridge.rs")
+    .file("src/bar_feed.rs")
+    .cpp_file("src/render_backend.cpp")
+    .cpp_file("cpp/bar_chart_node.cpp")
+    .cpp_file("cpp/bar_chart_item.h")
+    .cpp_file("cpp/bar_chart_item.cpp")
+    .cpp_file("cpp/bar_chart_probe.cpp")
+    .cpp_file("cpp/chart_cxx.cpp")
+    .cpp_file("cpp/frame_bench.cpp")
+    .build();
 
     merge_chart_qmltypes();
 }

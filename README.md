@@ -4,35 +4,115 @@ High-performance desktop trading and operations terminal for the Q platform, bui
 
 ---
 
+## The Live Chart Slice
+
+The live chart slice provides a read-only, reactive candlestick chart window displaying live and historical market bars for a configured symbol and timeframe.
+
+### What It Shows
+
+- **Candlestick Chart (`BarChartItem`)**: GPU-accelerated custom Qt Quick scene-graph render node (`QSGRenderNode`) drawing completed bars and the active forming bar directly into vertex buffers.
+- **Viewport (`Viewport.qml`)**: Reactive viewport tracking the newest bar on the right edge, maintaining sticky price bounds with vertical padding margins, and resizing dynamically.
+- **Chart Pane (`ChartPane.qml`)**: Integrates the candlestick item with time and price gridlines and axis tick labels mapped directly to viewport coordinates.
+- **Status Strip (`StatusStrip.qml`)**: Real-time status displaying:
+  - Instrument header: active symbol and timeframe.
+  - Connection indicator: `CONNECTED`, `CONNECTING`, `RETRYING`, or `ERROR`.
+  - Data freshness / staleness: flips to `STALE` when bar delivery age exceeds the timeframe interval.
+  - History source & shortfall: indicates whether history loaded from lake or API, and shortfall bar count if any.
+  - Reconnect / error banner: displays actionable diagnostics and retry status.
+- **Empty State (`EmptyState.qml`)**: Informative placeholder presented while history is loading or before the first bar arrives.
+- **Non-Interactive Boundary**: This slice is strictly read-only visualization. It contains no order entry, kill switch, or strategy modification controls.
+
+---
+
+## Configuration
+
+`q_terminal` is configured through a TOML file or environment variables.
+
+### Configuration File
+
+By default, configuration is read from `~/.config/q/terminal.toml`:
+
+```toml
+api_base = "http://127.0.0.1:8000"
+symbol = "PETR4"
+timeframe = "1m"
+```
+
+### Environment Variable Overrides
+
+Any configuration setting can be overridden using environment variables:
+
+| Setting | Config Key | Environment Variable | Default |
+|---|---|---|---|
+| Control API URL | `api_base` | `Q_TERMINAL_API_BASE` | None (required) |
+| Trading Symbol | `symbol` | `Q_TERMINAL_SYMBOL` | `PETR4` |
+| Bar Timeframe | `timeframe` | `Q_TERMINAL_TIMEFRAME` | `1m` |
+
+### Degraded Startup
+
+If configuration is missing or invalid, or if the API cannot be reached at startup, `q_terminal` does not exit or crash. It opens the window immediately in a degraded state with clear status diagnostics in the status strip and retries connection automatically.
+
+---
+
+## Running Against `./research`
+
+To run `q_terminal` against a live local stack:
+
+1. Start the Q research stack from the workspace meta-repo:
+   ```bash
+   cd /home/gui/projects/q
+   ./research
+   ```
+   This starts containerized Postgres and Redis, the FastAPI control API, and Dramatiq workers.
+
+2. Launch `q_terminal`:
+   ```bash
+   cd /home/gui/projects/q/q_terminal
+   make run
+   # or with environment overrides:
+   Q_TERMINAL_API_BASE="http://127.0.0.1:8000" Q_TERMINAL_SYMBOL="PETR4" Q_TERMINAL_TIMEFRAME="1m" cargo run
+   ```
+
+---
+
 ## Repository Structure
 
 ```
 q_terminal/
 ├── Cargo.toml          # Package manifest; links cxx-qt and git-pinned q_core tag
 ├── rust-toolchain.toml # Exact Rust compiler pin (1.98.0)
-├── build.rs            # CXX-Qt build script compiling bridge and registering QML module
+├── build.rs            # CXX-Qt build script registering QML module and C++ bridges
 ├── Makefile            # Standing validation targets: check, fmt, lint, test, build, run
 ├── CONTRACTS_REV       # Pinned q_contracts commit hash
 ├── BOUNDARY.md         # Explicit ownership scope and prohibited surfaces
 ├── contracts/          # Vendored generated Rust wire types from q_contracts
-├── cpp/                # C++ scene-graph render nodes (buffer movement only; empty of logic)
-│   └── README.md
+├── cpp/                # C++ scene-graph render nodes and QML probes (buffer movement only)
+│   ├── bar_chart_item.h / .cpp   # QQuickItem hosting BarChartNode
+│   ├── bar_chart_node.h / .cpp   # QSGRenderNode moving vertices to GPU
+│   ├── bar_chart_probe.cpp       # Headless vertex and scene graph inspection
+│   └── chart_cxx.h / .cpp        # CXX-Qt bridge helper functions and event pump
 ├── qml/                # Declarative QML scenes
-│   ├── Main.qml        # Single application window scene
-│   └── qmldir         # QML module definition
-└── src/                # Rust application and bridge code
-    ├── main.rs         # Entry point: --headless-report and windowed event loop
-    ├── bridge.rs       # CXX-Qt AppInfo projection over q_core::CoreInfo
-    ├── render_backend.h
-    └── render_backend.cpp
+│   ├── Main.qml        # Main application window composing Header, ChartPane, StatusStrip
+│   ├── Viewport.qml    # Viewport tracking newest bar and sticky price bounds
+│   ├── ChartPane.qml   # Chart pane with gridlines, price/time axes, and BarChartItem
+│   ├── StatusStrip.qml # Live connection, freshness, history source, and error status
+│   ├── EmptyState.qml  # Placeholder before initial bars arrive
+│   └── qmldir          # QML module definition
+├── src/                # Rust application and bridge code
+│   ├── main.rs         # Entry point: CLI args and window launch
+│   ├── startup.rs      # Slice startup sequence and degraded state setup
+│   ├── config.rs       # TOML configuration and environment loading
+│   ├── bar_feed.rs     # CXX-Qt BarFeed model binding live and historical bars to QML
+│   ├── bridge.rs       # CXX-Qt AppInfo projection over q_core::CoreInfo
+│   ├── chart_bridge.rs # CXX-Qt chart probe bindings for headless testing
+│   ├── history/        # Catalog-driven parquet load, seam stitching, and verification
+│   └── stream/         # WebSocket client, envelope framing, and sequence gap recovery
+└── tests/              # End-to-end and headless integration tests
+    ├── slice_end_to_end.rs    # Full end-to-end lake history to live WebSocket stream test
+    ├── test_startup.rs        # Degraded startup and config error window tests
+    ├── test_chart_bridge.rs   # Viewport, geometry, and probe unit tests
+    └── test_headless_report.rs# CLI headless report verification
 ```
-
-### Separation of Concerns
-
-- **`qml/`**: User interface scenes and declarative presentation layout.
-- **`src/`**: Application entry point, CLI arguments, and the CXX-Qt projection bridge (`AppInfo`). No business or simulation logic is implemented here; values project directly from `q_core`.
-- **`cpp/`**: Reserved exclusively for custom scene-graph render nodes (`QSGRenderNode`) to move buffers into GPU memory. Computes nothing.
-- **`contracts/`**: Vendored contract types generated from `q_contracts`.
 
 ---
 
@@ -71,27 +151,6 @@ Building and running `q_terminal` requires:
 
 ---
 
-## Running the Application
-
-### 1. Headless Report Mode (CI & Headless Verification)
-
-Prints application version, core version, vendored contracts revision, and render backend to stdout, then exits 0 without creating or opening any window:
-
-```bash
-cargo run -- --headless-report
-```
-
-### 2. Windowed Desktop Mode
-
-Launches the application window displaying the live QML scene:
-
-```bash
-make run
-# or: cargo run
-```
-
----
-
 ## Validation Suite
 
 The standing validation command runs all checks headless without requiring a display.
@@ -111,3 +170,13 @@ This runs:
 5. `test`: Unit and integration test suite (`cargo test`).
 6. `contracts-check`: Verifies vendored `contracts/` match clean regeneration against `CONTRACTS_REV`.
 7. `headless-report`: Executes `cargo run -- --headless-report`.
+
+Individual test suites can be run with:
+
+```bash
+# End-to-end lake-to-live-stream slice test
+env -u WAYLAND_DISPLAY -u DISPLAY make test
+# or specifically:
+cargo test --test slice_end_to_end
+```
+
