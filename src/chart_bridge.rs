@@ -22,6 +22,15 @@ pub mod chart {
         update_request_count: i32,
     }
 
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct ViewportProbeResult {
+        pub first_bar: i32,
+        pub last_bar: i32,
+        pub low_price: f64,
+        pub high_price: f64,
+        pub empty: bool,
+    }
+
     #[derive(Default)]
     struct ProbeState {
         uploaded_revision: i64,
@@ -34,6 +43,19 @@ pub mod chart {
 
         type BarSeries;
         type BarChartItem;
+        type ViewportProbe;
+
+        fn make_viewport_probe() -> UniquePtr<ViewportProbe>;
+        fn set_bars_visible(self: Pin<&mut ViewportProbe>, count: i32);
+        fn set_price_margin(self: Pin<&mut ViewportProbe>, margin: f64);
+        fn update(
+            self: Pin<&mut ViewportProbe>,
+            bar_count: i32,
+            low: f64,
+            high: f64,
+            revision: i32,
+        );
+        fn result(self: &ViewportProbe) -> ViewportProbeResult;
 
         fn register_bar_chart_types();
         unsafe fn make_test_series(bar_count: i32) -> *mut BarSeries;
@@ -96,7 +118,7 @@ pub mod chart {
     }
 }
 
-pub use chart::ProbeResult;
+pub use chart::{make_viewport_probe, ProbeResult, ViewportProbe, ViewportProbeResult};
 
 pub fn register_chart_types() {
     chart::register_bar_chart_types();
@@ -354,5 +376,93 @@ mod tests {
             assert_eq!(result.forming_vertex_count, forming);
             assert_eq!(forming, 12);
         }
+    }
+
+    #[test]
+    fn viewport_ends_at_newest_bar_and_holds_bars_visible() {
+        setup();
+        let mut probe = chart::make_viewport_probe();
+        let mut pin = probe.pin_mut();
+        pin.as_mut().set_bars_visible(20);
+        pin.as_mut().update(50, 100.0, 200.0, 1);
+        let result = pin.result();
+
+        assert!(!result.empty);
+        assert_eq!(result.last_bar, 50);
+        assert_eq!(result.first_bar, 30);
+        assert_eq!(result.last_bar - result.first_bar, 20);
+    }
+
+    #[test]
+    fn viewport_completed_bar_advances_by_one() {
+        setup();
+        let mut probe = chart::make_viewport_probe();
+        let mut pin = probe.pin_mut();
+        pin.as_mut().set_bars_visible(20);
+        pin.as_mut().update(50, 100.0, 200.0, 1);
+        let first = pin.result();
+        assert_eq!(first.last_bar, 50);
+        assert_eq!(first.first_bar, 30);
+
+        pin.as_mut().update(51, 100.0, 200.0, 2);
+        let second = pin.result();
+        assert_eq!(second.last_bar, 51);
+        assert_eq!(second.first_bar, 31);
+    }
+
+    #[test]
+    fn viewport_forming_update_inside_range_leaves_price_range_untouched() {
+        setup();
+        let mut probe = chart::make_viewport_probe();
+        let mut pin = probe.pin_mut();
+        pin.as_mut().set_bars_visible(20);
+        pin.as_mut().set_price_margin(0.05);
+        pin.as_mut().update(50, 100.0, 200.0, 1);
+        let initial = pin.result();
+        assert!((initial.low_price - 95.0).abs() < 1e-6);
+        assert!((initial.high_price - 205.0).abs() < 1e-6);
+
+        pin.as_mut().update(50, 98.0, 202.0, 2);
+        let after = pin.result();
+        assert!((after.low_price - 95.0).abs() < 1e-6);
+        assert!((after.high_price - 205.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn viewport_forming_update_outside_recomputes_with_margin() {
+        setup();
+        let mut probe = chart::make_viewport_probe();
+        let mut pin = probe.pin_mut();
+        pin.as_mut().set_bars_visible(20);
+        pin.as_mut().set_price_margin(0.05);
+        pin.as_mut().update(50, 100.0, 200.0, 1);
+        let initial = pin.result();
+        assert!((initial.low_price - 95.0).abs() < 1e-6);
+        assert!((initial.high_price - 205.0).abs() < 1e-6);
+
+        pin.as_mut().update(50, 98.0, 210.0, 2);
+        let after_high = pin.result();
+        assert!((after_high.high_price - 215.6).abs() < 1e-6);
+        assert!((after_high.low_price - 92.4).abs() < 1e-6);
+
+        pin.as_mut().update(50, 90.0, 210.0, 3);
+        let after_low = pin.result();
+        assert!((after_low.low_price - 84.0).abs() < 1e-6);
+        assert!((after_low.high_price - 216.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn viewport_empty_series_yields_empty_state() {
+        setup();
+        let mut probe = chart::make_viewport_probe();
+        let mut pin = probe.pin_mut();
+        pin.as_mut().update(0, 0.0, 0.0, 0);
+        let result = pin.result();
+
+        assert!(result.empty);
+        assert_eq!(result.first_bar, 0);
+        assert_eq!(result.last_bar, 0);
+        assert!(result.low_price.abs() < 1e-6);
+        assert!(result.high_price.abs() < 1e-6);
     }
 }

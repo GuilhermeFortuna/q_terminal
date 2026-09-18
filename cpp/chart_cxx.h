@@ -1,7 +1,10 @@
-#pragma once
+#ifndef Q_TERMINAL_CHART_CXX_H
+#define Q_TERMINAL_CHART_CXX_H
 
 #include <cstddef>
 #include <cstdint>
+
+#include <memory>
 
 class BarChartItem;
 class BarSeries;
@@ -9,6 +12,24 @@ class BarSeries;
 struct ProbeResult;
 struct ProbeState;
 struct ProbeVertex;
+struct ViewportProbeResult;
+
+class ViewportProbe {
+public:
+    ViewportProbe();
+    ~ViewportProbe();
+
+    void set_bars_visible(int count);
+    void set_price_margin(double margin);
+    void update(int bar_count, double low, double high, int revision);
+    ViewportProbeResult result() const;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
+};
+
+std::unique_ptr<ViewportProbe> make_viewport_probe();
 
 void register_bar_chart_types();
 
@@ -48,3 +69,6 @@ ProbeVertex chart_series_vertex_at(BarSeries* series, std::size_t index);
 void ensure_test_app();
 
 void reset_chart_probe_state();
+
+#endif // Q_TERMINAL_CHART_CXX_H
+

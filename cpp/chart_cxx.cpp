@@ -7,6 +7,11 @@
 #include <mutex>
 
 #include <QtCore/QCoreApplication>
+#include <QtCore/QDebug>
+#include <QtCore/QFileInfo>
+#include <QtCore/QUrl>
+#include <QtQml/QQmlComponent>
+#include <QtQml/QQmlEngine>
 
 #include "q_terminal/src/chart_bridge.cxx.h"
 
@@ -130,3 +135,72 @@ void ensure_test_app() {
 void reset_chart_probe_state() {
     reset_probe_node();
 }
+
+struct ViewportProbe::Impl {
+    QQmlEngine engine;
+    QObject* viewport{nullptr};
+};
+
+ViewportProbe::ViewportProbe() : m_impl(std::make_unique<Impl>()) {
+    ensure_test_app();
+    m_impl->engine.addImportPath(QStringLiteral("target/cxxqt/qml_modules"));
+
+    QQmlComponent component(&m_impl->engine);
+    QFileInfo fileInfo(QStringLiteral("qml/Viewport.qml"));
+    if (fileInfo.exists()) {
+        component.loadUrl(QUrl::fromLocalFile(fileInfo.absoluteFilePath()));
+    } else {
+        component.loadUrl(QUrl(QStringLiteral("qrc:/qt/qml/qml/Viewport.qml")));
+    }
+    if (component.isError()) {
+        qWarning() << "ViewportProbe component error:" << component.errorString();
+    }
+    m_impl->viewport = component.create();
+    if (!m_impl->viewport && component.isError()) {
+        qWarning() << "ViewportProbe create error:" << component.errorString();
+    }
+}
+
+ViewportProbe::~ViewportProbe() {
+    if (m_impl->viewport) {
+        delete m_impl->viewport;
+    }
+}
+
+void ViewportProbe::set_bars_visible(int count) {
+    if (m_impl->viewport) {
+        m_impl->viewport->setProperty("barsVisible", count);
+    }
+}
+
+void ViewportProbe::set_price_margin(double margin) {
+    if (m_impl->viewport) {
+        m_impl->viewport->setProperty("priceMargin", margin);
+    }
+}
+
+void ViewportProbe::update(int bar_count, double low, double high, int revision) {
+    if (m_impl->viewport) {
+        m_impl->viewport->setProperty("barCount", bar_count);
+        m_impl->viewport->setProperty("low", low);
+        m_impl->viewport->setProperty("high", high);
+        m_impl->viewport->setProperty("revision", revision);
+    }
+}
+
+ViewportProbeResult ViewportProbe::result() const {
+    ViewportProbeResult out{};
+    if (m_impl->viewport) {
+        out.first_bar = m_impl->viewport->property("firstBar").toInt();
+        out.last_bar = m_impl->viewport->property("lastBar").toInt();
+        out.low_price = m_impl->viewport->property("lowPrice").toDouble();
+        out.high_price = m_impl->viewport->property("highPrice").toDouble();
+        out.empty = m_impl->viewport->property("empty").toBool();
+    }
+    return out;
+}
+
+std::unique_ptr<ViewportProbe> make_viewport_probe() {
+    return std::make_unique<ViewportProbe>();
+}
+

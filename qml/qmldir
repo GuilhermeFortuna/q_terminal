@@ -1,2 +1,4 @@
 module qml
 Main 1.0 Main.qml
+Viewport 1.0 Viewport.qml
+
