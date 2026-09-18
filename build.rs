@@ -69,7 +69,9 @@ fn main() {
         QmlModule::new("qml")
             .qml_file("qml/Main.qml")
             .qml_file("qml/Viewport.qml")
-            .qml_file("qml/ChartPane.qml"),
+            .qml_file("qml/ChartPane.qml")
+            .qml_file("qml/EmptyState.qml")
+            .qml_file("qml/StatusStrip.qml"),
     )
     .qt_module("Quick")
     .include_dir("cpp")

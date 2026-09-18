@@ -3,8 +3,9 @@
 
 #include <cstddef>
 #include <cstdint>
-
 #include <memory>
+
+#include "rust/cxx.h"
 
 class BarChartItem;
 class BarFeed;
@@ -51,6 +52,48 @@ private:
 };
 
 std::unique_ptr<ChartPaneProbe> make_chart_pane_probe();
+
+struct StatusStripProbeResult;
+struct EmptyStateProbeResult;
+
+class StatusStripProbe {
+public:
+    StatusStripProbe();
+    ~StatusStripProbe();
+
+    void set_feed(BarFeed* feed);
+    StatusStripProbeResult result() const;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
+};
+
+std::unique_ptr<StatusStripProbe> make_status_strip_probe();
+
+class EmptyStateProbe {
+public:
+    EmptyStateProbe();
+    ~EmptyStateProbe();
+
+    void set_feed(BarFeed* feed);
+    EmptyStateProbeResult result() const;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
+};
+
+std::unique_ptr<EmptyStateProbe> make_empty_state_probe();
+
+BarFeed* make_test_feed();
+void feed_set_connection_state(BarFeed* feed, rust::Str state);
+void feed_set_last_error(BarFeed* feed, rust::Str error);
+void feed_set_stale(BarFeed* feed, bool stale);
+void feed_set_data_age_ms(BarFeed* feed, std::int64_t ms);
+void feed_set_live_only(BarFeed* feed, bool live_only);
+void feed_set_history(BarFeed* feed, rust::Str source, std::int64_t shortfall);
+void feed_set_bar_count(BarFeed* feed, std::int64_t count);
 
 void register_bar_chart_types();
 

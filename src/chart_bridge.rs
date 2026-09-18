@@ -39,6 +39,22 @@ pub mod chart {
         pub empty: bool,
     }
 
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct StatusStripProbeResult {
+        pub connection_state: String,
+        pub last_error: String,
+        pub history_text: String,
+        pub stale_text: String,
+        pub stale_visible: bool,
+        pub live_only_visible: bool,
+    }
+
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct EmptyStateProbeResult {
+        pub message: String,
+        pub reason: String,
+    }
+
     #[derive(Default)]
     struct ProbeState {
         uploaded_revision: i64,
@@ -51,8 +67,28 @@ pub mod chart {
 
         type BarSeries;
         type BarChartItem;
+        type BarFeed;
         type ViewportProbe;
         type ChartPaneProbe;
+        type StatusStripProbe;
+        type EmptyStateProbe;
+
+        fn make_status_strip_probe() -> UniquePtr<StatusStripProbe>;
+        unsafe fn set_feed(self: Pin<&mut StatusStripProbe>, feed: *mut BarFeed);
+        fn result(self: &StatusStripProbe) -> StatusStripProbeResult;
+
+        fn make_empty_state_probe() -> UniquePtr<EmptyStateProbe>;
+        unsafe fn set_feed(self: Pin<&mut EmptyStateProbe>, feed: *mut BarFeed);
+        fn result(self: &EmptyStateProbe) -> EmptyStateProbeResult;
+
+        unsafe fn make_test_feed() -> *mut BarFeed;
+        unsafe fn feed_set_connection_state(feed: *mut BarFeed, state: &str);
+        unsafe fn feed_set_last_error(feed: *mut BarFeed, error: &str);
+        unsafe fn feed_set_stale(feed: *mut BarFeed, stale: bool);
+        unsafe fn feed_set_data_age_ms(feed: *mut BarFeed, ms: i64);
+        unsafe fn feed_set_live_only(feed: *mut BarFeed, live_only: bool);
+        unsafe fn feed_set_history(feed: *mut BarFeed, source: &str, shortfall: i64);
+        unsafe fn feed_set_bar_count(feed: *mut BarFeed, count: i64);
 
         fn make_viewport_probe() -> UniquePtr<ViewportProbe>;
         fn set_bars_visible(self: Pin<&mut ViewportProbe>, count: i32);
@@ -135,8 +171,11 @@ pub mod chart {
 }
 
 pub use chart::{
-    make_chart_pane_probe, make_viewport_probe, ChartPaneProbe, ChartPaneProbeResult, ProbeResult,
-    ViewportProbe, ViewportProbeResult,
+    feed_set_bar_count, feed_set_connection_state, feed_set_data_age_ms, feed_set_history,
+    feed_set_last_error, feed_set_live_only, feed_set_stale, make_chart_pane_probe,
+    make_empty_state_probe, make_status_strip_probe, make_test_feed, make_viewport_probe, BarFeed,
+    ChartPaneProbe, ChartPaneProbeResult, EmptyStateProbe, EmptyStateProbeResult, ProbeResult,
+    StatusStripProbe, StatusStripProbeResult, ViewportProbe, ViewportProbeResult,
 };
 
 pub fn register_chart_types() {
@@ -522,6 +561,100 @@ mod tests {
             assert_eq!(r.vertex_count, 0);
             assert_eq!(r.top_price_label, "");
             assert_eq!(r.bottom_price_label, "");
+        }
+    }
+
+    #[test]
+    fn status_strip_unavailable_stream_shows_stale_and_reason() {
+        setup();
+        unsafe {
+            let feed = chart::make_test_feed();
+            chart::feed_set_connection_state(feed, "reconnecting");
+            chart::feed_set_last_error(feed, "stream disconnected");
+            chart::feed_set_stale(feed, true);
+            chart::feed_set_data_age_ms(feed, 125_000);
+
+            let mut probe = chart::make_status_strip_probe();
+            let mut pin = probe.pin_mut();
+            pin.as_mut().set_feed(feed);
+            let r = pin.result();
+
+            assert_eq!(r.connection_state, "RECONNECTING");
+            assert_eq!(r.last_error, "stream disconnected");
+            assert!(r.stale_visible);
+            assert_eq!(r.stale_text, "STALE (2m 5s)");
+        }
+    }
+
+    #[test]
+    fn status_strip_recovers_to_live_and_clears_stale() {
+        setup();
+        unsafe {
+            let feed = chart::make_test_feed();
+            chart::feed_set_connection_state(feed, "live");
+            chart::feed_set_last_error(feed, "");
+            chart::feed_set_stale(feed, false);
+            chart::feed_set_data_age_ms(feed, 0);
+
+            let mut probe = chart::make_status_strip_probe();
+            let mut pin = probe.pin_mut();
+            pin.as_mut().set_feed(feed);
+            let r = pin.result();
+
+            assert_eq!(r.connection_state, "LIVE");
+            assert_eq!(r.last_error, "");
+            assert!(!r.stale_visible);
+        }
+    }
+
+    #[test]
+    fn status_strip_shows_history_source_and_shortfall() {
+        setup();
+        unsafe {
+            let feed = chart::make_test_feed();
+            chart::feed_set_history(feed, "api", 15);
+
+            let mut probe = chart::make_status_strip_probe();
+            let mut pin = probe.pin_mut();
+            pin.as_mut().set_feed(feed);
+            let r = pin.result();
+
+            assert_eq!(r.history_text, "History: API (shortfall: 15 bars)");
+        }
+    }
+
+    #[test]
+    fn status_strip_and_empty_state_show_live_only() {
+        setup();
+        unsafe {
+            let feed = chart::make_test_feed();
+            chart::feed_set_live_only(feed, true);
+
+            let mut strip_probe = chart::make_status_strip_probe();
+            strip_probe.pin_mut().set_feed(feed);
+            let strip_res = strip_probe.result();
+            assert!(strip_res.live_only_visible);
+
+            let mut empty_probe = chart::make_empty_state_probe();
+            empty_probe.pin_mut().set_feed(feed);
+            let empty_res = empty_probe.result();
+            assert_eq!(empty_res.message, "Waiting for live bars (live only)...");
+        }
+    }
+
+    #[test]
+    fn empty_state_shows_retrying_when_api_down() {
+        setup();
+        unsafe {
+            let feed = chart::make_test_feed();
+            chart::feed_set_connection_state(feed, "retrying");
+            chart::feed_set_last_error(feed, "connection refused");
+
+            let mut empty_probe = chart::make_empty_state_probe();
+            empty_probe.pin_mut().set_feed(feed);
+            let empty_res = empty_probe.result();
+            assert_eq!(empty_res.message, "API unreachable, retrying...");
+            assert_eq!(empty_res.reason, "connection refused");
         }
     }
 }

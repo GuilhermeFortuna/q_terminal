@@ -302,4 +302,154 @@ std::unique_ptr<ChartPaneProbe> make_chart_pane_probe() {
     return std::make_unique<ChartPaneProbe>();
 }
 
+struct StatusStripProbe::Impl {
+    QQmlEngine engine;
+    QObject* strip{nullptr};
+};
+
+StatusStripProbe::StatusStripProbe() : m_impl(std::make_unique<Impl>()) {
+    ensure_test_app();
+    m_impl->engine.addImportPath(QStringLiteral("target/cxxqt/qml_modules"));
+
+    QQmlComponent component(&m_impl->engine);
+    QFileInfo fileInfo(QStringLiteral("qml/StatusStrip.qml"));
+    if (fileInfo.exists()) {
+        component.loadUrl(QUrl::fromLocalFile(fileInfo.absoluteFilePath()));
+    } else {
+        component.loadUrl(QUrl(QStringLiteral("qrc:/qt/qml/qml/StatusStrip.qml")));
+    }
+    m_impl->strip = component.create();
+}
+
+StatusStripProbe::~StatusStripProbe() {
+    if (m_impl->strip) {
+        delete m_impl->strip;
+    }
+}
+
+void StatusStripProbe::set_feed(BarFeed* feed) {
+    if (m_impl->strip) {
+        m_impl->strip->setProperty("feed", QVariant::fromValue(static_cast<QObject*>(feed)));
+    }
+}
+
+StatusStripProbeResult StatusStripProbe::result() const {
+    StatusStripProbeResult out{};
+    if (m_impl->strip) {
+        auto* stateObj = m_impl->strip->findChild<QObject*>("connectionStateText");
+        if (stateObj) {
+            out.connection_state = rust::String(stateObj->property("text").toString().toStdString());
+        }
+        auto* errorObj = m_impl->strip->findChild<QObject*>("errorText");
+        if (errorObj) {
+            out.last_error = rust::String(errorObj->property("text").toString().toStdString());
+        }
+        auto* histObj = m_impl->strip->findChild<QObject*>("historyText");
+        if (histObj) {
+            out.history_text = rust::String(histObj->property("text").toString().toStdString());
+        }
+        auto* staleBadge = m_impl->strip->findChild<QObject*>("staleBadge");
+        if (staleBadge) {
+            out.stale_visible = staleBadge->property("visible").toBool();
+        }
+        auto* staleText = m_impl->strip->findChild<QObject*>("staleText");
+        if (staleText) {
+            out.stale_text = rust::String(staleText->property("text").toString().toStdString());
+        }
+        auto* liveBadge = m_impl->strip->findChild<QObject*>("liveOnlyBadge");
+        if (liveBadge) {
+            out.live_only_visible = liveBadge->property("visible").toBool();
+        }
+    }
+    return out;
+}
+
+std::unique_ptr<StatusStripProbe> make_status_strip_probe() {
+    return std::make_unique<StatusStripProbe>();
+}
+
+struct EmptyStateProbe::Impl {
+    QQmlEngine engine;
+    QObject* emptyState{nullptr};
+};
+
+EmptyStateProbe::EmptyStateProbe() : m_impl(std::make_unique<Impl>()) {
+    ensure_test_app();
+    m_impl->engine.addImportPath(QStringLiteral("target/cxxqt/qml_modules"));
+
+    QQmlComponent component(&m_impl->engine);
+    QFileInfo fileInfo(QStringLiteral("qml/EmptyState.qml"));
+    if (fileInfo.exists()) {
+        component.loadUrl(QUrl::fromLocalFile(fileInfo.absoluteFilePath()));
+    } else {
+        component.loadUrl(QUrl(QStringLiteral("qrc:/qt/qml/qml/EmptyState.qml")));
+    }
+    m_impl->emptyState = component.create();
+}
+
+EmptyStateProbe::~EmptyStateProbe() {
+    if (m_impl->emptyState) {
+        delete m_impl->emptyState;
+    }
+}
+
+void EmptyStateProbe::set_feed(BarFeed* feed) {
+    if (m_impl->emptyState) {
+        m_impl->emptyState->setProperty("feed", QVariant::fromValue(static_cast<QObject*>(feed)));
+    }
+}
+
+EmptyStateProbeResult EmptyStateProbe::result() const {
+    EmptyStateProbeResult out{};
+    if (m_impl->emptyState) {
+        auto* msgObj = m_impl->emptyState->findChild<QObject*>("emptyMessageText");
+        if (msgObj) {
+            out.message = rust::String(msgObj->property("text").toString().toStdString());
+        }
+        auto* reasonObj = m_impl->emptyState->findChild<QObject*>("emptyReasonText");
+        if (reasonObj) {
+            out.reason = rust::String(reasonObj->property("text").toString().toStdString());
+        }
+    }
+    return out;
+}
+
+std::unique_ptr<EmptyStateProbe> make_empty_state_probe() {
+    return std::make_unique<EmptyStateProbe>();
+}
+
+BarFeed* make_test_feed() {
+    return new BarFeed();
+}
+
+void feed_set_connection_state(BarFeed* feed, rust::Str state) {
+    feed->setConnection_state(QString::fromUtf8(state.data(), static_cast<int>(state.size())));
+}
+
+void feed_set_last_error(BarFeed* feed, rust::Str error) {
+    feed->setLast_error(QString::fromUtf8(error.data(), static_cast<int>(error.size())));
+}
+
+void feed_set_stale(BarFeed* feed, bool stale) {
+    feed->setStale(stale);
+}
+
+void feed_set_data_age_ms(BarFeed* feed, std::int64_t ms) {
+    feed->setData_age_ms(ms);
+}
+
+void feed_set_live_only(BarFeed* feed, bool live_only) {
+    feed->setLive_only(live_only);
+}
+
+void feed_set_history(BarFeed* feed, rust::Str source, std::int64_t shortfall) {
+    feed->setHistory_source(QString::fromUtf8(source.data(), static_cast<int>(source.size())));
+    feed->setHistory_shortfall(shortfall);
+}
+
+void feed_set_bar_count(BarFeed* feed, std::int64_t count) {
+    feed->setBar_count(count);
+}
+
+
 

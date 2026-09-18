@@ -123,6 +123,14 @@ Item {
                 highPrice: viewport.highPrice
             }
         }
+
+        EmptyState {
+            id: emptyState
+            objectName: "emptyState"
+            anchors.fill: chartArea
+            visible: viewport.empty
+            feed: root.feed
+        }
     }
 
     Item {

@@ -2,5 +2,8 @@ module qml
 Main 1.0 Main.qml
 Viewport 1.0 Viewport.qml
 ChartPane 1.0 ChartPane.qml
+EmptyState 1.0 EmptyState.qml
+StatusStrip 1.0 StatusStrip.qml
+
 
 
