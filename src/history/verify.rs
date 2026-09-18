@@ -90,6 +90,9 @@ mod tests {
     use std::io::Write;
 
     fn write_bytes(path: &Path, bytes: &[u8]) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
         let mut file = fs::File::create(path).unwrap();
         file.write_all(bytes).unwrap();
     }
@@ -251,7 +254,9 @@ mod tests {
             Verdict::Verified
         );
 
-        write_bytes(&abs, b"corrupted");
+        let mut flipped = b"parquet-bytes".to_vec();
+        flipped[0] ^= 0x01;
+        write_bytes(&abs, &flipped);
         let verdict = verify(
             &dataset("2026-01-02T00:00:00Z", vec![file]),
             root,

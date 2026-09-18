@@ -421,9 +421,13 @@ mod tests {
     fn ohlcv_json(count: usize) -> String {
         let mut bars = Vec::new();
         for index in 0..count {
+            let total_minutes = index;
+            let hour = 12 + total_minutes / 60;
+            let minute = total_minutes % 60;
             bars.push(format!(
-                "{{\"timestamp\":\"2026-01-01T12:{:02}:00+00:00\",\"open\":1.0,\"high\":2.0,\"low\":0.5,\"close\":1.5,\"volume\":10}}",
-                index % 60
+                "{{\"timestamp\":\"2026-01-01T{:02}:{:02}:00+00:00\",\"open\":1.0,\"high\":2.0,\"low\":0.5,\"close\":1.5,\"volume\":10}}",
+                hour,
+                minute
             ));
         }
         format!("[{}]", bars.join(","))

@@ -163,49 +163,49 @@ pub fn trim_to_seam(bars: BarColumns, first_streamed_time: Option<i64>) -> BarCo
 
 ## Ordered implementation
 
-- [ ] 1. Work on the branch `Q-036-catalog-driven-historical-load` in
+- [x] 1. Work on the branch `Q-036-catalog-driven-historical-load` in
    `q_terminal`, created from `development` by `./work start`. Confirm Q-035 has
    merged, that `CONTRACTS_REV` is unchanged, and that
    `env -u WAYLAND_DISPLAY -u DISPLAY make check` passes before changing
    anything.
-- [ ] 2. Write failing tests in `history/manifest.rs`: among versions 1, 2 and 3
+- [x] 2. Write failing tests in `history/manifest.rs`: among versions 1, 2 and 3
    with states published, published and tombstoned, version 2 is chosen; an
    all-tombstoned list gives `None`; a `publishing` dataset is never chosen; a
    manifest missing a required field gives `Shape` naming it; `blake3` gives
    `UnsupportedDigest`; `resolve` refuses `/etc/passwd`, `../../etc/passwd` and
    `a/../../b`, and accepts `bars/WINFUT/M1/part-0.parquet`. Implement. Confirm
    they pass. Commit.
-- [ ] 3. Write failing tests in `history/verify.rs` over a temporary lake: a
+- [x] 3. Write failing tests in `history/verify.rs` over a temporary lake: a
    correct dataset verifies; one flipped byte gives `DigestMismatch` naming the
    file; a truncated file gives `SizeMismatch`; a deleted file gives `Missing`;
    a second verify of the same dataset digests nothing; a changed
    `published_at` digests again. Implement. Confirm they pass. Commit.
-- [ ] 4. Write failing tests in `history/load.rs` for the lake path: the last
+- [x] 4. Write failing tests in `history/load.rs` for the lake path: the last
    1,000 rows of a three-file dataset are exactly the last 1,000 in listed
    order; a request larger than the dataset returns all of it; an empty dataset
    returns nothing. Implement `load_from_lake` over `q-io`. Confirm they pass.
    Commit.
-- [ ] 5. Write failing tests for the API path against a fake server: 500 bars
+- [x] 5. Write failing tests for the API path against a fake server: 500 bars
    parse into ascending columns; a request for 10,000 returns 5,000 with a
    shortfall of 5,000; a malformed bar is an error naming the field. Implement
    `load_from_api`. Confirm they pass. Commit.
-- [ ] 6. Write failing tests for the fallback policy: catalog `503`, empty
+- [x] 6. Write failing tests for the fallback policy: catalog `503`, empty
    catalog, missing file, digest mismatch and unsupported algorithm each fall
    back and set `Source::Api`; both paths failing gives `Source::None` with a
    reason; a successful lake read never calls the API. Implement `load`.
    Confirm they pass. Commit.
-- [ ] 7. Write failing tests in `history/seam.rs`: with a first streamed time,
+- [x] 7. Write failing tests in `history/seam.rs`: with a first streamed time,
    history at or after it is dropped; with none, history passes through; the
    result is strictly ascending. Implement. Confirm they pass. Commit.
-- [ ] 8. Extend `BarFeed` with the history properties and `load_history()`.
+- [x] 8. Extend `BarFeed` with the history properties and `load_history()`.
    Write failing tests: progress is monotonic and ends at 1.0; a second
    concurrent call is refused with a reason; the load runs off the UI thread;
    the series holds history before the first streamed apply. Implement. Confirm
    they pass. Commit.
-- [ ] 9. Add `bench-history-load` to the `Makefile`: verify and load 200,000
+- [x] 9. Add `bench-history-load` to the `Makefile`: verify and load 200,000
    bars from a generated fixture lake, reporting verify time, read time, total
    time and peak RSS. Commit.
-- [ ] 10. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run,
+- [x] 10. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run,
    commit.
 - [ ] 11. **Human:** against the real lake and API, load the configured symbol's
    history; corrupt a file in a scratch copy and confirm the fallback; make the

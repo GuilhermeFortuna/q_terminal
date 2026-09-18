@@ -515,8 +515,8 @@ mod tests {
             reason: None,
         });
 
-        assert_eq!(feed.series.bar_count, 1);
-        assert_eq!(feed.series.last_time, 60);
+        assert_eq!(feed.series.bar_count, 2);
+        assert_eq!(feed.series.last_time, 300);
         assert_eq!(feed.applied, 1);
     }
 
