@@ -1,5 +1,6 @@
 #![allow(clippy::await_holding_lock)]
 
+#[rustfmt::skip]
 #[path = "../contracts/stream.rs"]
 pub mod contracts_stream;
 

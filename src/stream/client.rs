@@ -53,6 +53,8 @@ pub struct StreamEntryPayload {
     pub payload: serde_json::Value,
 }
 
+const BAR_TOPICS: [&str; 2] = ["bars.forming", "bars.completed"];
+
 pub struct ClientShared {
     connection_state: RwLock<ConnectionState>,
     counters: RwLock<Counters>,
@@ -503,16 +505,19 @@ async fn run_client_loop(
         };
 
         attempt = 0;
-        let mut forming_state =
-            TopicState::new("bars.forming", true, &config.symbol, &config.timeframe);
-        let mut completed_state =
-            TopicState::new("bars.completed", false, &config.symbol, &config.timeframe);
+        let mut states: HashMap<String, TopicState> = HashMap::new();
+        states.insert(
+            "bars.forming".to_string(),
+            TopicState::new("bars.forming", true, &config.symbol, &config.timeframe),
+        );
+        states.insert(
+            "bars.completed".to_string(),
+            TopicState::new("bars.completed", false, &config.symbol, &config.timeframe),
+        );
 
         let (mut ws_sink, mut ws_source) = ws_stream.split();
 
-        let sub_msg = json!({
-            "topics": ["bars.forming", "bars.completed"]
-        });
+        let sub_msg = json!({ "topics": BAR_TOPICS });
         if ws_sink
             .send(Message::Text(sub_msg.to_string().into()))
             .await
@@ -542,17 +547,13 @@ async fn run_client_loop(
                                     match control {
                                         ControlFrame::Subscribed(sub) => {
                                             if let Some(obj) = sub.topics.as_object() {
-                                                if let Some(f_top) = obj.get("bars.forming") {
-                                                    let ep = f_top.get("epoch").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                                                    let l_seq = f_top.get("last_seq").and_then(|v| v.as_i64()).unwrap_or(0);
-                                                    on_event(&mut forming_state, Event::Subscribed { epoch: ep, last_seq: l_seq });
-                                                    fetch_and_apply_snapshot("bars.forming", &mut forming_state, &sink, &shared, &http, &config.api_base, &is_shutdown).await;
-                                                }
-                                                if let Some(c_top) = obj.get("bars.completed") {
-                                                    let ep = c_top.get("epoch").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                                                    let l_seq = c_top.get("last_seq").and_then(|v| v.as_i64()).unwrap_or(0);
-                                                    on_event(&mut completed_state, Event::Subscribed { epoch: ep, last_seq: l_seq });
-                                                    fetch_and_apply_snapshot("bars.completed", &mut completed_state, &sink, &shared, &http, &config.api_base, &is_shutdown).await;
+                                                for topic in BAR_TOPICS {
+                                                    let Some(t) = obj.get(topic) else { continue };
+                                                    let Some(state) = states.get_mut(topic) else { continue };
+                                                    let ep = t.get("epoch").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                                    let l_seq = t.get("last_seq").and_then(|v| v.as_i64()).unwrap_or(0);
+                                                    on_event(state, Event::Subscribed { epoch: ep, last_seq: l_seq });
+                                                    fetch_and_apply_snapshot(topic, state, &sink, &shared, &http, &config.api_base, &is_shutdown).await;
                                                 }
                                                 shared.set_state(ConnectionState::Live);
                                             }
@@ -561,30 +562,21 @@ async fn run_client_loop(
                                             shared.set_last_error(&rej.reason);
                                         }
                                         ControlFrame::CursorExpired(ce) => {
-                                            if ce.topic == "bars.completed" {
-                                                let acts = on_event(&mut completed_state, Event::CursorExpired);
-                                                handle_actions(&mut completed_state, acts, "bars.completed", &sink, &shared, &http, &config.api_base, &is_shutdown).await;
-                                            } else if ce.topic == "bars.forming" {
-                                                let acts = on_event(&mut forming_state, Event::CursorExpired);
-                                                handle_actions(&mut forming_state, acts, "bars.forming", &sink, &shared, &http, &config.api_base, &is_shutdown).await;
+                                            if let Some(state) = states.get_mut(&ce.topic) {
+                                                let acts = on_event(state, Event::CursorExpired);
+                                                handle_actions(state, acts, &ce.topic, &sink, &shared, &http, &config.api_base, &is_shutdown).await;
                                             }
                                         }
                                         ControlFrame::Lagging(lag) => {
-                                            if lag.topic == "bars.completed" {
-                                                let acts = on_event(&mut completed_state, Event::Lagging { from_seq: lag.from_seq });
-                                                handle_actions(&mut completed_state, acts, "bars.completed", &sink, &shared, &http, &config.api_base, &is_shutdown).await;
-                                            } else if lag.topic == "bars.forming" {
-                                                let acts = on_event(&mut forming_state, Event::Lagging { from_seq: lag.from_seq });
-                                                handle_actions(&mut forming_state, acts, "bars.forming", &sink, &shared, &http, &config.api_base, &is_shutdown).await;
+                                            if let Some(state) = states.get_mut(&lag.topic) {
+                                                let acts = on_event(state, Event::Lagging { from_seq: lag.from_seq });
+                                                handle_actions(state, acts, &lag.topic, &sink, &shared, &http, &config.api_base, &is_shutdown).await;
                                             }
                                         }
                                         ControlFrame::EpochChanged(ec) => {
-                                            if ec.topic == "bars.completed" {
-                                                let acts = on_event(&mut completed_state, Event::EpochChanged { new_epoch: ec.new_epoch });
-                                                handle_actions(&mut completed_state, acts, "bars.completed", &sink, &shared, &http, &config.api_base, &is_shutdown).await;
-                                            } else if ec.topic == "bars.forming" {
-                                                let acts = on_event(&mut forming_state, Event::EpochChanged { new_epoch: ec.new_epoch });
-                                                handle_actions(&mut forming_state, acts, "bars.forming", &sink, &shared, &http, &config.api_base, &is_shutdown).await;
+                                            if let Some(state) = states.get_mut(&ec.topic) {
+                                                let acts = on_event(state, Event::EpochChanged { new_epoch: ec.new_epoch });
+                                                handle_actions(state, acts, &ec.topic, &sink, &shared, &http, &config.api_base, &is_shutdown).await;
                                             }
                                         }
                                     }
@@ -624,14 +616,12 @@ async fn run_client_loop(
                                                 timeframe: tf,
                                                 bars,
                                             };
-                                            if header.topic == "bars.completed" {
-                                                let acts = on_event(&mut completed_state, event);
-                                                handle_actions(&mut completed_state, acts, "bars.completed", &sink, &shared, &http, &config.api_base, &is_shutdown).await;
-                                            } else if header.topic == "bars.forming" {
-                                                let acts = on_event(&mut forming_state, event);
-                                                handle_actions(&mut forming_state, acts, "bars.forming", &sink, &shared, &http, &config.api_base, &is_shutdown).await;
-                                            } else {
-                                                shared.inc_dropped();
+                                            match states.get_mut(&header.topic) {
+                                                Some(state) => {
+                                                    let acts = on_event(state, event);
+                                                    handle_actions(state, acts, &header.topic, &sink, &shared, &http, &config.api_base, &is_shutdown).await;
+                                                }
+                                                None => shared.inc_dropped(),
                                             }
                                         }
                                         Err(_) => {

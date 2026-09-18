@@ -1,3 +1,4 @@
+#[rustfmt::skip]
 #[path = "../contracts/stream.rs"]
 pub mod contracts_stream;
 
