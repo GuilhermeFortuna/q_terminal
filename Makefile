@@ -39,10 +39,10 @@ test:
 	RUSTFLAGS="$(CARGO_TEST_RUSTFLAGS)" cargo test
 
 bench-stream:
-	cargo test --release --test bench_stream -- --nocapture --ignored
+	RUSTFLAGS="$(CARGO_TEST_RUSTFLAGS)" cargo test --release --test bench_stream -- --nocapture --ignored
 
 bench-history-load:
-	cargo test --release --test bench_history_load -- --nocapture --ignored
+	RUSTFLAGS="$(CARGO_TEST_RUSTFLAGS)" cargo test --release --test bench_history_load -- --nocapture --ignored
 
 run:
 	cargo run
