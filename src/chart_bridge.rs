@@ -31,6 +31,14 @@ pub mod chart {
         pub empty: bool,
     }
 
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct ChartPaneProbeResult {
+        pub top_price_label: String,
+        pub bottom_price_label: String,
+        pub vertex_count: i32,
+        pub empty: bool,
+    }
+
     #[derive(Default)]
     struct ProbeState {
         uploaded_revision: i64,
@@ -44,6 +52,7 @@ pub mod chart {
         type BarSeries;
         type BarChartItem;
         type ViewportProbe;
+        type ChartPaneProbe;
 
         fn make_viewport_probe() -> UniquePtr<ViewportProbe>;
         fn set_bars_visible(self: Pin<&mut ViewportProbe>, count: i32);
@@ -56,6 +65,13 @@ pub mod chart {
             revision: i32,
         );
         fn result(self: &ViewportProbe) -> ViewportProbeResult;
+
+        fn make_chart_pane_probe() -> UniquePtr<ChartPaneProbe>;
+        unsafe fn set_series(self: Pin<&mut ChartPaneProbe>, series: *mut BarSeries);
+        fn set_size(self: Pin<&mut ChartPaneProbe>, width: f32, height: f32);
+        fn set_bars_visible(self: Pin<&mut ChartPaneProbe>, count: i32);
+        fn set_price_margin(self: Pin<&mut ChartPaneProbe>, margin: f64);
+        fn result(self: &ChartPaneProbe) -> ChartPaneProbeResult;
 
         fn register_bar_chart_types();
         unsafe fn make_test_series(bar_count: i32) -> *mut BarSeries;
@@ -118,7 +134,10 @@ pub mod chart {
     }
 }
 
-pub use chart::{make_viewport_probe, ProbeResult, ViewportProbe, ViewportProbeResult};
+pub use chart::{
+    make_chart_pane_probe, make_viewport_probe, ChartPaneProbe, ChartPaneProbeResult, ProbeResult,
+    ViewportProbe, ViewportProbeResult,
+};
 
 pub fn register_chart_types() {
     chart::register_bar_chart_types();
@@ -464,5 +483,45 @@ mod tests {
         assert_eq!(result.last_bar, 0);
         assert!(result.low_price.abs() < 1e-6);
         assert!(result.high_price.abs() < 1e-6);
+    }
+
+    #[test]
+    fn chart_pane_axis_labels_match_viewport_bounds() {
+        setup();
+        unsafe {
+            let series = make_test_series(4);
+            let mut probe = chart::make_chart_pane_probe();
+            let mut pin = probe.pin_mut();
+            pin.as_mut().set_size(400.0, 200.0);
+            pin.as_mut().set_series(series);
+            let r = pin.result();
+            assert!(!r.empty);
+            assert_eq!(r.vertex_count, 48);
+            assert!(!r.top_price_label.is_empty());
+            assert!(!r.bottom_price_label.is_empty());
+            let top: f64 = r.top_price_label.parse().expect("valid top price number");
+            let bottom: f64 = r
+                .bottom_price_label
+                .parse()
+                .expect("valid bottom price number");
+            assert!(top > bottom);
+        }
+    }
+
+    #[test]
+    fn chart_pane_draws_nothing_when_series_is_empty() {
+        setup();
+        unsafe {
+            let series = make_test_series(0);
+            let mut probe = chart::make_chart_pane_probe();
+            let mut pin = probe.pin_mut();
+            pin.as_mut().set_size(400.0, 200.0);
+            pin.as_mut().set_series(series);
+            let r = pin.result();
+            assert!(r.empty);
+            assert_eq!(r.vertex_count, 0);
+            assert_eq!(r.top_price_label, "");
+            assert_eq!(r.bottom_price_label, "");
+        }
     }
 }

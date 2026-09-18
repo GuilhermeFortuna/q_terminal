@@ -7,12 +7,14 @@
 #include <memory>
 
 class BarChartItem;
+class BarFeed;
 class BarSeries;
 
 struct ProbeResult;
 struct ProbeState;
 struct ProbeVertex;
 struct ViewportProbeResult;
+struct ChartPaneProbeResult;
 
 class ViewportProbe {
 public:
@@ -30,6 +32,25 @@ private:
 };
 
 std::unique_ptr<ViewportProbe> make_viewport_probe();
+
+class ChartPaneProbe {
+public:
+    ChartPaneProbe();
+    ~ChartPaneProbe();
+
+    void set_series(BarSeries* series);
+    void set_feed(BarFeed* feed);
+    void set_size(float width, float height);
+    void set_bars_visible(int count);
+    void set_price_margin(double margin);
+    ChartPaneProbeResult result() const;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
+};
+
+std::unique_ptr<ChartPaneProbe> make_chart_pane_probe();
 
 void register_bar_chart_types();
 

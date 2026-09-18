@@ -68,7 +68,8 @@ fn main() {
     CxxQtBuilder::new_qml_module(
         QmlModule::new("qml")
             .qml_file("qml/Main.qml")
-            .qml_file("qml/Viewport.qml"),
+            .qml_file("qml/Viewport.qml")
+            .qml_file("qml/ChartPane.qml"),
     )
     .qt_module("Quick")
     .include_dir("cpp")

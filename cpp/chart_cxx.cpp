@@ -1,8 +1,10 @@
 #include "chart_cxx.h"
 
 #include "bar_chart_item.h"
+#include "bar_chart_node.h"
 #include "bar_chart_probe.h"
 #include "q-qt/src/bar_series.cxxqt.h"
+#include "q_terminal/src/bar_feed.cxxqt.h"
 
 #include <mutex>
 
@@ -10,6 +12,7 @@
 #include <QtCore/QDebug>
 #include <QtCore/QFileInfo>
 #include <QtCore/QUrl>
+#include <QtGui/QGuiApplication>
 #include <QtQml/QQmlComponent>
 #include <QtQml/QQmlEngine>
 
@@ -124,11 +127,15 @@ void ensure_test_app() {
     static std::once_flag once;
     std::call_once(once, []() {
         if (QCoreApplication::instance() == nullptr) {
-            static int argc = 1;
+            qputenv("QT_QPA_PLATFORM", QByteArrayLiteral("offscreen"));
+            static int argc = 3;
             static char arg0[] = "q_terminal_test";
-            static char* argv[] = {arg0, nullptr};
-            new QCoreApplication(argc, argv);
+            static char arg1[] = "-platform";
+            static char arg2[] = "offscreen";
+            static char* argv[] = {arg0, arg1, arg2, nullptr};
+            new QGuiApplication(argc, argv);
         }
+        register_bar_chart_types();
     });
 }
 
@@ -203,4 +210,96 @@ ViewportProbeResult ViewportProbe::result() const {
 std::unique_ptr<ViewportProbe> make_viewport_probe() {
     return std::make_unique<ViewportProbe>();
 }
+
+struct ChartPaneProbe::Impl {
+    QQmlEngine engine;
+    QObject* pane{nullptr};
+    BarChartNode* node{nullptr};
+};
+
+ChartPaneProbe::ChartPaneProbe() : m_impl(std::make_unique<Impl>()) {
+    ensure_test_app();
+    m_impl->engine.addImportPath(QStringLiteral("target/cxxqt/qml_modules"));
+
+    QQmlComponent component(&m_impl->engine);
+    QFileInfo fileInfo(QStringLiteral("qml/ChartPane.qml"));
+    if (fileInfo.exists()) {
+        component.loadUrl(QUrl::fromLocalFile(fileInfo.absoluteFilePath()));
+    } else {
+        component.loadUrl(QUrl(QStringLiteral("qrc:/qt/qml/qml/ChartPane.qml")));
+    }
+    if (component.isError()) {
+        qWarning() << "ChartPaneProbe component error:" << component.errorString();
+    }
+    m_impl->pane = component.create();
+    if (!m_impl->pane && component.isError()) {
+        qWarning() << "ChartPaneProbe create error:" << component.errorString();
+    }
+}
+
+ChartPaneProbe::~ChartPaneProbe() {
+    if (m_impl->node) {
+        delete m_impl->node;
+    }
+    if (m_impl->pane) {
+        delete m_impl->pane;
+    }
+}
+
+void ChartPaneProbe::set_series(BarSeries* series) {
+    if (m_impl->pane) {
+        m_impl->pane->setProperty("feed", QVariant::fromValue(static_cast<QObject*>(series)));
+    }
+}
+
+void ChartPaneProbe::set_feed(BarFeed* feed) {
+    if (m_impl->pane) {
+        m_impl->pane->setProperty("feed", QVariant::fromValue(static_cast<QObject*>(feed)));
+    }
+}
+
+void ChartPaneProbe::set_size(float width, float height) {
+    if (m_impl->pane) {
+        m_impl->pane->setProperty("width", width);
+        m_impl->pane->setProperty("height", height);
+    }
+}
+
+void ChartPaneProbe::set_bars_visible(int count) {
+    if (m_impl->pane) {
+        m_impl->pane->setProperty("barsVisible", count);
+    }
+}
+
+void ChartPaneProbe::set_price_margin(double margin) {
+    if (m_impl->pane) {
+        m_impl->pane->setProperty("priceMargin", margin);
+    }
+}
+
+ChartPaneProbeResult ChartPaneProbe::result() const {
+    ChartPaneProbeResult out{};
+    if (m_impl->pane) {
+        out.top_price_label = rust::String(m_impl->pane->property("topPriceLabel").toString().toStdString());
+        out.bottom_price_label = rust::String(m_impl->pane->property("bottomPriceLabel").toString().toStdString());
+        out.empty = m_impl->pane->property("empty").toBool();
+
+        auto* chartItem = m_impl->pane->findChild<BarChartItem*>();
+        if (chartItem) {
+            chartItem->setSize(QSizeF(m_impl->pane->property("width").toFloat(),
+                                      m_impl->pane->property("height").toFloat()));
+            auto* node = static_cast<BarChartNode*>(chartItem->testUpdatePaintNode(m_impl->node));
+            m_impl->node = node;
+            if (node) {
+                out.vertex_count = node->risingVertexCount() + node->fallingVertexCount() + node->formingVertexCount();
+            }
+        }
+    }
+    return out;
+}
+
+std::unique_ptr<ChartPaneProbe> make_chart_pane_probe() {
+    return std::make_unique<ChartPaneProbe>();
+}
+
 
