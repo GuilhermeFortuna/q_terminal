@@ -142,42 +142,42 @@ ProbeResult probe_render(QObject* series, int firstBar, int lastBar,
 
 ## Ordered implementation
 
-- [ ] 1. Work on the branch `Q-037-scene-graph-bar-render-node` in `q_terminal`,
+- [x] 1. Work on the branch `Q-037-scene-graph-bar-render-node` in `q_terminal`,
    created from `development` by `./work start`. Confirm Q-034's tag is the one
    `q-qt` is pinned to, and that `env -u WAYLAND_DISPLAY -u DISPLAY make check`
    passes before changing anything.
-- [ ] 2. Add the `QtQuick` link and the `cpp/` sources to `build.rs`, register a
+- [x] 2. Add the `QtQuick` link and the `cpp/` sources to `build.rs`, register a
    placeholder `BarChartItem` that draws nothing, instantiate it in
    `qml/Main.qml`, and confirm `make build`, `make qml-lint` and the headless
    report still pass. Commit.
-- [ ] 3. Write the probe and a failing headless test: a series of four known
+- [x] 3. Write the probe and a failing headless test: a series of four known
    bars at a known viewport and item size produces, through the probe, exactly
    the vertices `BarSeries` reports through its pointer. Implement
    `BarChartNode::sync` and the item's `updatePaintNode` until it passes.
    Commit.
-- [ ] 4. Write failing tests for the upload rules: the first frame uploads; a
+- [x] 4. Write failing tests for the upload rules: the first frame uploads; a
    second frame at an unchanged revision does not; a mutation between frames
    causes one upload; ten mutations between two frames cause one upload.
    Implement the revision guard. Confirm they pass. Commit.
-- [ ] 5. Write failing tests for allocation: ten frames at a constant bucket
+- [x] 5. Write failing tests for allocation: ten frames at a constant bucket
    count allocate geometry once; a changed bucket count reallocates once.
    Implement geometry reuse. Confirm they pass. Commit.
-- [ ] 6. Write failing tests for the degenerate cases: an empty series produces
+- [x] 6. Write failing tests for the degenerate cases: an empty series produces
    no vertices and no error; a high equal to a low produces a non-empty mark; a
    viewport of 8,000 buckets into 400 pixels produces vertices for every bucket;
    a zero-sized item produces nothing. Fix whatever fails; if the fix belongs in
    the packing, stop and report rather than compute in C++. Commit.
-- [ ] 7. Write a failing test that changing `firstBar`, `lastBar`, `lowPrice`,
+- [x] 7. Write a failing test that changing `firstBar`, `lastBar`, `lowPrice`,
    `highPrice` and the size in one QML transaction results in one
    `updatePaintNode`. Implement. Confirm it passes. Commit.
-- [ ] 8. Split the upload into rising, falling and forming child nodes driven by
+- [x] 8. Split the upload into rising, falling and forming child nodes driven by
    the vertex flags, with a test asserting each set's vertex count for a known
    series. Commit.
-- [ ] 9. Add `make bench-frames`: run the windowed application with a frame-time
+- [x] 9. Add `make bench-frames`: run the windowed application with a frame-time
    recorder for a fixed duration at a configured bucket count, reporting the
    95th percentile, the maximum, uploads per frame and the selected graphics
    API. Commit.
-- [ ] 10. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run,
+- [x] 10. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run,
    commit.
 - [ ] 11. **Human:** with the research stack and the live publisher running,
    record five minutes of frames at 2,000 buckets over a 500,000-bar series, then

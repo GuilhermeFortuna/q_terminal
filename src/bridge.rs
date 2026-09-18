@@ -15,6 +15,14 @@ pub mod ffi {
         include!("render_backend.h");
         fn setup_window(engine: Pin<&mut QQmlApplicationEngine>);
         fn query_graphics_api(engine: Pin<&mut QQmlApplicationEngine>) -> QString;
+
+        include!("cpp/frame_bench.h");
+        fn run_frame_bench(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            visible_buckets: i32,
+            bar_count: i32,
+            duration_ms: i32,
+        );
     }
 
     extern "RustQt" {

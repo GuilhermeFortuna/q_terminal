@@ -1,0 +1,50 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+
+class BarChartItem;
+class BarSeries;
+
+struct ProbeResult;
+struct ProbeState;
+struct ProbeVertex;
+
+void register_bar_chart_types();
+
+BarSeries* make_test_series(int bar_count);
+
+ProbeResult chart_probe_sync(BarSeries* series, int first_bar, int last_bar, double low,
+                             double high, float width_px, float height_px, ProbeState& state);
+
+ProbeResult chart_probe_item_paint(BarChartItem* item, int frames);
+
+BarChartItem* make_test_chart_item(BarSeries* series, int first_bar, int last_bar, double low,
+                                   double high, float width_px, float height_px);
+
+void chart_item_set_size(BarChartItem* item, float width_px, float height_px);
+
+void chart_item_apply_view(BarChartItem* item, int first_bar, int last_bar, double low,
+                           double high, float width_px, float height_px);
+
+void chart_series_ingest_completed(BarSeries* series, std::int64_t time, double open, double high,
+                                   double low, double close, double volume);
+
+double chart_series_low(BarSeries* series);
+
+double chart_series_high(BarSeries* series);
+
+void chart_series_ingest_forming(BarSeries* series, std::int64_t time, double open, double high,
+                                 double low, double close, double volume);
+
+void chart_series_rebuild(BarSeries* series);
+
+std::int64_t chart_series_geometry_revision(BarSeries* series);
+
+int chart_series_vertex_len(BarSeries* series);
+
+ProbeVertex chart_series_vertex_at(BarSeries* series, std::size_t index);
+
+void ensure_test_app();
+
+void reset_chart_probe_state();
