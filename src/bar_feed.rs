@@ -67,13 +67,85 @@ pub mod ffi {
         #[qproperty(QString, history_error)]
         #[qproperty(i64, history_bars)]
         #[qproperty(i64, history_shortfall)]
+        #[qproperty(i64, timeframe_ms)]
+        #[qproperty(bool, stale)]
+        #[qproperty(bool, live_only)]
+        #[qproperty(i64, rest_calls)]
+        #[qproperty(QString, symbol)]
+        #[qproperty(QString, timeframe)]
+        #[qproperty(i64, bar_count)]
+        #[qproperty(i64, revision)]
+        #[qproperty(f64, last_price)]
+        #[qproperty(i64, first_time)]
+        #[qproperty(i64, last_time)]
+        #[qproperty(f64, low)]
+        #[qproperty(f64, high)]
         type BarFeed = super::BarFeedRust;
 
         #[qinvokable]
         fn load_history(self: Pin<&mut BarFeed>) -> bool;
+
+        #[qinvokable]
+        fn set_viewport(
+            self: Pin<&mut BarFeed>,
+            first_bar: i64,
+            last_bar: i64,
+            low: f64,
+            high: f64,
+        );
+
+        #[qinvokable]
+        fn set_surface(self: Pin<&mut BarFeed>, width_px: f32, height_px: f32);
+
+        #[qinvokable]
+        fn rebuild_geometry(self: Pin<&mut BarFeed>);
+
+        #[qinvokable]
+        fn vertex_ptr(self: &BarFeed) -> i64;
+
+        #[qinvokable]
+        fn vertex_len(self: &BarFeed) -> i64;
+
+        #[qinvokable]
+        fn geometry_revision(self: &BarFeed) -> i64;
     }
 
     impl cxx_qt::Threading for BarFeed {}
+}
+
+pub fn parse_timeframe_ms(timeframe: &str) -> i64 {
+    let tf = timeframe.trim();
+    if tf.is_empty() {
+        return 60_000;
+    }
+    let first = tf.chars().next().unwrap();
+    if first.is_alphabetic() && tf.len() > 1 && tf[1..].chars().all(|c| c.is_ascii_digit()) {
+        let n: i64 = tf[1..].parse().unwrap_or(1);
+        match first.to_ascii_uppercase() {
+            'S' => return n * 1_000,
+            'M' => return n * 60_000,
+            'H' => return n * 3_600_000,
+            'D' => return n * 86_400_000,
+            'W' => return n * 604_800_000,
+            _ => {}
+        }
+    }
+    let last = tf.chars().last().unwrap();
+    if last.is_alphabetic()
+        && tf.len() > 1
+        && tf[..tf.len() - 1].chars().all(|c| c.is_ascii_digit())
+    {
+        let n: i64 = tf[..tf.len() - 1].parse().unwrap_or(1);
+        match last.to_ascii_lowercase() {
+            's' => return n * 1_000,
+            'm' => return n * 60_000,
+            'h' => return n * 3_600_000,
+            'd' => return n * 86_400_000,
+            'w' => return n * 604_800_000,
+            _ => {}
+        }
+    }
+    60_000
 }
 
 pub struct BarFeedRust {
@@ -94,6 +166,21 @@ pub struct BarFeedRust {
     pub history_bars: i64,
     pub history_shortfall: i64,
 
+    pub timeframe_ms: i64,
+    pub stale: bool,
+    pub live_only: bool,
+    pub rest_calls: i64,
+
+    pub symbol: QString,
+    pub timeframe: QString,
+    pub bar_count: i64,
+    pub revision: i64,
+    pub last_price: f64,
+    pub first_time: i64,
+    pub last_time: i64,
+    pub low: f64,
+    pub high: f64,
+
     pub series: q_qt::BarSeriesRust,
     pub last_applied_instant: Option<Instant>,
     history: Arc<HistoryController>,
@@ -108,6 +195,8 @@ impl BarFeedRust {
     }
 
     pub fn with_config(symbol: &str, timeframe: &str, config: Option<Config>) -> Self {
+        let tf_ms = parse_timeframe_ms(timeframe);
+        let series = q_qt::BarSeriesRust::new(symbol, timeframe, 500_000);
         Self {
             connection_state: QString::from("connecting"),
             last_error: QString::from(""),
@@ -124,7 +213,20 @@ impl BarFeedRust {
             history_error: QString::from(""),
             history_bars: 0,
             history_shortfall: 0,
-            series: q_qt::BarSeriesRust::new(symbol, timeframe, 500_000),
+            timeframe_ms: tf_ms,
+            stale: false,
+            live_only: false,
+            rest_calls: 0,
+            symbol: QString::from(symbol),
+            timeframe: QString::from(timeframe),
+            bar_count: series.bar_count,
+            revision: series.revision,
+            last_price: series.last_price,
+            first_time: series.first_time,
+            last_time: series.last_time,
+            low: series.low,
+            high: series.high,
+            series,
             last_applied_instant: None,
             history: Arc::new(HistoryController::new()),
             config,
@@ -145,10 +247,25 @@ impl BarFeedRust {
         self.last_error = QString::from(error);
     }
 
-    pub fn update_counters(&mut self, dropped: u64, gaps_closed: u64, resnapshots: u64) {
+    pub fn update_counters(
+        &mut self,
+        dropped: u64,
+        gaps_closed: u64,
+        resnapshots: u64,
+        rest_calls: u64,
+    ) {
         self.dropped = dropped as i64;
         self.gaps_closed = gaps_closed as i64;
         self.resnapshots = resnapshots as i64;
+        self.rest_calls = rest_calls as i64;
+    }
+
+    pub fn inc_rest_calls(&mut self) {
+        self.rest_calls += 1;
+    }
+
+    pub fn set_rest_calls(&mut self, count: i64) {
+        self.rest_calls = count;
     }
 
     pub fn update_data_age(&mut self) {
@@ -157,6 +274,30 @@ impl BarFeedRust {
         } else {
             self.data_age_ms = -1;
         }
+        self.stale = self.data_age_ms > self.timeframe_ms;
+    }
+
+    pub fn set_data_age_ms(&mut self, ms: i64) {
+        self.data_age_ms = ms;
+        self.stale = self.data_age_ms > self.timeframe_ms;
+    }
+
+    pub fn update_live_only(&mut self) {
+        let source = self.history_source.to_string();
+        let is_none = source == "none" || source.is_empty();
+        self.live_only = is_none && self.history_bars == 0 && self.applied > 0;
+    }
+
+    pub fn sync_series_properties(&mut self) {
+        self.symbol = self.series.symbol.clone();
+        self.timeframe = self.series.timeframe.clone();
+        self.bar_count = self.series.bar_count;
+        self.revision = self.series.revision;
+        self.last_price = self.series.last_price;
+        self.first_time = self.series.first_time;
+        self.last_time = self.series.last_time;
+        self.low = self.series.low;
+        self.high = self.series.high;
     }
 
     pub fn sync_history_properties(&mut self) {
@@ -169,6 +310,7 @@ impl BarFeedRust {
         self.history_error = QString::from(&snapshot.error);
         self.history_bars = snapshot.bars;
         self.history_shortfall = snapshot.shortfall;
+        self.update_live_only();
     }
 
     pub fn start_history_load(&mut self) -> Result<(), String> {
@@ -228,7 +370,7 @@ impl BarFeedRust {
         }
         self.history.finish_load(
             Loaded {
-                bars: make_bar_columns(0, 0.0, 0.0, 0.0, 0.0),
+                bars: empty_bar_columns(),
                 source,
                 dataset,
                 shortfall,
@@ -237,6 +379,8 @@ impl BarFeedRust {
             bar_count,
         );
         self.sync_history_properties();
+        self.sync_series_properties();
+        self.update_live_only();
 
         let pending = std::mem::take(&mut self.pending_deliveries);
         for delivery in pending {
@@ -263,6 +407,9 @@ impl BarFeedRust {
                     self.applied += count;
                     self.last_applied_instant = Some(Instant::now());
                     self.data_age_ms = 0;
+                    self.stale = false;
+                    self.sync_series_properties();
+                    self.update_live_only();
                 }
             }
             BarDelivery::Forming(bars) => {
@@ -270,6 +417,9 @@ impl BarFeedRust {
                     self.applied += 1;
                     self.last_applied_instant = Some(Instant::now());
                     self.data_age_ms = 0;
+                    self.stale = false;
+                    self.sync_series_properties();
+                    self.update_live_only();
                 }
             }
         }
@@ -327,6 +477,42 @@ impl ffi::BarFeed {
         );
         true
     }
+
+    pub fn set_viewport(
+        mut self: std::pin::Pin<&mut Self>,
+        first_bar: i64,
+        last_bar: i64,
+        low: f64,
+        high: f64,
+    ) {
+        self.as_mut()
+            .rust_mut()
+            .series
+            .set_viewport(first_bar, last_bar, low, high);
+    }
+
+    pub fn set_surface(mut self: std::pin::Pin<&mut Self>, width_px: f32, height_px: f32) {
+        self.as_mut()
+            .rust_mut()
+            .series
+            .set_surface(width_px, height_px);
+    }
+
+    pub fn rebuild_geometry(mut self: std::pin::Pin<&mut Self>) {
+        self.as_mut().rust_mut().series.rebuild_geometry();
+    }
+
+    pub fn vertex_ptr(&self) -> i64 {
+        self.rust().series.vertex_ptr() as usize as i64
+    }
+
+    pub fn vertex_len(&self) -> i64 {
+        self.rust().series.vertex_len() as i64
+    }
+
+    pub fn geometry_revision(&self) -> i64 {
+        self.rust().series.geometry_revision()
+    }
 }
 
 impl Default for BarFeedRust {
@@ -348,6 +534,20 @@ pub fn make_bar_columns(t: i64, open: f64, high: f64, low: f64, close: f64) -> B
         high: vec![high],
         low: vec![low],
         close: vec![close],
+        tick_volume: None,
+        spread: None,
+        real_volume: None,
+        label: TimeLabel::Utc,
+    }
+}
+
+pub fn empty_bar_columns() -> BarColumns {
+    BarColumns {
+        time: Vec::new(),
+        open: Vec::new(),
+        high: Vec::new(),
+        low: Vec::new(),
+        close: Vec::new(),
         tick_volume: None,
         spread: None,
         real_volume: None,
@@ -456,10 +656,11 @@ mod tests {
         feed.set_last_error("stream_unavailable");
         assert_eq!(feed.last_error.to_string(), "stream_unavailable");
 
-        feed.update_counters(7, 3, 2);
+        feed.update_counters(7, 3, 2, 4);
         assert_eq!(feed.dropped, 7);
         assert_eq!(feed.gaps_closed, 3);
         assert_eq!(feed.resnapshots, 2);
+        assert_eq!(feed.rest_calls, 4);
     }
 
     #[test]
@@ -551,5 +752,104 @@ mod tests {
         }
         assert!((values.last().copied().unwrap_or(0.0) - 1.0).abs() < f64::EPSILON);
         assert_eq!(feed.history_source.to_string(), source_label(Source::None));
+    }
+
+    #[test]
+    fn test_bar_feed_staleness_flips_at_timeframe_interval() {
+        let mut feed_1m = BarFeedRust::new("PETR4", "1m");
+        assert_eq!(feed_1m.timeframe_ms, 60_000);
+        assert_eq!(feed_1m.data_age_ms, -1);
+        assert!(!feed_1m.stale);
+
+        // Age <= timeframe_ms is not stale
+        feed_1m.set_data_age_ms(59_999);
+        assert!(!feed_1m.stale);
+        feed_1m.set_data_age_ms(60_000);
+        assert!(!feed_1m.stale);
+
+        // Age > timeframe_ms flips to stale
+        feed_1m.set_data_age_ms(60_001);
+        assert!(feed_1m.stale);
+
+        // Arriving bar resets staleness
+        feed_1m.history.open_gate();
+        feed_1m.apply_delivery(BarDelivery::Completed(test_bar(60, 10.0)));
+        assert_eq!(feed_1m.data_age_ms, 0);
+        assert!(!feed_1m.stale);
+
+        // Test other timeframes: 5m, 1h, 1d, D1
+        let mut feed_5m = BarFeedRust::new("VALE3", "5m");
+        assert_eq!(feed_5m.timeframe_ms, 300_000);
+        feed_5m.set_data_age_ms(300_000);
+        assert!(!feed_5m.stale);
+        feed_5m.set_data_age_ms(300_001);
+        assert!(feed_5m.stale);
+
+        let feed_1h = BarFeedRust::new("VALE3", "1h");
+        assert_eq!(feed_1h.timeframe_ms, 3_600_000);
+
+        let feed_1d = BarFeedRust::new("VALE3", "1d");
+        assert_eq!(feed_1d.timeframe_ms, 86_400_000);
+
+        let feed_d1 = BarFeedRust::new("VALE3", "D1");
+        assert_eq!(feed_d1.timeframe_ms, 86_400_000);
+    }
+
+    #[test]
+    fn test_bar_feed_live_only_transitions() {
+        let mut feed = BarFeedRust::new("PETR4", "1m");
+        assert!(!feed.live_only);
+
+        // Case 1: History loaded with bars -> live_only stays false even when bars arrive
+        feed.complete_history_load(Loaded {
+            bars: make_bar_columns(60, 10.0, 11.0, 9.0, 10.5),
+            source: Source::Lake,
+            dataset: None,
+            shortfall: 0,
+            reason: None,
+        });
+        assert_eq!(feed.history_bars, 1);
+        assert_eq!(feed.history_source.to_string(), "lake");
+        assert!(!feed.live_only);
+
+        feed.apply_delivery(BarDelivery::Completed(test_bar(120, 11.0)));
+        assert_eq!(feed.applied, 1);
+        assert!(!feed.live_only);
+
+        // Case 2: History produced no bars / source is none -> live_only is true once bars arrive
+        let mut live_feed = BarFeedRust::new("PETR4", "1m");
+        assert!(!live_feed.live_only);
+
+        live_feed.complete_history_load(Loaded {
+            bars: empty_bar_columns(),
+            source: Source::None,
+            dataset: None,
+            shortfall: 0,
+            reason: None,
+        });
+        assert_eq!(live_feed.history_bars, 0);
+        assert_eq!(live_feed.history_source.to_string(), "none");
+        // No arriving bars yet -> live_only is false
+        assert!(!live_feed.live_only);
+
+        // Once a live bar arrives -> live_only becomes true
+        live_feed.apply_delivery(BarDelivery::Completed(test_bar(180, 12.0)));
+        assert_eq!(live_feed.applied, 1);
+        assert!(live_feed.live_only);
+    }
+
+    #[test]
+    fn test_bar_feed_rest_calls_tracks_protocol_calls() {
+        let mut feed = BarFeedRust::new("PETR4", "1m");
+        assert_eq!(feed.rest_calls, 0);
+
+        feed.inc_rest_calls();
+        assert_eq!(feed.rest_calls, 1);
+
+        feed.set_rest_calls(10);
+        assert_eq!(feed.rest_calls, 10);
+
+        feed.update_counters(2, 3, 4, 12);
+        assert_eq!(feed.rest_calls, 12);
     }
 }

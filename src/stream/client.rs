@@ -28,6 +28,7 @@ pub struct Counters {
     pub dropped: u64,
     pub gaps_closed: u64,
     pub resnapshots: u64,
+    pub rest_calls: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -103,6 +104,11 @@ impl ClientShared {
     pub fn inc_resnapshots(&self) {
         let mut guard = self.counters.write().unwrap();
         guard.resnapshots += 1;
+    }
+
+    pub fn inc_rest_calls(&self) {
+        let mut guard = self.counters.write().unwrap();
+        guard.rest_calls += 1;
     }
 
     pub fn record_applied(&self) {
@@ -207,6 +213,7 @@ async fn fetch_and_apply_snapshot(
         return;
     }
     let url = format!("{api_base}/api/v1/stream/{topic}/latest");
+    shared.inc_rest_calls();
     let resp = match http.get(&url).send().await {
         Ok(r) => r,
         Err(_) => return,
@@ -281,6 +288,7 @@ async fn handle_actions(
                     let url = format!(
                         "{api_base}/api/v1/stream/{topic}/history?epoch={epoch}&from_seq={from_seq}&limit=500"
                     );
+                    shared.inc_rest_calls();
                     let resp = http.get(&url).send().await;
                     match resp {
                         Ok(r) if r.status().as_u16() == 410 => {

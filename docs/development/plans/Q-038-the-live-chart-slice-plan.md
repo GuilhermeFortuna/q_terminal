@@ -127,11 +127,11 @@ pub fn run_slice(config: Result<Config, ConfigError>) -> i32;
 
 ## Ordered implementation
 
-- [ ] 1. Work on the branch `Q-038-the-live-chart-slice` in `q_terminal`, created
+- [x] 1. Work on the branch `Q-038-the-live-chart-slice` in `q_terminal`, created
    from `development` by `./work start`. Confirm Q-035, Q-036 and Q-037 have all
    merged and that `env -u WAYLAND_DISPLAY -u DISPLAY make check` passes before
    changing anything.
-- [ ] 2. Add `timeframe_ms`, `stale`, `live_only` and `rest_calls` to `BarFeed`
+- [x] 2. Add `timeframe_ms`, `stale`, `live_only` and `rest_calls` to `BarFeed`
    with failing tests: staleness flips at the timeframe interval; `live_only` is
    true only with no history and arriving bars; `rest_calls` counts the
    protocol's calls and nothing else. Implement. Confirm they pass. Commit.

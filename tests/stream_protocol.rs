@@ -70,6 +70,7 @@ async fn test_connect_snapshot_live_happy_path() {
     let deliveries = sink.drain();
     assert!(!deliveries.is_empty(), "sink should have received bars");
     assert!(client.counters().applied >= 4);
+    assert_eq!(client.counters().rest_calls, 2);
 
     client.shutdown();
     server.shutdown().await;
@@ -130,6 +131,7 @@ async fn test_completed_gap_closed_from_history() {
         deliveries.len() >= 3,
         "should apply snapshot + history 11 + entry 12"
     );
+    assert_eq!(client.counters().rest_calls, 3);
 
     client.shutdown();
     server.shutdown().await;
