@@ -11,10 +11,13 @@
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDebug>
 #include <QtCore/QFileInfo>
+#include <QtCore/QTimer>
 #include <QtCore/QUrl>
 #include <QtGui/QGuiApplication>
+#include <QtQml/QQmlApplicationEngine>
 #include <QtQml/QQmlComponent>
 #include <QtQml/QQmlEngine>
+#include <QtQuick/QQuickWindow>
 
 #include "q_terminal/src/chart_bridge.cxx.h"
 
@@ -137,6 +140,28 @@ void ensure_test_app() {
         }
         register_bar_chart_types();
     });
+}
+
+void ensure_application() {
+    if (QCoreApplication::instance() == nullptr) {
+        if (qEnvironmentVariableIsEmpty("DISPLAY") &&
+            qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY") &&
+            qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) {
+            qputenv("QT_QPA_PLATFORM", QByteArrayLiteral("offscreen"));
+        }
+        static int argc = 1;
+        static char arg0[] = "q_terminal";
+        static char* argv[] = {arg0, nullptr};
+        new QGuiApplication(argc, argv);
+    }
+    register_bar_chart_types();
+}
+
+int exec_application() {
+    if (auto* app = QCoreApplication::instance()) {
+        return app->exec();
+    }
+    return 0;
 }
 
 void reset_chart_probe_state() {
@@ -449,6 +474,112 @@ void feed_set_history(BarFeed* feed, rust::Str source, std::int64_t shortfall) {
 
 void feed_set_bar_count(BarFeed* feed, std::int64_t count) {
     feed->setBar_count(count);
+}
+
+BarFeed* find_window_feed(QQmlApplicationEngine& engine) {
+    for (QObject* root : engine.rootObjects()) {
+        if (auto* feed = root->findChild<BarFeed*>("barFeed")) {
+            return feed;
+        }
+        if (auto* feed = root->findChild<BarFeed*>()) {
+            return feed;
+        }
+    }
+    return nullptr;
+}
+
+void setup_window_feed(QQmlApplicationEngine& engine, BarFeed* feed) {
+    if (!feed) return;
+    for (QObject* root : engine.rootObjects()) {
+        root->setProperty("feed", QVariant::fromValue(static_cast<QObject*>(feed)));
+    }
+}
+
+void setup_window_auto_close(QQmlApplicationEngine& engine, int ms) {
+    if (ms <= 0) return;
+    for (QObject* root : engine.rootObjects()) {
+        if (auto* window = qobject_cast<QQuickWindow*>(root)) {
+            auto* timer = new QTimer(window);
+            timer->setSingleShot(true);
+            QObject::connect(timer, &QTimer::timeout, window, [window]() {
+                window->close();
+            });
+            timer->start(ms);
+        }
+    }
+}
+
+void feed_set_symbol(BarFeed* feed, rust::Str symbol) {
+    if (!feed) return;
+    feed->setSymbol(QString::fromUtf8(symbol.data(), static_cast<int>(symbol.size())));
+}
+
+void feed_set_timeframe(BarFeed* feed, rust::Str timeframe, std::int64_t timeframe_ms) {
+    if (!feed) return;
+    feed->setTimeframe(QString::fromUtf8(timeframe.data(), static_cast<int>(timeframe.size())));
+    feed->setTimeframe_ms(timeframe_ms);
+}
+
+void feed_setup_and_load(BarFeed* feed, rust::Str api_base, rust::Str symbol, rust::Str timeframe) {
+    if (!feed) return;
+    feed->setup_config(
+        QString::fromUtf8(api_base.data(), static_cast<int>(api_base.size())),
+        QString::fromUtf8(symbol.data(), static_cast<int>(symbol.size())),
+        QString::fromUtf8(timeframe.data(), static_cast<int>(timeframe.size()))
+    );
+    feed->load_history();
+}
+
+void post_feed_stream_state(
+    BarFeed* feed,
+    rust::Str state,
+    rust::Str last_error,
+    std::int64_t applied,
+    std::int64_t dropped,
+    std::int64_t gaps_closed,
+    std::int64_t resnapshots,
+    std::int64_t rest_calls
+) {
+    if (!feed) return;
+    QString qstate = QString::fromUtf8(state.data(), static_cast<int>(state.size()));
+    QString qerr = QString::fromUtf8(last_error.data(), static_cast<int>(last_error.size()));
+    QMetaObject::invokeMethod(feed, [feed, qstate, qerr, applied, dropped, gaps_closed, resnapshots, rest_calls]() {
+        feed->setConnection_state(qstate);
+        feed->setLast_error(qerr);
+        feed->setApplied(applied);
+        feed->setDropped(dropped);
+        feed->setGaps_closed(gaps_closed);
+        feed->setResnapshots(resnapshots);
+        feed->setRest_calls(rest_calls);
+    }, Qt::QueuedConnection);
+}
+
+void post_feed_completed_bar(
+    BarFeed* feed,
+    std::int64_t time,
+    double open,
+    double high,
+    double low,
+    double close
+) {
+    if (!feed) return;
+    QMetaObject::invokeMethod(feed, [feed, time, open, high, low, close]() {
+        feed->ingest_completed_bar(time, open, high, low, close);
+    }, Qt::QueuedConnection);
+}
+
+void post_feed_forming_bar(
+    BarFeed* feed,
+    std::int64_t time,
+    double open,
+    double high,
+    double low,
+    double close
+) {
+    if (!feed) return;
+    QMetaObject::invokeMethod(feed, [feed, time, open, high, low, close]() {
+        feed->ingest_forming_bar(time, open, high, low, close);
+    }, Qt::QueuedConnection);
 }
 
 

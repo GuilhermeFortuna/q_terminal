@@ -86,6 +86,34 @@ pub mod ffi {
         fn load_history(self: Pin<&mut BarFeed>) -> bool;
 
         #[qinvokable]
+        fn setup_config(
+            self: Pin<&mut BarFeed>,
+            api_base: QString,
+            symbol: QString,
+            timeframe: QString,
+        );
+
+        #[qinvokable]
+        fn ingest_completed_bar(
+            self: Pin<&mut BarFeed>,
+            time: i64,
+            open: f64,
+            high: f64,
+            low: f64,
+            close: f64,
+        );
+
+        #[qinvokable]
+        fn ingest_forming_bar(
+            self: Pin<&mut BarFeed>,
+            time: i64,
+            open: f64,
+            high: f64,
+            low: f64,
+            close: f64,
+        );
+
+        #[qinvokable]
         fn set_viewport(
             self: Pin<&mut BarFeed>,
             first_bar: i64,
@@ -476,6 +504,54 @@ impl ffi::BarFeed {
             },
         );
         true
+    }
+
+    pub fn setup_config(
+        mut self: std::pin::Pin<&mut Self>,
+        api_base: QString,
+        symbol: QString,
+        timeframe: QString,
+    ) {
+        let tf_str = timeframe.to_string();
+        let tf_ms = parse_timeframe_ms(&tf_str);
+        let cfg = Config {
+            api_base: api_base.to_string(),
+            symbol: symbol.to_string(),
+            timeframe: tf_str,
+        };
+        let mut rust = self.as_mut().rust_mut();
+        rust.config = Some(cfg);
+        rust.symbol = symbol;
+        rust.timeframe = timeframe;
+        rust.timeframe_ms = tf_ms;
+    }
+
+    pub fn ingest_completed_bar(
+        mut self: std::pin::Pin<&mut Self>,
+        time: i64,
+        open: f64,
+        high: f64,
+        low: f64,
+        close: f64,
+    ) {
+        let col = make_bar_columns(time, open, high, low, close);
+        self.as_mut()
+            .rust_mut()
+            .apply_delivery(BarDelivery::Completed(col));
+    }
+
+    pub fn ingest_forming_bar(
+        mut self: std::pin::Pin<&mut Self>,
+        time: i64,
+        open: f64,
+        high: f64,
+        low: f64,
+        close: f64,
+    ) {
+        let col = make_bar_columns(time, open, high, low, close);
+        self.as_mut()
+            .rust_mut()
+            .apply_delivery(BarDelivery::Forming(col));
     }
 
     pub fn set_viewport(

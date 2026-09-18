@@ -5,9 +5,8 @@ pub mod bridge;
 pub mod chart_bridge;
 pub mod config;
 pub mod history;
+pub mod startup;
 pub mod stream;
-
-use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 
 /// Prints app version, core version, contracts rev and render backend, then exits 0.
 /// Opens no window; the path CI and an agent session take.
@@ -20,43 +19,14 @@ pub fn headless_report() -> i32 {
     0
 }
 
-/// Loads qml/Main.qml into a QQmlApplicationEngine and runs the event loop.
+/// Loads qml/Main.qml and runs the slice.
 pub fn run_windowed() -> i32 {
-    run_windowed_with_bench(false, 2000, 500_000, 0)
+    startup::run_slice(config::Config::load())
 }
 
 pub fn run_bench_frames(visible_buckets: i32, bar_count: i32, duration_ms: i32) -> i32 {
-    run_windowed_with_bench(true, visible_buckets, bar_count, duration_ms)
-}
-
-fn run_windowed_with_bench(
-    bench: bool,
-    visible_buckets: i32,
-    bar_count: i32,
-    duration_ms: i32,
-) -> i32 {
-    let mut app = QGuiApplication::new();
-    let mut engine = QQmlApplicationEngine::new();
-
-    let uri = QString::from("target/cxxqt/qml_modules");
-    engine.as_mut().unwrap().add_import_path(&uri);
-
-    let qml_file = QString::from("qml/Main.qml");
-    let qml_url = QUrl::from_local_file(&qml_file);
-    engine.as_mut().unwrap().load(&qml_url);
-
-    bridge::ffi::setup_window(engine.as_mut().unwrap());
-
-    if bench {
-        bridge::ffi::run_frame_bench(
-            engine.as_mut().unwrap(),
-            visible_buckets,
-            bar_count,
-            duration_ms,
-        );
-    }
-
-    app.as_mut().unwrap().exec()
+    let _ = (visible_buckets, bar_count);
+    startup::run_slice_opts(config::Config::load(), true, duration_ms as u64)
 }
 
 fn main() {
@@ -76,7 +46,12 @@ fn main() {
         let duration_ms = read_arg_i32(&args, "--duration-ms", 300_000);
         std::process::exit(run_bench_frames(visible_buckets, bar_count, duration_ms));
     }
-    std::process::exit(run_windowed());
+    let auto_close_ms = read_arg_i32(&args, "--auto-close-ms", 0);
+    std::process::exit(startup::run_slice_opts(
+        config::Config::load(),
+        false,
+        auto_close_ms as u64,
+    ));
 }
 
 fn read_arg_i32(args: &[String], flag: &str, default: i32) -> i32 {

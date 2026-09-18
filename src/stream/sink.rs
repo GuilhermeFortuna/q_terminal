@@ -11,6 +11,7 @@ pub enum BarDelivery {
 struct BarSinkInner {
     completed: VecDeque<BarColumns>,
     forming: Option<BarColumns>,
+    listener: Option<Arc<dyn Fn() + Send + Sync + 'static>>,
 }
 
 #[derive(Clone)]
@@ -30,18 +31,36 @@ impl BarSink {
             inner: Arc::new(Mutex::new(BarSinkInner {
                 completed: VecDeque::new(),
                 forming: None,
+                listener: None,
             })),
         }
     }
 
-    pub fn deliver_completed(&self, bars: BarColumns) {
+    pub fn set_listener(&self, listener: Arc<dyn Fn() + Send + Sync + 'static>) {
         let mut inner = self.inner.lock().unwrap();
-        inner.completed.push_back(bars);
+        inner.listener = Some(listener);
+    }
+
+    pub fn deliver_completed(&self, bars: BarColumns) {
+        let listener = {
+            let mut inner = self.inner.lock().unwrap();
+            inner.completed.push_back(bars);
+            inner.listener.clone()
+        };
+        if let Some(l) = listener {
+            l();
+        }
     }
 
     pub fn deliver_forming(&self, bars: BarColumns) {
-        let mut inner = self.inner.lock().unwrap();
-        inner.forming = Some(bars);
+        let listener = {
+            let mut inner = self.inner.lock().unwrap();
+            inner.forming = Some(bars);
+            inner.listener.clone()
+        };
+        if let Some(l) = listener {
+            l();
+        }
     }
 
     pub fn drain(&self) -> Vec<BarDelivery> {

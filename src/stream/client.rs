@@ -58,6 +58,7 @@ pub struct ClientShared {
     counters: RwLock<Counters>,
     last_error: RwLock<String>,
     last_applied_instant: RwLock<Option<Instant>>,
+    change_listener: RwLock<Option<Arc<dyn Fn() + Send + Sync + 'static>>>,
 }
 
 impl Default for ClientShared {
@@ -73,47 +74,93 @@ impl ClientShared {
             counters: RwLock::new(Counters::default()),
             last_error: RwLock::new(String::new()),
             last_applied_instant: RwLock::new(None),
+            change_listener: RwLock::new(None),
+        }
+    }
+
+    pub fn set_listener(&self, listener: Arc<dyn Fn() + Send + Sync + 'static>) {
+        let mut guard = self.change_listener.write().unwrap();
+        *guard = Some(listener);
+    }
+
+    fn notify_change(&self) {
+        let listener = self.change_listener.read().unwrap().clone();
+        if let Some(l) = listener {
+            l();
         }
     }
 
     pub fn set_state(&self, state: ConnectionState) {
-        let mut guard = self.connection_state.write().unwrap();
-        *guard = state;
+        {
+            let mut guard = self.connection_state.write().unwrap();
+            *guard = state;
+        }
+        self.notify_change();
     }
 
     pub fn set_last_error(&self, err: &str) {
-        let mut guard = self.last_error.write().unwrap();
-        *guard = err.to_string();
+        {
+            let mut guard = self.last_error.write().unwrap();
+            *guard = err.to_string();
+        }
+        self.notify_change();
     }
 
     pub fn inc_applied(&self) {
-        let mut guard = self.counters.write().unwrap();
-        guard.applied += 1;
+        {
+            let mut guard = self.counters.write().unwrap();
+            guard.applied += 1;
+        }
+        self.notify_change();
     }
 
     pub fn inc_dropped(&self) {
-        let mut guard = self.counters.write().unwrap();
-        guard.dropped += 1;
+        {
+            let mut guard = self.counters.write().unwrap();
+            guard.dropped += 1;
+        }
+        self.notify_change();
     }
 
     pub fn inc_gaps_closed(&self) {
-        let mut guard = self.counters.write().unwrap();
-        guard.gaps_closed += 1;
+        {
+            let mut guard = self.counters.write().unwrap();
+            guard.gaps_closed += 1;
+        }
+        self.notify_change();
     }
 
     pub fn inc_resnapshots(&self) {
-        let mut guard = self.counters.write().unwrap();
-        guard.resnapshots += 1;
+        {
+            let mut guard = self.counters.write().unwrap();
+            guard.resnapshots += 1;
+        }
+        self.notify_change();
     }
 
     pub fn inc_rest_calls(&self) {
-        let mut guard = self.counters.write().unwrap();
-        guard.rest_calls += 1;
+        {
+            let mut guard = self.counters.write().unwrap();
+            guard.rest_calls += 1;
+        }
+        self.notify_change();
     }
 
     pub fn record_applied(&self) {
         let mut guard = self.last_applied_instant.write().unwrap();
         *guard = Some(Instant::now());
+    }
+
+    pub fn connection_state(&self) -> ConnectionState {
+        self.connection_state.read().unwrap().clone()
+    }
+
+    pub fn counters(&self) -> Counters {
+        *self.counters.read().unwrap()
+    }
+
+    pub fn last_error(&self) -> String {
+        self.last_error.read().unwrap().clone()
     }
 }
 
@@ -159,6 +206,14 @@ impl StreamClient {
 
     pub fn connection_state(&self) -> ConnectionState {
         self.shared.connection_state.read().unwrap().clone()
+    }
+
+    pub fn shared(&self) -> Arc<ClientShared> {
+        self.shared.clone()
+    }
+
+    pub fn set_listener(&self, listener: Arc<dyn Fn() + Send + Sync + 'static>) {
+        self.shared.set_listener(listener);
     }
 
     pub fn counters(&self) -> Counters {

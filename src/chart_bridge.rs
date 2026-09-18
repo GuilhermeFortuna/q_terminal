@@ -73,6 +73,9 @@ pub mod chart {
         type StatusStripProbe;
         type EmptyStateProbe;
 
+        include!("cxx-qt-lib/qqmlapplicationengine.h");
+        type QQmlApplicationEngine = cxx_qt_lib::QQmlApplicationEngine;
+
         fn make_status_strip_probe() -> UniquePtr<StatusStripProbe>;
         unsafe fn set_feed(self: Pin<&mut StatusStripProbe>, feed: *mut BarFeed);
         fn result(self: &StatusStripProbe) -> StatusStripProbeResult;
@@ -89,6 +92,48 @@ pub mod chart {
         unsafe fn feed_set_live_only(feed: *mut BarFeed, live_only: bool);
         unsafe fn feed_set_history(feed: *mut BarFeed, source: &str, shortfall: i64);
         unsafe fn feed_set_bar_count(feed: *mut BarFeed, count: i64);
+
+        unsafe fn find_window_feed(engine: Pin<&mut QQmlApplicationEngine>) -> *mut BarFeed;
+        unsafe fn setup_window_feed(engine: Pin<&mut QQmlApplicationEngine>, feed: *mut BarFeed);
+        fn setup_window_auto_close(engine: Pin<&mut QQmlApplicationEngine>, ms: i32);
+
+        unsafe fn feed_set_symbol(feed: *mut BarFeed, symbol: &str);
+        unsafe fn feed_set_timeframe(feed: *mut BarFeed, timeframe: &str, timeframe_ms: i64);
+        unsafe fn feed_setup_and_load(
+            feed: *mut BarFeed,
+            api_base: &str,
+            symbol: &str,
+            timeframe: &str,
+        );
+
+        unsafe fn post_feed_stream_state(
+            feed: *mut BarFeed,
+            state: &str,
+            last_error: &str,
+            applied: i64,
+            dropped: i64,
+            gaps_closed: i64,
+            resnapshots: i64,
+            rest_calls: i64,
+        );
+
+        unsafe fn post_feed_completed_bar(
+            feed: *mut BarFeed,
+            time: i64,
+            open: f64,
+            high: f64,
+            low: f64,
+            close: f64,
+        );
+
+        unsafe fn post_feed_forming_bar(
+            feed: *mut BarFeed,
+            time: i64,
+            open: f64,
+            high: f64,
+            low: f64,
+            close: f64,
+        );
 
         fn make_viewport_probe() -> UniquePtr<ViewportProbe>;
         fn set_bars_visible(self: Pin<&mut ViewportProbe>, count: i32);
@@ -165,17 +210,22 @@ pub mod chart {
         unsafe fn chart_series_geometry_revision(series: *mut BarSeries) -> i64;
         unsafe fn chart_series_vertex_len(series: *mut BarSeries) -> i32;
         unsafe fn chart_series_vertex_at(series: *mut BarSeries, index: usize) -> ProbeVertex;
+        fn ensure_application();
+        fn exec_application() -> i32;
         fn ensure_test_app();
         fn reset_chart_probe_state();
     }
 }
 
 pub use chart::{
-    feed_set_bar_count, feed_set_connection_state, feed_set_data_age_ms, feed_set_history,
-    feed_set_last_error, feed_set_live_only, feed_set_stale, make_chart_pane_probe,
-    make_empty_state_probe, make_status_strip_probe, make_test_feed, make_viewport_probe, BarFeed,
-    ChartPaneProbe, ChartPaneProbeResult, EmptyStateProbe, EmptyStateProbeResult, ProbeResult,
-    StatusStripProbe, StatusStripProbeResult, ViewportProbe, ViewportProbeResult,
+    ensure_application, exec_application, feed_set_bar_count, feed_set_connection_state,
+    feed_set_data_age_ms, feed_set_history, feed_set_last_error, feed_set_live_only,
+    feed_set_stale, feed_set_symbol, feed_set_timeframe, feed_setup_and_load, find_window_feed,
+    make_chart_pane_probe, make_empty_state_probe, make_status_strip_probe, make_test_feed,
+    make_viewport_probe, post_feed_completed_bar, post_feed_forming_bar, post_feed_stream_state,
+    setup_window_auto_close, setup_window_feed, BarFeed, ChartPaneProbe, ChartPaneProbeResult,
+    EmptyStateProbe, EmptyStateProbeResult, ProbeResult, StatusStripProbe, StatusStripProbeResult,
+    ViewportProbe, ViewportProbeResult,
 };
 
 pub fn register_chart_types() {

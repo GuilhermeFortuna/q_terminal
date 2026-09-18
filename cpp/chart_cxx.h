@@ -10,6 +10,7 @@
 class BarChartItem;
 class BarFeed;
 class BarSeries;
+class QQmlApplicationEngine;
 
 struct ProbeResult;
 struct ProbeState;
@@ -95,6 +96,45 @@ void feed_set_live_only(BarFeed* feed, bool live_only);
 void feed_set_history(BarFeed* feed, rust::Str source, std::int64_t shortfall);
 void feed_set_bar_count(BarFeed* feed, std::int64_t count);
 
+BarFeed* find_window_feed(QQmlApplicationEngine& engine);
+void setup_window_feed(QQmlApplicationEngine& engine, BarFeed* feed);
+void setup_window_auto_close(QQmlApplicationEngine& engine, int ms);
+
+void feed_set_symbol(BarFeed* feed, rust::Str symbol);
+void feed_set_timeframe(BarFeed* feed, rust::Str timeframe, std::int64_t timeframe_ms);
+void feed_setup_and_load(BarFeed* feed, rust::Str api_base, rust::Str symbol, rust::Str timeframe);
+
+void post_feed_stream_state(
+    BarFeed* feed,
+    rust::Str state,
+    rust::Str last_error,
+    std::int64_t applied,
+    std::int64_t dropped,
+    std::int64_t gaps_closed,
+    std::int64_t resnapshots,
+    std::int64_t rest_calls
+);
+
+void post_feed_completed_bar(
+    BarFeed* feed,
+    std::int64_t time,
+    double open,
+    double high,
+    double low,
+    double close
+);
+
+void post_feed_forming_bar(
+    BarFeed* feed,
+    std::int64_t time,
+    double open,
+    double high,
+    double low,
+    double close
+);
+
+void ensure_application();
+int exec_application();
 void register_bar_chart_types();
 
 BarSeries* make_test_series(int bar_count);
