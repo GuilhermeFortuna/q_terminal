@@ -65,35 +65,56 @@ pub enum DropReason {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Action {
-    Apply(BarColumns),
+pub enum Action<P = BarColumns> {
+    Apply(P),
     FetchHistory { from_seq: i64 },
     ReSnapshot,
     Drop(DropReason),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct PendingEntry {
+pub struct PendingEntry<P = BarColumns> {
     pub seq: i64,
     pub epoch: String,
     pub symbol: String,
     pub timeframe: String,
-    pub bars: BarColumns,
+    pub payload: P,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TopicState {
+pub struct TopicState<P = BarColumns> {
     pub topic: String,
     pub is_coalescing: bool,
-    pub target_symbol: String,
-    pub target_timeframe: String,
+    pub filter: TopicFilter,
     pub phase: Phase,
     pub epoch: Option<String>,
     pub last_applied_seq: Option<i64>,
-    pub buffered: Vec<PendingEntry>,
+    pub buffered: Vec<PendingEntry<P>>,
 }
 
-impl TopicState {
+/// Which entries of a topic the client keeps. Execution topics carry no routing filter.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TopicFilter {
+    Bars { symbol: String, timeframe: String },
+    None,
+}
+
+impl<P> TopicState<P> {
+    /// A state for a topic whose entries are all relevant (execution topics).
+    pub fn unfiltered(topic: &str) -> Self {
+        Self {
+            topic: topic.to_string(),
+            is_coalescing: false,
+            filter: TopicFilter::None,
+            phase: Phase::Subscribing,
+            epoch: None,
+            last_applied_seq: None,
+            buffered: Vec::new(),
+        }
+    }
+}
+
+impl TopicState<BarColumns> {
     pub fn new(
         topic: &str,
         is_coalescing: bool,
@@ -103,8 +124,10 @@ impl TopicState {
         Self {
             topic: topic.to_string(),
             is_coalescing,
-            target_symbol: target_symbol.to_string(),
-            target_timeframe: target_timeframe.to_string(),
+            filter: TopicFilter::Bars {
+                symbol: target_symbol.to_string(),
+                timeframe: target_timeframe.to_string(),
+            },
             phase: Phase::Subscribing,
             epoch: None,
             last_applied_seq: None,
@@ -114,7 +137,7 @@ impl TopicState {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Event {
+pub enum Event<P = BarColumns> {
     Subscribed {
         epoch: String,
         last_seq: i64,
@@ -122,18 +145,18 @@ pub enum Event {
     Snapshot {
         epoch: String,
         seq: i64,
-        bars: BarColumns,
+        payload: P,
     },
     Entry {
         epoch: String,
         seq: i64,
         symbol: String,
         timeframe: String,
-        bars: BarColumns,
+        payload: P,
     },
     HistoryPage {
         epoch: String,
-        entries: Vec<(i64, BarColumns)>,
+        entries: Vec<(i64, P)>,
         next_seq: Option<i64>,
     },
     HistoryExpired,
@@ -146,7 +169,7 @@ pub enum Event {
     },
 }
 
-pub fn on_event(state: &mut TopicState, event: Event) -> Vec<Action> {
+pub fn on_event<P>(state: &mut TopicState<P>, event: Event<P>) -> Vec<Action<P>> {
     let mut actions = Vec::new();
 
     match event {
@@ -155,11 +178,15 @@ pub fn on_event(state: &mut TopicState, event: Event) -> Vec<Action> {
             state.phase = Phase::Buffering;
         }
 
-        Event::Snapshot { epoch, seq, bars } => {
+        Event::Snapshot {
+            epoch,
+            seq,
+            payload,
+        } => {
             state.epoch = Some(epoch);
             state.last_applied_seq = Some(seq);
             state.phase = Phase::Live;
-            actions.push(Action::Apply(bars));
+            actions.push(Action::Apply(payload));
 
             let mut buffered = std::mem::take(&mut state.buffered);
             buffered.sort_by_key(|e| e.seq);
@@ -178,7 +205,7 @@ pub fn on_event(state: &mut TopicState, event: Event) -> Vec<Action> {
                     actions.push(Action::Drop(DropReason::BelowWatermark));
                 } else if entry.seq == last_seq + 1 {
                     state.last_applied_seq = Some(entry.seq);
-                    actions.push(Action::Apply(entry.bars));
+                    actions.push(Action::Apply(entry.payload));
                 } else {
                     gap_found = true;
                     if state.is_coalescing {
@@ -206,13 +233,19 @@ pub fn on_event(state: &mut TopicState, event: Event) -> Vec<Action> {
             seq,
             symbol,
             timeframe,
-            bars,
+            payload,
         } => {
-            if symbol != state.target_symbol {
-                return vec![Action::Drop(DropReason::WrongSymbol)];
-            }
-            if timeframe != state.target_timeframe {
-                return vec![Action::Drop(DropReason::WrongTimeframe)];
+            if let TopicFilter::Bars {
+                symbol: target_symbol,
+                timeframe: target_timeframe,
+            } = &state.filter
+            {
+                if symbol != *target_symbol {
+                    return vec![Action::Drop(DropReason::WrongSymbol)];
+                }
+                if timeframe != *target_timeframe {
+                    return vec![Action::Drop(DropReason::WrongTimeframe)];
+                }
             }
 
             match &state.phase {
@@ -222,7 +255,7 @@ pub fn on_event(state: &mut TopicState, event: Event) -> Vec<Action> {
                         epoch,
                         symbol,
                         timeframe,
-                        bars,
+                        payload,
                     });
                 }
                 Phase::AwaitingHistory { .. } => {
@@ -231,7 +264,7 @@ pub fn on_event(state: &mut TopicState, event: Event) -> Vec<Action> {
                         epoch,
                         symbol,
                         timeframe,
-                        bars,
+                        payload,
                     });
                 }
                 Phase::Live => {
@@ -240,7 +273,7 @@ pub fn on_event(state: &mut TopicState, event: Event) -> Vec<Action> {
                         actions.push(Action::Drop(DropReason::DuplicateSequence));
                     } else if seq == last_seq + 1 {
                         state.last_applied_seq = Some(seq);
-                        actions.push(Action::Apply(bars));
+                        actions.push(Action::Apply(payload));
                     } else {
                         if state.is_coalescing {
                             actions.push(Action::ReSnapshot);
@@ -250,7 +283,7 @@ pub fn on_event(state: &mut TopicState, event: Event) -> Vec<Action> {
                                 epoch,
                                 symbol,
                                 timeframe,
-                                bars,
+                                payload,
                             });
                         } else {
                             let from_seq = last_seq + 1;
@@ -264,7 +297,7 @@ pub fn on_event(state: &mut TopicState, event: Event) -> Vec<Action> {
                                 epoch,
                                 symbol,
                                 timeframe,
-                                bars,
+                                payload,
                             });
                             actions.push(Action::FetchHistory { from_seq });
                         }
@@ -278,11 +311,11 @@ pub fn on_event(state: &mut TopicState, event: Event) -> Vec<Action> {
             entries,
             next_seq: _,
         } => {
-            for (seq, bars) in entries {
+            for (seq, payload) in entries {
                 let last_seq = state.last_applied_seq.unwrap_or(0);
                 if seq == last_seq + 1 {
                     state.last_applied_seq = Some(seq);
-                    actions.push(Action::Apply(bars));
+                    actions.push(Action::Apply(payload));
                 } else if seq <= last_seq {
                     actions.push(Action::Drop(DropReason::DuplicateSequence));
                 }
@@ -304,7 +337,7 @@ pub fn on_event(state: &mut TopicState, event: Event) -> Vec<Action> {
                     actions.push(Action::Drop(DropReason::DuplicateSequence));
                 } else if entry.seq == last_seq + 1 {
                     state.last_applied_seq = Some(entry.seq);
-                    actions.push(Action::Apply(entry.bars));
+                    actions.push(Action::Apply(entry.payload));
                 } else {
                     gap_found = true;
                     remaining.push(entry);
@@ -367,7 +400,7 @@ mod tests {
                 seq: 11,
                 symbol: "PETR4".into(),
                 timeframe: "1m".into(),
-                bars: dummy_bars(100),
+                payload: dummy_bars(100),
             },
         );
 
@@ -398,7 +431,7 @@ mod tests {
                 seq: 10,
                 symbol: "PETR4".into(),
                 timeframe: "1m".into(),
-                bars: dummy_bars(100),
+                payload: dummy_bars(100),
             },
         );
         on_event(
@@ -408,7 +441,7 @@ mod tests {
                 seq: 11,
                 symbol: "PETR4".into(),
                 timeframe: "1m".into(),
-                bars: dummy_bars(101),
+                payload: dummy_bars(101),
             },
         );
 
@@ -418,7 +451,7 @@ mod tests {
             Event::Snapshot {
                 epoch: "ep1".into(),
                 seq: 11,
-                bars: dummy_bars(101),
+                payload: dummy_bars(101),
             },
         );
 
@@ -449,7 +482,7 @@ mod tests {
                 seq: 10,
                 symbol: "PETR4".into(),
                 timeframe: "1m".into(),
-                bars: dummy_bars(100),
+                payload: dummy_bars(100),
             },
         );
         on_event(
@@ -459,7 +492,7 @@ mod tests {
                 seq: 13,
                 symbol: "PETR4".into(),
                 timeframe: "1m".into(),
-                bars: dummy_bars(103),
+                payload: dummy_bars(103),
             },
         );
         on_event(
@@ -469,7 +502,7 @@ mod tests {
                 seq: 12,
                 symbol: "PETR4".into(),
                 timeframe: "1m".into(),
-                bars: dummy_bars(102),
+                payload: dummy_bars(102),
             },
         );
 
@@ -479,7 +512,7 @@ mod tests {
             Event::Snapshot {
                 epoch: "ep1".into(),
                 seq: 11,
-                bars: dummy_bars(101),
+                payload: dummy_bars(101),
             },
         );
 
@@ -507,7 +540,7 @@ mod tests {
             Event::Snapshot {
                 epoch: "ep1".into(),
                 seq: 10,
-                bars: dummy_bars(100),
+                payload: dummy_bars(100),
             },
         );
 
@@ -519,7 +552,7 @@ mod tests {
                 seq: 11,
                 symbol: "PETR4".into(),
                 timeframe: "1m".into(),
-                bars: dummy_bars(101),
+                payload: dummy_bars(101),
             },
         );
         assert_eq!(a1, vec![Action::Apply(dummy_bars(101))]);
@@ -532,7 +565,7 @@ mod tests {
                 seq: 11,
                 symbol: "PETR4".into(),
                 timeframe: "1m".into(),
-                bars: dummy_bars(101),
+                payload: dummy_bars(101),
             },
         );
         assert_eq!(a2, vec![Action::Drop(DropReason::DuplicateSequence)]);
@@ -553,7 +586,7 @@ mod tests {
             Event::Snapshot {
                 epoch: "ep1".into(),
                 seq: 10,
-                bars: dummy_bars(100),
+                payload: dummy_bars(100),
             },
         );
 
@@ -565,7 +598,7 @@ mod tests {
                 seq: 13,
                 symbol: "PETR4".into(),
                 timeframe: "1m".into(),
-                bars: dummy_bars(103),
+                payload: dummy_bars(103),
             },
         );
 
@@ -589,7 +622,7 @@ mod tests {
             Event::Snapshot {
                 epoch: "ep1".into(),
                 seq: 10,
-                bars: dummy_bars(100),
+                payload: dummy_bars(100),
             },
         );
         on_event(
@@ -599,7 +632,7 @@ mod tests {
                 seq: 13,
                 symbol: "PETR4".into(),
                 timeframe: "1m".into(),
-                bars: dummy_bars(103),
+                payload: dummy_bars(103),
             },
         );
 
@@ -642,7 +675,7 @@ mod tests {
             Event::Snapshot {
                 epoch: "ep1".into(),
                 seq: 10,
-                bars: dummy_bars(100),
+                payload: dummy_bars(100),
             },
         );
         on_event(
@@ -652,7 +685,7 @@ mod tests {
                 seq: 15,
                 symbol: "PETR4".into(),
                 timeframe: "1m".into(),
-                bars: dummy_bars(105),
+                payload: dummy_bars(105),
             },
         );
 
@@ -678,7 +711,7 @@ mod tests {
             Event::Snapshot {
                 epoch: "ep1".into(),
                 seq: 10,
-                bars: dummy_bars(100),
+                payload: dummy_bars(100),
             },
         );
 
@@ -694,7 +727,7 @@ mod tests {
             Event::Snapshot {
                 epoch: "ep1".into(),
                 seq: 20,
-                bars: dummy_bars(200),
+                payload: dummy_bars(200),
             },
         );
 
@@ -739,7 +772,7 @@ mod tests {
             Event::Snapshot {
                 epoch: "ep1".into(),
                 seq: 10,
-                bars: dummy_bars(100),
+                payload: dummy_bars(100),
             },
         );
 
@@ -751,7 +784,7 @@ mod tests {
                 seq: 15,
                 symbol: "PETR4".into(),
                 timeframe: "1m".into(),
-                bars: dummy_bars(105),
+                payload: dummy_bars(105),
             },
         );
         assert_eq!(actions, vec![Action::ReSnapshot]);
@@ -772,7 +805,7 @@ mod tests {
             Event::Snapshot {
                 epoch: "ep1".into(),
                 seq: 10,
-                bars: dummy_bars(100),
+                payload: dummy_bars(100),
             },
         );
 
@@ -783,7 +816,7 @@ mod tests {
                 seq: 11,
                 symbol: "VALE3".into(),
                 timeframe: "1m".into(),
-                bars: dummy_bars(101),
+                payload: dummy_bars(101),
             },
         );
         assert_eq!(actions, vec![Action::Drop(DropReason::WrongSymbol)]);

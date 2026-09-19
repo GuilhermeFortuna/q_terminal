@@ -299,7 +299,7 @@ async fn fetch_and_apply_snapshot(
                                 Event::Snapshot {
                                     epoch: entry.epoch.clone(),
                                     seq: entry.seq,
-                                    bars,
+                                    payload: bars,
                                 },
                             );
                             handle_actions(
@@ -614,7 +614,7 @@ async fn run_client_loop(
                                                 seq: header.seq,
                                                 symbol: sym,
                                                 timeframe: tf,
-                                                bars,
+                                                payload: bars,
                                             };
                                             match states.get_mut(&header.topic) {
                                                 Some(state) => {
