@@ -37,6 +37,7 @@ pub mod ffi {
         unsafe fn table_model_count(model: *mut TableModel) -> i32;
         #[allow(dead_code)]
         unsafe fn table_model_clear(model: *mut TableModel);
+        unsafe fn table_model_get_field(model: *mut TableModel, index: i32, field: &str) -> String;
         unsafe fn table_model_to_variant(model: *mut TableModel) -> QVariant;
     }
 
@@ -560,6 +561,76 @@ impl ExecutionModelsRust {
             ffi::table_model_reset_json(self.m_ledger.0, &led_json);
         }
     }
+
+    #[allow(dead_code)]
+    pub fn get_deployment_field(&self, index: i32, field: &str) -> String {
+        unsafe { ffi::table_model_get_field(self.m_deployments.0, index, field) }
+    }
+
+    #[allow(dead_code)]
+    pub fn get_order_field(&self, index: i32, field: &str) -> String {
+        unsafe { ffi::table_model_get_field(self.m_orders.0, index, field) }
+    }
+
+    #[allow(dead_code)]
+    pub fn get_fill_field(&self, index: i32, field: &str) -> String {
+        unsafe { ffi::table_model_get_field(self.m_fills.0, index, field) }
+    }
+
+    #[allow(dead_code)]
+    pub fn get_decision_field(&self, index: i32, field: &str) -> String {
+        unsafe { ffi::table_model_get_field(self.m_decisions.0, index, field) }
+    }
+
+    #[allow(dead_code)]
+    pub fn get_risk_field(&self, index: i32, field: &str) -> String {
+        unsafe { ffi::table_model_get_field(self.m_risk.0, index, field) }
+    }
+
+    #[allow(dead_code)]
+    pub fn get_ledger_field(&self, index: i32, field: &str) -> String {
+        unsafe { ffi::table_model_get_field(self.m_ledger.0, index, field) }
+    }
+
+    #[allow(dead_code)]
+    pub fn get_account_field(&self, index: i32, field: &str) -> String {
+        unsafe { ffi::table_model_get_field(self.m_accounts.0, index, field) }
+    }
+
+    #[allow(dead_code)]
+    pub fn deployments_count(&self) -> i32 {
+        unsafe { ffi::table_model_count(self.m_deployments.0) }
+    }
+
+    #[allow(dead_code)]
+    pub fn orders_count(&self) -> i32 {
+        unsafe { ffi::table_model_count(self.m_orders.0) }
+    }
+
+    #[allow(dead_code)]
+    pub fn fills_count(&self) -> i32 {
+        unsafe { ffi::table_model_count(self.m_fills.0) }
+    }
+
+    #[allow(dead_code)]
+    pub fn decisions_count(&self) -> i32 {
+        unsafe { ffi::table_model_count(self.m_decisions.0) }
+    }
+
+    #[allow(dead_code)]
+    pub fn risk_count(&self) -> i32 {
+        unsafe { ffi::table_model_count(self.m_risk.0) }
+    }
+
+    #[allow(dead_code)]
+    pub fn ledger_count(&self) -> i32 {
+        unsafe { ffi::table_model_count(self.m_ledger.0) }
+    }
+
+    #[allow(dead_code)]
+    pub fn accounts_count(&self) -> i32 {
+        unsafe { ffi::table_model_count(self.m_accounts.0) }
+    }
 }
 
 impl ffi::ExecutionModels {
@@ -668,6 +739,7 @@ impl ffi::ExecutionModels {
                         .get("items")
                         .and_then(|v| v.as_array())
                         .cloned()
+                        .or_else(|| body.as_array().cloned())
                         .unwrap_or_default();
                     if items.is_empty() {
                         return;

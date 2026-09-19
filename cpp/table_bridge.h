@@ -20,6 +20,7 @@ void table_model_reset_json(TableModel* model, rust::Str json_array);
 void table_model_append_json(TableModel* model, rust::Str json_array);
 int table_model_count(TableModel* model);
 void table_model_clear(TableModel* model);
+rust::String table_model_get_field(TableModel* model, int index, rust::Str field);
 
 QVariant table_model_to_variant(TableModel* model);
 

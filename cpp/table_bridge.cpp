@@ -65,6 +65,13 @@ void table_model_clear(TableModel* model) {
     if (model) model->clear();
 }
 
+rust::String table_model_get_field(TableModel* model, int index, rust::Str field) {
+    if (!model) return "";
+    QVariantMap map = model->get(index);
+    QString key = QString::fromUtf8(field.data(), static_cast<int>(field.size()));
+    return rust::String(map.value(key).toString().toUtf8().constData());
+}
+
 QVariant table_model_to_variant(TableModel* model) {
     if (!model) return QVariant();
     return QVariant::fromValue(static_cast<QObject*>(model));

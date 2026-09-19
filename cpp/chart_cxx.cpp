@@ -169,6 +169,7 @@ int exec_application() {
 void process_events() {
     if (auto* app = QCoreApplication::instance()) {
         app->processEvents();
+        QCoreApplication::sendPostedEvents(nullptr, 0);
     }
 }
 
