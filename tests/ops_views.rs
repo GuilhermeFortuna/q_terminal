@@ -50,7 +50,9 @@ fn make_models() -> (*mut chart_bridge::ExecutionModels, ExecutionHandle) {
 /// strings formatted without loss.
 #[test]
 fn test_ops_views_criterion_1_fields_tables_order_and_decimal_lossless() {
-    let _guard = chart_bridge::QT_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _guard = chart_bridge::QT_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
 
     let (models, handle) = make_models();
 
@@ -148,10 +150,7 @@ fn test_ops_views_criterion_1_fields_tables_order_and_decimal_lossless() {
         assert_eq!(rust.get_deployment_field(0, "broker_mode"), "paper");
         assert_eq!(rust.get_deployment_field(0, "pos_side"), "long");
         // Decimal string precision must be lossless
-        assert_eq!(
-            rust.get_deployment_field(0, "pos_quantity"),
-            "100.50000000"
-        );
+        assert_eq!(rust.get_deployment_field(0, "pos_quantity"), "100.50000000");
         assert_eq!(
             rust.get_deployment_field(0, "pos_entry_price"),
             "34.56789000"
@@ -190,13 +189,22 @@ fn test_ops_views_criterion_1_fields_tables_order_and_decimal_lossless() {
         assert_eq!(rust.decisions_count(), 1);
         assert_eq!(rust.get_decision_field(0, "id"), "dec-001");
         assert_eq!(rust.get_decision_field(0, "signal_action"), "buy");
-        assert_eq!(rust.get_decision_field(0, "requested_quantity"), "100.50000000");
-        assert_eq!(rust.get_decision_field(0, "reason"), "strategy_trigger_long");
+        assert_eq!(
+            rust.get_decision_field(0, "requested_quantity"),
+            "100.50000000"
+        );
+        assert_eq!(
+            rust.get_decision_field(0, "reason"),
+            "strategy_trigger_long"
+        );
 
         // 5. Risk table assertions
         assert_eq!(rust.risk_count(), 1);
         assert_eq!(rust.get_risk_field(0, "id"), "risk-001");
-        assert_eq!(rust.get_risk_field(0, "rejection_code"), "max_position_limit");
+        assert_eq!(
+            rust.get_risk_field(0, "rejection_code"),
+            "max_position_limit"
+        );
         assert_eq!(
             rust.get_risk_field(0, "message"),
             "Requested size violates risk limit"
@@ -220,8 +228,11 @@ fn test_ops_views_criterion_1_fields_tables_order_and_decimal_lossless() {
 /// Selecting a deployment shows only its rows.
 /// "Load older" issues one paged REST request and appends its rows below.
 #[tokio::test(flavor = "current_thread")]
+#[allow(clippy::await_holding_lock)]
 async fn test_ops_views_criterion_2_selection_isolation_and_load_older_paged_rest() {
-    let _guard = chart_bridge::QT_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _guard = chart_bridge::QT_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
 
     let server = FakeServer::start().await;
     let (models, handle) = make_models();
@@ -344,7 +355,10 @@ fn test_ops_views_criterion_4_all_section_8_1_degraded_states_asserted_headlessl
     // 3. Postgres down (503 / database unavailable)
     status.mark_postgres_down();
     assert_eq!(status.api_status.to_string(), "degraded");
-    assert!(!status.postgres_available, "postgres must be marked unavailable on 503");
+    assert!(
+        !status.postgres_available,
+        "postgres must be marked unavailable on 503"
+    );
 
     // 4. API offline / unreachable
     status.mark_api_offline();

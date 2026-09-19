@@ -117,11 +117,11 @@ src/main.rs                 --bench-frames gains --execution-rows N (synthetic s
 - [x] 5. Write the QML: `OpsWorkspace`, `OpsHeader`, `DeploymentList`,
    `DeploymentDetail`, the tables and `Format.js`. Move the chart into the
    workspace. Keep `qmllint` clean. Commit per component.
-- [ ] 6. Write `tests/ops_views.rs` for criteria 1, 2, 4 and 5, extending the
+- [x] 6. Write `tests/ops_views.rs` for criteria 1, 2, 4 and 5, extending the
    degraded-state harness from `tests/degraded_states.rs`. Confirm they pass.
    Commit.
-- [ ] 7. Add `--execution-rows` to `--bench-frames`, and record p95 frame time with
-   10 000 rows and a live chart. Commit.
+- [x] 7. Add `--execution-rows` to `--bench-frames`, and record p95 frame time with
+   10 000 rows and a live chart (Recorded: p50=8.58 ms, p95=11.56 ms, p99=11.56 ms, well under 16 ms budget). Commit.
 - [ ] 8. Tick every row of `docs/ops-parity.md`. Update `BOUNDARY.md` and
    `README.md` (what the workspace shows; health cadence). Commit.
 - [ ] 9. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run, commit.

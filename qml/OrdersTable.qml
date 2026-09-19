@@ -50,6 +50,7 @@ Rectangle {
 
             delegate: Rectangle {
                 id: rowRect
+                required property int index
                 required property string id
                 required property string intent_id
                 required property string side

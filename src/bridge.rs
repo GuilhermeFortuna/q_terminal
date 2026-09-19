@@ -26,6 +26,7 @@ pub mod ffi {
             visible_buckets: i32,
             bar_count: i32,
             duration_ms: i32,
+            execution_rows: i32,
         );
     }
 

@@ -12,6 +12,9 @@
 #include <QtQuick/QSGRendererInterface>
 #include "q-qt/src/bar_series.cxxqt.h"
 
+#include "table_model.h"
+#include "q_terminal/src/execution_models.cxxqt.h"
+
 namespace {
 
 const char* graphics_api_name(QSGRendererInterface::GraphicsApi api) {
@@ -38,7 +41,7 @@ const char* graphics_api_name(QSGRendererInterface::GraphicsApi api) {
 } // namespace
 
 void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar_count,
-                     int duration_ms) {
+                     int duration_ms, int execution_rows) {
     QQuickWindow* window = nullptr;
     for (QObject* root : engine.rootObjects()) {
         window = qobject_cast<QQuickWindow*>(root);
@@ -51,7 +54,15 @@ void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar
     if (chart == nullptr && window != nullptr) {
         chart = window->findChild<BarChartItem*>();
     }
-    BarSeries* series = chart ? qobject_cast<BarSeries*>(chart->series()) : nullptr;
+    BarSeries* series = nullptr;
+    if (chart != nullptr) {
+        if (auto* s = qobject_cast<BarSeries*>(chart->series())) {
+            series = s;
+        } else {
+            series = new BarSeries(chart);
+            chart->setSeries(series);
+        }
+    }
 
     if (window == nullptr || chart == nullptr || series == nullptr) {
         std::cerr << "frame bench: chart scene not found" << std::endl;
@@ -63,6 +74,53 @@ void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar
     chart->setLastBar(visible_buckets);
     chart->setLowPrice(series->getLow());
     chart->setHighPrice(series->getHigh());
+
+    if (execution_rows > 0) {
+        auto* models = window->findChild<ExecutionModels*>("executionModels");
+        if (models == nullptr) {
+            models = window->findChild<ExecutionModels*>();
+        }
+        if (models != nullptr) {
+            QObject* depObj = qvariant_cast<QObject*>(models->getDeployments());
+            if (auto* depModel = qobject_cast<TableModel*>(depObj)) {
+                QList<QVariantMap> depRows;
+                QVariantMap dep;
+                dep[QStringLiteral("id")] = QStringLiteral("dep-bench-01");
+                dep[QStringLiteral("name")] = QStringLiteral("Bench Strategy");
+                dep[QStringLiteral("symbol")] = QStringLiteral("BTCUSD");
+                dep[QStringLiteral("timeframe")] = QStringLiteral("1m");
+                dep[QStringLiteral("broker_mode")] = QStringLiteral("paper");
+                dep[QStringLiteral("lifecycle")] = QStringLiteral("running");
+                dep[QStringLiteral("pos_quantity")] = QStringLiteral("1.50");
+                dep[QStringLiteral("pos_side")] = QStringLiteral("long");
+                dep[QStringLiteral("pos_entry_price")] = QStringLiteral("65000.00");
+                dep[QStringLiteral("pos_mark_price")] = QStringLiteral("65100.00");
+                dep[QStringLiteral("pos_unrealized_pnl")] = QStringLiteral("150.00");
+                depRows.append(dep);
+                depModel->resetRows(depRows);
+            }
+            models->setSelected_deployment_id(QStringLiteral("dep-bench-01"));
+
+            QObject* ordersObj = qvariant_cast<QObject*>(models->getOrders());
+            if (auto* ordersModel = qobject_cast<TableModel*>(ordersObj)) {
+                QList<QVariantMap> orderRows;
+                orderRows.reserve(execution_rows);
+                for (int i = 0; i < execution_rows; ++i) {
+                    QVariantMap ord;
+                    ord[QStringLiteral("id")] = QStringLiteral("ord-%1").arg(i);
+                    ord[QStringLiteral("created_at")] = QStringLiteral("2026-09-18T10:00:00Z");
+                    ord[QStringLiteral("intent_id")] = QStringLiteral("int-%1").arg(i);
+                    ord[QStringLiteral("side")] = (i % 2 == 0) ? QStringLiteral("buy") : QStringLiteral("sell");
+                    ord[QStringLiteral("order_type")] = QStringLiteral("limit");
+                    ord[QStringLiteral("quantity")] = QStringLiteral("100.00");
+                    ord[QStringLiteral("status")] = QStringLiteral("filled");
+                    ord[QStringLiteral("reconciliation_state")] = QStringLiteral("reconciled");
+                    orderRows.append(ord);
+                }
+                ordersModel->resetRows(orderRows);
+            }
+        }
+    }
 
     auto* frame_ms = new std::vector<double>();
     auto* uploads_per_frame = new std::vector<int>();
@@ -86,9 +144,10 @@ void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar
     QTimer* stopTimer = new QTimer(window);
     stopTimer->setSingleShot(true);
     QObject::connect(stopTimer, &QTimer::timeout, window,
-                     [window, frame_ms, uploads_per_frame, visible_buckets]() {
+                     [window, frame_ms, uploads_per_frame, visible_buckets, execution_rows]() {
                          if (frame_ms->empty()) {
                              std::cout << "frame_bench buckets=" << visible_buckets
+                                       << " execution_rows=" << execution_rows
                                        << " frames=0" << std::endl;
                              window->close();
                              return;
@@ -96,9 +155,15 @@ void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar
 
                          std::vector<double> sorted = *frame_ms;
                          std::sort(sorted.begin(), sorted.end());
-                         const std::size_t idx =
+                         const std::size_t idx50 =
+                             static_cast<std::size_t>(0.50 * static_cast<double>(sorted.size() - 1));
+                         const std::size_t idx95 =
                              static_cast<std::size_t>(0.95 * static_cast<double>(sorted.size() - 1));
-                         const double p95 = sorted[idx];
+                         const std::size_t idx99 =
+                             static_cast<std::size_t>(0.99 * static_cast<double>(sorted.size() - 1));
+                         const double p50 = sorted[idx50];
+                         const double p95 = sorted[idx95];
+                         const double p99 = sorted[idx99];
                          const double max_ms = sorted.back();
                          double upload_sum = 0.0;
                          for (int uploads : *uploads_per_frame) {
@@ -112,11 +177,16 @@ void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar
                              rif ? rif->graphicsApi() : window->graphicsApi();
 
                          std::cout << "frame_bench buckets=" << visible_buckets
-                                   << " frames=" << sorted.size() << " p95_ms=" << p95
+                                   << " execution_rows=" << execution_rows
+                                   << " frames=" << sorted.size()
+                                   << " p50_ms=" << p50
+                                   << " p95_ms=" << p95
+                                   << " p99_ms=" << p99
                                    << " max_ms=" << max_ms
                                    << " avg_uploads_per_frame=" << avg_uploads
                                    << " graphics_api=" << graphics_api_name(api) << std::endl;
                          window->close();
                      });
-    stopTimer->start(duration_ms);
+    int dur = duration_ms > 0 ? duration_ms : 5000;
+    stopTimer->start(dur);
 }

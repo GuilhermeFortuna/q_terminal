@@ -47,6 +47,7 @@ Rectangle {
 
             delegate: Rectangle {
                 id: rowRect
+                required property int index
                 required property string id
                 required property string entry_type
                 required property string amount
