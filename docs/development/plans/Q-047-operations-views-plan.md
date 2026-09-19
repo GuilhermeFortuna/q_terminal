@@ -104,7 +104,7 @@ src/main.rs                 --bench-frames gains --execution-rows N (synthetic s
 
 ## Ordered implementation
 
-- [ ] 1. Work on the branch `Q-047-operations-views` in `q_terminal`, created from
+- [x] 1. Work on the branch `Q-047-operations-views` in `q_terminal`, created from
    `development` by `./work start`. Confirm Q-046 and Q-045 are merged, and that
    the pinned contracts have the Q-045 health fields. Move `CONTRACTS_REV` if
    needed. Commit.
