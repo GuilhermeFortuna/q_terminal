@@ -5,6 +5,7 @@ pub mod contracts_stream;
 pub mod bridge;
 pub mod chart_bridge;
 pub mod config;
+pub mod execution;
 pub mod history;
 pub mod startup;
 pub mod stream;
