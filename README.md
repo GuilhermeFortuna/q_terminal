@@ -105,14 +105,70 @@ q_terminal/
 │   ├── bar_feed.rs     # CXX-Qt BarFeed model binding live and historical bars to QML
 │   ├── bridge.rs       # CXX-Qt AppInfo projection over q_core::CoreInfo
 │   ├── chart_bridge.rs # CXX-Qt chart probe bindings for headless testing
+│   ├── execution/      # Execution store: exact live state keyed by entity id
 │   ├── history/        # Catalog-driven parquet load, seam stitching, and verification
 │   └── stream/         # WebSocket client, envelope framing, and sequence gap recovery
 └── tests/              # End-to-end and headless integration tests
     ├── slice_end_to_end.rs    # Full end-to-end lake history to live WebSocket stream test
     ├── test_startup.rs        # Degraded startup and config error window tests
     ├── test_chart_bridge.rs   # Viewport, geometry, and probe unit tests
+    ├── execution_store.rs     # Execution protocol against the fake stream server
+    ├── execution_convergence.rs # Seeded fault interleavings converge to the snapshot
+    ├── test_execution_report.rs # --headless-report --execution
     └── test_headless_report.rs# CLI headless report verification
 ```
+
+---
+
+## The Execution Store
+
+`q_terminal` keeps an exact, live, in-memory copy of execution state: deployments, accounts,
+open positions, orders, decisions, fills, risk events and the kill switch. It is kept by the
+same snapshot-then-delta protocol as the bars (subscribe, snapshot, discard at or below the
+watermark, fill gaps from history by sequence, re-snapshot on expiry or epoch change), over
+the **same stream connection**. There is no QML for it yet; Q-047 draws it.
+
+- **Six topics, one snapshot.** `decisions`, `orders`, `fills`, `risk`, `ledger` and
+  `deployments` each follow the protocol independently. A re-snapshot triggered by any one of
+  them re-reads `GET /api/v1/stream/execution/snapshot` and re-applies it to all six, each with
+  its own watermark. A restart that announces a new epoch on all six costs one snapshot.
+- **Replace by id, no arithmetic.** An event replaces its entity. A fill sets the deployment's
+  position from the fill's post-fill position, and a ledger entry sets the account from its
+  post-entry balances. Decimals stay strings. Recent decisions, fills, orders and risk events
+  are bounded per deployment by the snapshot's declared `limits`; older ones are paged from
+  the REST routes on demand.
+- **Degraded states.** When the stream is lost the store keeps its last state and records
+  when it was last confirmed (`is_confirmed`, `last_confirmed_at`). A `503` on the snapshot
+  leaves it unconfirmed and retries with the stream's backoff.
+- **Change detection.** `ExecutionStore::revision()` increases on every applied change, so a
+  view redraws at most once per frame. `ExecutionHandle` shares the store with a listener.
+- **Policy.** The execution topics must be `durable` and non-coalescing in the topic policy,
+  or `StreamClient` refuses to start.
+
+`StreamClient::start_with(config, Sinks { bars, execution: Some(handle) })` subscribes to the
+execution topics too; `StreamClient::start(config, bar_sink)` subscribes to bars only.
+
+### Headless execution report
+
+```bash
+cargo run -- --headless-report --execution
+```
+
+Connects using the usual configuration (`api_base` plus `symbol` and `timeframe`), waits for
+the store to converge, prints its counts, the kill switch and the `(epoch, seq)` applied on
+each topic, and exits 0 (1 if the state could not be confirmed within
+`Q_TERMINAL_REPORT_TIMEOUT_MS`, default 20000). Compare with the backend:
+
+```bash
+curl -s http://127.0.0.1:8000/api/v1/stream/execution/snapshot | jq '{deployments: (.deployments|length), orders: (.orders|length)}'
+```
+
+### Stream convergence tests
+
+`tests/execution_store.rs` scripts the protocol against the fake server. The property test
+`tests/execution_convergence.rs` runs 200 seeded interleavings of publishes, gaps, duplicates,
+expired history, epoch changes, snapshot outages and disconnects; set `Q_TERMINAL_SEEDS=1000`
+for more, or `Q_TERMINAL_SEED_ONLY=<n>` to replay one.
 
 ---
 
