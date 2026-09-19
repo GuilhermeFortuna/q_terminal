@@ -114,7 +114,7 @@ impl Default for ExecutionModelsRust {
             let m_deployments = RawTableModel(ffi::make_table_model());
             ffi::table_model_set_roles_csv(
                 m_deployments.0,
-                "id,name,symbol,timeframe,broker_mode,lifecycle,pending_action,last_bar_close_time,net_position,position_side,avg_entry_price,unknown_orders",
+                "id,name,symbol,timeframe,broker_mode,lifecycle,pending_action,last_bar_close_time,pos_quantity,pos_side,pos_entry_price,pos_unrealized_pnl,pos_mark_price,unknown_order_count",
             );
 
             let m_orders = RawTableModel(ffi::make_table_model());
@@ -264,10 +264,12 @@ impl ExecutionModelsRust {
                     "lifecycle": d.lifecycle,
                     "pending_action": d.pending_action.as_ref().and_then(|v| v.as_str()).unwrap_or(""),
                     "last_bar_close_time": d.last_bar_close_time.as_ref().and_then(|v| v.as_str()).unwrap_or(""),
-                    "net_position": net_pos,
-                    "position_side": side,
-                    "avg_entry_price": avg_entry,
-                    "unknown_orders": unk_count,
+                    "pos_quantity": net_pos,
+                    "pos_side": side,
+                    "pos_entry_price": avg_entry,
+                    "pos_unrealized_pnl": "",
+                    "pos_mark_price": "",
+                    "unknown_order_count": unk_count,
                 }));
             }
 

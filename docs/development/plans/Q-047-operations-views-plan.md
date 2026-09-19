@@ -114,7 +114,7 @@ src/main.rs                 --bench-frames gains --execution-rows N (synthetic s
    test for criterion 3. Commit.
 - [x] 4. Implement `HealthPoller` and `OpsStatus`, with fake-server tests for the
    2 s cadence and each health state. Commit.
-- [ ] 5. Write the QML: `OpsWorkspace`, `OpsHeader`, `DeploymentList`,
+- [x] 5. Write the QML: `OpsWorkspace`, `OpsHeader`, `DeploymentList`,
    `DeploymentDetail`, the tables and `Format.js`. Move the chart into the
    workspace. Keep `qmllint` clean. Commit per component.
 - [ ] 6. Write `tests/ops_views.rs` for criteria 1, 2, 4 and 5, extending the

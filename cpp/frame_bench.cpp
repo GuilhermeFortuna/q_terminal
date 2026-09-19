@@ -48,6 +48,9 @@ void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar
     }
 
     BarChartItem* chart = window ? window->findChild<BarChartItem*>("benchChart") : nullptr;
+    if (chart == nullptr && window != nullptr) {
+        chart = window->findChild<BarChartItem*>();
+    }
     BarSeries* series = chart ? qobject_cast<BarSeries*>(chart->series()) : nullptr;
 
     if (window == nullptr || chart == nullptr || series == nullptr) {

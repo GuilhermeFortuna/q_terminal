@@ -71,7 +71,29 @@ fn main() {
             .qml_file("qml/Viewport.qml")
             .qml_file("qml/ChartPane.qml")
             .qml_file("qml/EmptyState.qml")
-            .qml_file("qml/StatusStrip.qml"),
+            .qml_file("qml/StatusStrip.qml")
+            .qml_file("qml/OpsHeader.qml")
+            .qml_file("qml/DeploymentList.qml")
+            .qml_file("qml/OrdersTable.qml")
+            .qml_file("qml/FillsTable.qml")
+            .qml_file("qml/DecisionsTable.qml")
+            .qml_file("qml/RiskTable.qml")
+            .qml_file("qml/LedgerTable.qml")
+            .qml_file("qml/DeploymentDetail.qml")
+            .qml_file("qml/OpsWorkspace.qml"),
+    )
+    .qrc_resources(
+        qt_build_utils::QResources::new()
+            .resource(
+                qt_build_utils::QResource::new()
+                    .prefix("/qt/qml/qml/qml")
+                    .file(qt_build_utils::QResourceFile::new("qml/Format.js").alias("Format.js")),
+            )
+            .resource(
+                qt_build_utils::QResource::new()
+                    .prefix("/qt/qml/qml")
+                    .file(qt_build_utils::QResourceFile::new("qml/Format.js").alias("Format.js")),
+            ),
     )
     .qt_module("Quick")
     .include_dir("cpp")
