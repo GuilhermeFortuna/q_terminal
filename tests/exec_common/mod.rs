@@ -1,4 +1,5 @@
 //! Shared harness for the execution store tests. Included with `#[path]`.
+#![allow(dead_code)]
 
 use super::config::Config;
 use super::contracts_stream::ExecutionSnapshot;

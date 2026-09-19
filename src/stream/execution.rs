@@ -22,7 +22,7 @@ pub enum ExecutionEvent {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExecPayload {
     Snapshot(Arc<ExecutionSnapshot>),
-    Event(ExecutionEvent),
+    Event(Box<ExecutionEvent>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

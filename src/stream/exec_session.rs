@@ -123,7 +123,7 @@ impl ExecSession {
                 seq,
                 symbol: String::new(),
                 timeframe: String::new(),
-                payload: ExecPayload::Event(event),
+                payload: ExecPayload::Event(Box::new(event)),
             },
         );
         self.drive(net, topic, actions).await;
@@ -296,7 +296,7 @@ impl ExecSession {
                 self.handle.mutate(|s| s.apply_snapshot(&snap, &[topic]));
             }
             ExecPayload::Event(event) => {
-                self.handle.mutate(|s| s.apply(event));
+                self.handle.mutate(|s| s.apply(*event));
             }
         }
     }
@@ -341,7 +341,7 @@ impl ExecSession {
                     .map(|e| {
                         decode_execution_entry(topic, &e.payload)
                             .ok()
-                            .map(|ev: ExecutionEvent| (e.seq, ExecPayload::Event(ev)))
+                            .map(|ev: ExecutionEvent| (e.seq, ExecPayload::Event(Box::new(ev))))
                     })
                     .collect();
                 entries.map(|entries| (p.epoch, entries, p.next_seq))

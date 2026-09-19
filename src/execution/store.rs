@@ -412,11 +412,13 @@ impl ExecutionStore {
     }
 }
 
+type Listener = Arc<dyn Fn() + Send + Sync + 'static>;
+
 /// The store shared between the stream thread and readers, with a change listener.
 #[derive(Clone, Default)]
 pub struct ExecutionHandle {
     store: Arc<Mutex<ExecutionStore>>,
-    listener: Arc<RwLock<Option<Arc<dyn Fn() + Send + Sync + 'static>>>>,
+    listener: Arc<RwLock<Option<Listener>>>,
 }
 
 impl ExecutionHandle {
@@ -424,7 +426,7 @@ impl ExecutionHandle {
         Self::default()
     }
 
-    pub fn set_listener(&self, listener: Arc<dyn Fn() + Send + Sync + 'static>) {
+    pub fn set_listener(&self, listener: Listener) {
         *self.listener.write().unwrap() = Some(listener);
     }
 
