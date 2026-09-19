@@ -95,9 +95,12 @@ pub fn topic_expected_payload_schema(topic: &str) -> Option<&'static str> {
         "quotes" => Some("schema/api/arrow/ticks.schema.json"),
         "jobs.progress" => Some("schema/stream/payloads/job-progress.schema.json"),
         "jobs.terminal" => Some("schema/stream/payloads/job-terminal.schema.json"),
-        "decisions" | "orders" | "fills" | "risk" | "ledger" | "deployments" => {
-            Some("schema/stream/envelope.schema.json")
-        }
+        "decisions" => Some("schema/stream/payloads/execution-decision.schema.json"),
+        "orders" => Some("schema/stream/payloads/execution-order.schema.json"),
+        "fills" => Some("schema/stream/payloads/execution-fill.schema.json"),
+        "risk" => Some("schema/stream/payloads/execution-risk.schema.json"),
+        "ledger" => Some("schema/stream/payloads/execution-ledger.schema.json"),
+        "deployments" => Some("schema/stream/payloads/execution-deployment.schema.json"),
         _ => None,
     }
 }
