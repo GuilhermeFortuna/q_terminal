@@ -1,5 +1,6 @@
 use crate::stream::arrow_decode::encode_arrow_bars;
 use crate::stream::base64::b64_encode;
+use crate::stream::fake_exec::ExecFake;
 use crate::stream::frame::{make_binary_frame, EnvelopeHeader};
 use crate::stream::topic_state::BarColumns;
 use futures_util::{SinkExt, StreamExt};
@@ -32,6 +33,9 @@ pub struct FakeServer {
     addr: SocketAddr,
     deny_503: Arc<AtomicBool>,
     history_expired: Arc<AtomicBool>,
+    snapshot_503: Arc<AtomicBool>,
+    snapshot_delay_ms: Arc<std::sync::atomic::AtomicU64>,
+    exec: Arc<RwLock<ExecFake>>,
     reject_forming: Arc<AtomicBool>,
     epoch: Arc<RwLock<String>>,
     snapshots: Arc<RwLock<HashMap<String, SnapshotEntry>>>,
@@ -49,6 +53,9 @@ impl FakeServer {
 
         let deny_503 = Arc::new(AtomicBool::new(false));
         let history_expired = Arc::new(AtomicBool::new(false));
+        let snapshot_503 = Arc::new(AtomicBool::new(false));
+        let snapshot_delay_ms = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let exec = Arc::new(RwLock::new(ExecFake::new()));
         let reject_forming = Arc::new(AtomicBool::new(false));
         let epoch = Arc::new(RwLock::new("epoch-1".to_string()));
         let snapshots = Arc::new(RwLock::new(HashMap::<String, SnapshotEntry>::new()));
@@ -90,6 +97,9 @@ impl FakeServer {
         // Server connection accept loop
         let d503 = deny_503.clone();
         let hexp = history_expired.clone();
+        let snap503 = snapshot_503.clone();
+        let snap_delay = snapshot_delay_ms.clone();
+        let exec_arc = exec.clone();
         let rform = reject_forming.clone();
         let ep_arc = epoch.clone();
         let snap_arc = snapshots.clone();
@@ -107,6 +117,9 @@ impl FakeServer {
                         if let Ok((mut socket, _)) = res {
                             let d503 = d503.clone();
                             let hexp = hexp.clone();
+                            let snap503 = snap503.clone();
+                            let snap_delay = snap_delay.clone();
+                            let exec_arc = exec_arc.clone();
                             let rform = rform.clone();
                             let ep_arc = ep_arc.clone();
                             let snap_arc = snap_arc.clone();
@@ -236,7 +249,27 @@ impl FakeServer {
                                     }
                                 }
 
-                                if path.ends_with("/latest") {
+                                if path.ends_with("/stream/execution/snapshot") {
+                                    if snap503.load(Ordering::SeqCst) {
+                                        let resp = "HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}";
+                                        let _ = socket.write_all(resp.as_bytes()).await;
+                                        let _ = socket.shutdown().await;
+                                        return;
+                                    }
+                                    let cur_ep = ep_arc.read().await.clone();
+                                    let body = exec_arc.read().await.snapshot(&cur_ep).to_string();
+                                    let delay = snap_delay.load(Ordering::SeqCst);
+                                    if delay > 0 {
+                                        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                                    }
+                                    let resp = format!(
+                                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                        body.len(),
+                                        body
+                                    );
+                                    let _ = socket.write_all(resp.as_bytes()).await;
+                                    let _ = socket.shutdown().await;
+                                } else if path.ends_with("/latest") {
                                     let topic = path.trim_start_matches("/api/v1/stream/").trim_end_matches("/latest");
                                     let snap_guard = snap_arc.read().await;
                                     let cur_ep = ep_arc.read().await.clone();
@@ -296,7 +329,17 @@ impl FakeServer {
                                     let hist_guard = hist_arc.read().await;
 
                                     let mut entries_arr = Vec::new();
-                                    if let Some(list) = hist_guard.get(topic) {
+                                    if ExecFake::has_topic(topic) {
+                                        let from_seq = path_and_query
+                                            .split(['?', '&'])
+                                            .find_map(|kv| kv.strip_prefix("from_seq="))
+                                            .and_then(|v| v.parse::<i64>().ok())
+                                            .unwrap_or(0);
+                                        let page = exec_arc.read().await.history(topic, from_seq, 500);
+                                        for (seq, payload) in page {
+                                            entries_arr.push(exec_envelope(topic, seq, &cur_ep, payload));
+                                        }
+                                    } else if let Some(list) = hist_guard.get(topic) {
                                         for (seq, bars) in list {
                                             let arrow_bytes = encode_arrow_bars(bars).unwrap();
                                             let b64 = b64_encode(&arrow_bytes);
@@ -345,6 +388,9 @@ impl FakeServer {
             addr,
             deny_503,
             history_expired,
+            snapshot_503,
+            snapshot_delay_ms,
+            exec,
             reject_forming,
             epoch,
             snapshots,
@@ -375,6 +421,49 @@ impl FakeServer {
 
     pub fn set_history_expired(&self, val: bool) {
         self.history_expired.store(val, Ordering::SeqCst);
+    }
+
+    /// Makes only the execution snapshot route answer 503.
+    pub fn set_snapshot_503(&self, val: bool) {
+        self.snapshot_503.store(val, Ordering::SeqCst);
+    }
+
+    /// Delays the execution snapshot response. The body is fixed before the delay, so
+    /// anything published during it lies above the snapshot's watermark.
+    pub fn set_snapshot_delay_ms(&self, ms: u64) {
+        self.snapshot_delay_ms.store(ms, Ordering::SeqCst);
+    }
+
+    pub async fn set_exec_limit(&self, limit: usize) {
+        self.exec.write().await.set_limit(limit);
+    }
+
+    /// The execution snapshot the fake backend serves now.
+    pub async fn exec_snapshot(&self) -> serde_json::Value {
+        let ep = self.epoch.read().await.clone();
+        self.exec.read().await.snapshot(&ep)
+    }
+
+    /// Publishes to the durable log and delivers to the connected client.
+    pub async fn exec_publish(&self, topic: &str, payload: serde_json::Value) -> i64 {
+        let seq = self.exec_publish_silent(topic, payload).await;
+        self.exec_resend(topic, seq).await;
+        seq
+    }
+
+    /// Publishes to the durable log only, as if the delivery was lost or missed.
+    pub async fn exec_publish_silent(&self, topic: &str, payload: serde_json::Value) -> i64 {
+        self.exec.write().await.append(topic, payload).0
+    }
+
+    /// Delivers a logged entry again (relay at-least-once).
+    pub async fn exec_resend(&self, topic: &str, seq: i64) {
+        let Some(payload) = self.exec.read().await.entry(topic, seq) else {
+            return;
+        };
+        let ep = self.epoch.read().await.clone();
+        let text = exec_envelope(topic, seq, &ep, payload).to_string();
+        let _ = self.command_tx.send(ServerCommand::SendText(text)).await;
     }
 
     pub fn set_reject_forming(&self, val: bool) {
@@ -484,4 +573,23 @@ impl FakeServer {
     pub async fn shutdown(self) {
         let _ = self.shutdown_tx.send(()).await;
     }
+}
+
+fn exec_envelope(
+    topic: &str,
+    seq: i64,
+    epoch: &str,
+    payload: serde_json::Value,
+) -> serde_json::Value {
+    json!({
+        "topic": topic,
+        "schema_major": 1,
+        "seq": seq,
+        "epoch": epoch,
+        "producer_id": "fake",
+        "origin_ts": "2026-09-18T00:00:00Z",
+        "payload_kind": "control",
+        "payload_schema": crate::stream::frame::topic_expected_payload_schema(topic).unwrap_or(""),
+        "payload": payload,
+    })
 }

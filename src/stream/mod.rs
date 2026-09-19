@@ -1,7 +1,9 @@
 pub mod arrow_decode;
 pub mod base64;
 pub mod client;
+pub mod exec_session;
 pub mod execution;
+pub mod fake_exec;
 pub mod fake_server;
 pub mod frame;
 pub mod policy;

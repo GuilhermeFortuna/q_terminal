@@ -1,7 +1,10 @@
 use crate::config::Config;
+use crate::execution::store::ExecutionHandle;
 use crate::stream::arrow_decode::decode_arrow_bars;
 use crate::stream::base64::b64_decode;
+use crate::stream::exec_session::{ExecSession, Net};
 use crate::stream::frame::{classify_text, split_binary, ControlFrame, ServerFrame};
+use crate::stream::policy::EXECUTION_TOPICS;
 use crate::stream::sink::BarSink;
 use crate::stream::topic_state::{on_event, Action, Event, TopicState};
 use futures_util::{SinkExt, StreamExt};
@@ -173,8 +176,26 @@ pub struct StreamClient {
     is_shutdown: Arc<AtomicBool>,
 }
 
+/// Where the client delivers what it learns. Without an execution handle the client
+/// subscribes to the bar topics only.
+#[derive(Clone)]
+pub struct Sinks {
+    pub bars: BarSink,
+    pub execution: Option<ExecutionHandle>,
+}
+
 impl StreamClient {
     pub fn start(config: Config, sink: BarSink) -> Self {
+        Self::start_with(
+            config,
+            Sinks {
+                bars: sink,
+                execution: None,
+            },
+        )
+    }
+
+    pub fn start_with(config: Config, sinks: Sinks) -> Self {
         crate::stream::policy::assert_topic_policies(crate::stream::policy::KNOWN_TOPICS)
             .expect("topic policy assertion failed");
 
@@ -198,7 +219,7 @@ impl StreamClient {
                     .expect("failed to build tokio runtime");
 
                 rt.block_on(async move {
-                    run_client_loop(config, sink, shared_clone, shutdown_rx, is_shutdown_clone)
+                    run_client_loop(config, sinks, shared_clone, shutdown_rx, is_shutdown_clone)
                         .await;
                 });
             })
@@ -444,13 +465,14 @@ async fn handle_actions(
 
 async fn run_client_loop(
     config: Config,
-    sink: BarSink,
+    sinks: Sinks,
     shared: Arc<ClientShared>,
     mut shutdown_rx: broadcast::Receiver<()>,
     is_shutdown: Arc<AtomicBool>,
 ) {
     let http = reqwest::Client::new();
     let mut attempt = 0u32;
+    let sink = sinks.bars.clone();
 
     let ws_base = if config.api_base.starts_with("https://") {
         config.api_base.replacen("https://", "wss://", 1)
@@ -515,9 +537,15 @@ async fn run_client_loop(
             TopicState::new("bars.completed", false, &config.symbol, &config.timeframe),
         );
 
+        let mut exec = sinks.execution.clone().map(ExecSession::new);
+        let mut topics: Vec<&str> = BAR_TOPICS.to_vec();
+        if exec.is_some() {
+            topics.extend(EXECUTION_TOPICS);
+        }
+
         let (mut ws_sink, mut ws_source) = ws_stream.split();
 
-        let sub_msg = json!({ "topics": BAR_TOPICS });
+        let sub_msg = json!({ "topics": topics });
         if ws_sink
             .send(Message::Text(sub_msg.to_string().into()))
             .await
@@ -531,6 +559,16 @@ async fn run_client_loop(
             tokio::select! {
                 _ = shutdown_rx.recv() => {
                     return;
+                }
+                _ = async {
+                    match exec.as_ref().and_then(|e| e.retry_at()) {
+                        Some(at) => tokio::time::sleep_until(tokio::time::Instant::from_std(at)).await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    if let Some(e) = exec.as_mut() {
+                        e.retry(&Net { http: &http, api_base: &config.api_base, shared: &shared, is_shutdown: &is_shutdown }).await;
+                    }
                 }
                 msg_opt = ws_source.next() => {
                     let msg = match msg_opt {
@@ -555,6 +593,9 @@ async fn run_client_loop(
                                                     on_event(state, Event::Subscribed { epoch: ep, last_seq: l_seq });
                                                     fetch_and_apply_snapshot(topic, state, &sink, &shared, &http, &config.api_base, &is_shutdown).await;
                                                 }
+                                                if let Some(e) = exec.as_mut() {
+                                                    e.on_subscribed(&Net { http: &http, api_base: &config.api_base, shared: &shared, is_shutdown: &is_shutdown }, obj).await;
+                                                }
                                                 shared.set_state(ConnectionState::Live);
                                             }
                                         }
@@ -562,23 +603,38 @@ async fn run_client_loop(
                                             shared.set_last_error(&rej.reason);
                                         }
                                         ControlFrame::CursorExpired(ce) => {
-                                            if let Some(state) = states.get_mut(&ce.topic) {
+                                            if let Some(e) = exec.as_mut().filter(|_| ExecSession::handles(&ce.topic)) {
+                                                e.on_cursor_expired(&Net { http: &http, api_base: &config.api_base, shared: &shared, is_shutdown: &is_shutdown }, &ce.topic).await;
+                                            } else if let Some(state) = states.get_mut(&ce.topic) {
                                                 let acts = on_event(state, Event::CursorExpired);
                                                 handle_actions(state, acts, &ce.topic, &sink, &shared, &http, &config.api_base, &is_shutdown).await;
                                             }
                                         }
                                         ControlFrame::Lagging(lag) => {
-                                            if let Some(state) = states.get_mut(&lag.topic) {
+                                            if let Some(e) = exec.as_mut().filter(|_| ExecSession::handles(&lag.topic)) {
+                                                e.on_lagging(&Net { http: &http, api_base: &config.api_base, shared: &shared, is_shutdown: &is_shutdown }, &lag.topic, lag.from_seq).await;
+                                            } else if let Some(state) = states.get_mut(&lag.topic) {
                                                 let acts = on_event(state, Event::Lagging { from_seq: lag.from_seq });
                                                 handle_actions(state, acts, &lag.topic, &sink, &shared, &http, &config.api_base, &is_shutdown).await;
                                             }
                                         }
                                         ControlFrame::EpochChanged(ec) => {
-                                            if let Some(state) = states.get_mut(&ec.topic) {
+                                            if let Some(e) = exec.as_mut().filter(|_| ExecSession::handles(&ec.topic)) {
+                                                e.on_epoch_changed(&Net { http: &http, api_base: &config.api_base, shared: &shared, is_shutdown: &is_shutdown }, &ec.topic, &ec.new_epoch).await;
+                                            } else if let Some(state) = states.get_mut(&ec.topic) {
                                                 let acts = on_event(state, Event::EpochChanged { new_epoch: ec.new_epoch });
                                                 handle_actions(state, acts, &ec.topic, &sink, &shared, &http, &config.api_base, &is_shutdown).await;
                                             }
                                         }
+                                    }
+                                }
+                                Ok(ServerFrame::Envelope(header)) if exec.is_some() && ExecSession::handles(&header.topic) => {
+                                    let payload = serde_json::from_str::<serde_json::Value>(&text)
+                                        .ok()
+                                        .and_then(|v| v.get("payload").cloned())
+                                        .unwrap_or(serde_json::Value::Null);
+                                    if let Some(e) = exec.as_mut() {
+                                        e.on_envelope(&Net { http: &http, api_base: &config.api_base, shared: &shared, is_shutdown: &is_shutdown }, &header.topic, &header.epoch, header.seq, &payload).await;
                                     }
                                 }
                                 _ => {
@@ -643,6 +699,9 @@ async fn run_client_loop(
             }
         }
 
+        if let Some(e) = &exec {
+            e.lost();
+        }
         attempt += 1;
     }
 }
