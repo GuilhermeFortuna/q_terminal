@@ -1,3 +1,5 @@
+#![allow(clippy::missing_safety_doc)]
+
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -33,6 +35,7 @@ pub mod ffi {
         unsafe fn table_model_reset_json(model: *mut TableModel, json_array: &str);
         unsafe fn table_model_append_json(model: *mut TableModel, json_array: &str);
         unsafe fn table_model_count(model: *mut TableModel) -> i32;
+        #[allow(dead_code)]
         unsafe fn table_model_clear(model: *mut TableModel);
         unsafe fn table_model_to_variant(model: *mut TableModel) -> QVariant;
     }
@@ -197,6 +200,7 @@ impl Drop for ExecutionModelsRust {
 }
 
 impl ExecutionModelsRust {
+    #[allow(dead_code)]
     pub fn bind_handle(&mut self, handle: ExecutionHandle) {
         let dirty = self.dirty.clone();
         handle.set_listener(Arc::new(move || {
@@ -625,7 +629,9 @@ impl ffi::ExecutionModels {
                 if acc_id.is_empty() {
                     return;
                 }
-                format!("{api_base}/api/v1/execution/accounts/{acc_id}/ledger?limit=50&offset={offset}")
+                format!(
+                    "{api_base}/api/v1/execution/accounts/{acc_id}/ledger?limit=50&offset={offset}"
+                )
             }
             _ => return,
         };
@@ -656,7 +662,11 @@ impl ffi::ExecutionModels {
                         Ok(b) => b,
                         Err(_) => return,
                     };
-                    let items = body.get("items").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+                    let items = body
+                        .get("items")
+                        .and_then(|v| v.as_array())
+                        .cloned()
+                        .unwrap_or_default();
                     if items.is_empty() {
                         return;
                     }
@@ -684,7 +694,10 @@ impl ffi::ExecutionModels {
                                 rust.older_fills.entry(dep_id).or_default().extend(items);
                             }
                             "decisions" => {
-                                rust.older_decisions.entry(dep_id).or_default().extend(items);
+                                rust.older_decisions
+                                    .entry(dep_id)
+                                    .or_default()
+                                    .extend(items);
                             }
                             "risk" | "risk-events" | "risk_events" => {
                                 rust.older_risk.extend(items);

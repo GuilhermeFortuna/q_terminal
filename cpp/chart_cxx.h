@@ -186,16 +186,7 @@ bool feed_history_loading(BarFeed* feed);
 std::int64_t feed_bar_count(BarFeed* feed);
 std::int64_t feed_rest_calls(BarFeed* feed);
 
-class ExecutionModels;
-
-ExecutionModels* make_test_execution_models();
-void delete_test_execution_models(ExecutionModels* models);
-void execution_models_sync(ExecutionModels* models);
-std::int64_t execution_models_revision(ExecutionModels* models);
-std::int64_t execution_models_redraw_count(ExecutionModels* models);
-void execution_models_select_deployment(ExecutionModels* models, rust::Str id);
-void execution_models_select_account(ExecutionModels* models, rust::Str id);
-void execution_models_load_older(ExecutionModels* models, rust::Str table);
+#include "cpp/execution_models_cxx.h"
 
 #endif // Q_TERMINAL_CHART_CXX_H
 

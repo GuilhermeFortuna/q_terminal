@@ -10,10 +10,10 @@ pub mod chart_bridge;
 pub mod config;
 #[path = "../src/execution/mod.rs"]
 pub mod execution;
-#[path = "../src/execution_models.rs"]
-pub mod execution_models;
+pub use bridge::execution_models;
 #[path = "../src/history/mod.rs"]
 pub mod history;
+pub use bridge::ops_status;
 #[path = "../src/startup.rs"]
 pub mod startup;
 #[path = "../src/stream/mod.rs"]
@@ -21,6 +21,19 @@ pub mod stream;
 
 use execution::store::ExecutionHandle;
 use stream::fake_exec as fx;
+
+fn bind_execution_models_handle(
+    models: *mut chart_bridge::ExecutionModels,
+    handle: ExecutionHandle,
+) {
+    unsafe {
+        let pin = std::pin::Pin::new_unchecked(
+            &mut *(models as *mut execution_models::ffi::ExecutionModels),
+        );
+        use cxx_qt::CxxQtType;
+        pin.rust_mut().bind_handle(handle);
+    }
+}
 
 #[test]
 fn test_criterion_3_one_thousand_events_coalesce_to_one_redraw() {
@@ -30,7 +43,7 @@ fn test_criterion_3_one_thousand_events_coalesce_to_one_redraw() {
     assert!(!models.is_null());
 
     let handle = ExecutionHandle::new();
-    chart_bridge::bind_execution_models_handle(models, handle.clone());
+    bind_execution_models_handle(models, handle.clone());
 
     // Initial sync after bind
     unsafe {

@@ -112,7 +112,7 @@ src/main.rs                 --bench-frames gains --execution-rows N (synthetic s
    that the views are built against the list. Commit.
 - [x] 3. Implement `ExecutionModels` with the per-frame revision, and a headless
    test for criterion 3. Commit.
-- [ ] 4. Implement `HealthPoller` and `OpsStatus`, with fake-server tests for the
+- [x] 4. Implement `HealthPoller` and `OpsStatus`, with fake-server tests for the
    2 s cadence and each health state. Commit.
 - [ ] 5. Write the QML: `OpsWorkspace`, `OpsHeader`, `DeploymentList`,
    `DeploymentDetail`, the tables and `Format.js`. Move the chart into the

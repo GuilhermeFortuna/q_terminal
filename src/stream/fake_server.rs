@@ -41,6 +41,11 @@ pub struct FakeServer {
     snapshots: Arc<RwLock<HashMap<String, SnapshotEntry>>>,
     history: Arc<RwLock<HistoryMap>>,
     catalog_json: Arc<RwLock<Option<String>>>,
+    health_json: Arc<RwLock<Option<String>>>,
+    health_503: Arc<AtomicBool>,
+    positions_json: Arc<RwLock<Option<String>>>,
+    health_calls: Arc<std::sync::atomic::AtomicUsize>,
+    positions_calls: Arc<std::sync::atomic::AtomicUsize>,
     rest_calls: Arc<std::sync::atomic::AtomicUsize>,
     command_tx: mpsc::Sender<ServerCommand>,
     shutdown_tx: mpsc::Sender<()>,
@@ -61,6 +66,11 @@ impl FakeServer {
         let snapshots = Arc::new(RwLock::new(HashMap::<String, SnapshotEntry>::new()));
         let history = Arc::new(RwLock::new(HashMap::<String, Vec<(i64, BarColumns)>>::new()));
         let catalog_json = Arc::new(RwLock::new(None::<String>));
+        let health_json = Arc::new(RwLock::new(None::<String>));
+        let health_503 = Arc::new(AtomicBool::new(false));
+        let positions_json = Arc::new(RwLock::new(None::<String>));
+        let health_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let positions_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let rest_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
         let (cmd_tx, mut cmd_rx) = mpsc::channel::<ServerCommand>(100);
@@ -105,6 +115,11 @@ impl FakeServer {
         let snap_arc = snapshots.clone();
         let hist_arc = history.clone();
         let cat_arc = catalog_json.clone();
+        let hjson_arc = health_json.clone();
+        let h503_arc = health_503.clone();
+        let pjson_arc = positions_json.clone();
+        let hcalls_arc = health_calls.clone();
+        let pcalls_arc = positions_calls.clone();
         let rest_cnt = rest_calls.clone();
 
         tokio::spawn(async move {
@@ -125,6 +140,11 @@ impl FakeServer {
                             let snap_arc = snap_arc.clone();
                             let hist_arc = hist_arc.clone();
                             let cat_arc = cat_arc.clone();
+                            let hjson_arc = hjson_arc.clone();
+                            let h503_arc = h503_arc.clone();
+                            let pjson_arc = pjson_arc.clone();
+                            let hcalls_arc = hcalls_arc.clone();
+                            let pcalls_arc = pcalls_arc.clone();
                             let rest_cnt = rest_cnt.clone();
                             let ws_sender_clone = ws_sender_clone.clone();
 
@@ -247,6 +267,63 @@ impl FakeServer {
                                         let _ = socket.shutdown().await;
                                         return;
                                     }
+                                }
+
+                                if path.ends_with("/api/v1/execution/health") {
+                                    hcalls_arc.fetch_add(1, Ordering::SeqCst);
+                                    if h503_arc.load(Ordering::SeqCst) {
+                                        let resp = "HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nContent-Length: 33\r\nConnection: close\r\n\r\n{\"code\":\"database_unavailable\"}";
+                                        let _ = socket.write_all(resp.as_bytes()).await;
+                                        let _ = socket.shutdown().await;
+                                        return;
+                                    }
+                                    let body = {
+                                        let guard = hjson_arc.read().await;
+                                        guard.clone().unwrap_or_else(|| {
+                                            json!({
+                                                "api_status": "ok",
+                                                "checked_at": "2026-09-19T00:00:00Z",
+                                                "deployments": [],
+                                                "edge": {
+                                                    "checked_at": "2026-09-19T00:00:00Z",
+                                                    "mt5_connected": true,
+                                                    "reachable": true,
+                                                    "terminal_build": 4150
+                                                },
+                                                "kill_switch_enabled": false,
+                                                "live_capability_locked": false,
+                                                "market_data_status": "streaming",
+                                                "unknown_order_count": 0,
+                                                "worker_heartbeat_age_s": 0.5,
+                                                "worker_started_at": "2026-09-19T00:00:00Z",
+                                                "worker_status": "active"
+                                            }).to_string()
+                                        })
+                                    };
+                                    let resp = format!(
+                                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                        body.len(),
+                                        body
+                                    );
+                                    let _ = socket.write_all(resp.as_bytes()).await;
+                                    let _ = socket.shutdown().await;
+                                    return;
+                                }
+
+                                if path.ends_with("/api/v1/execution/positions") {
+                                    pcalls_arc.fetch_add(1, Ordering::SeqCst);
+                                    let body = {
+                                        let guard = pjson_arc.read().await;
+                                        guard.clone().unwrap_or_else(|| "[]".to_string())
+                                    };
+                                    let resp = format!(
+                                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                        body.len(),
+                                        body
+                                    );
+                                    let _ = socket.write_all(resp.as_bytes()).await;
+                                    let _ = socket.shutdown().await;
+                                    return;
                                 }
 
                                 if path.ends_with("/stream/execution/snapshot") {
@@ -396,6 +473,11 @@ impl FakeServer {
             snapshots,
             history,
             catalog_json,
+            health_json,
+            health_503,
+            positions_json,
+            health_calls,
+            positions_calls,
             rest_calls,
             command_tx: cmd_tx,
             shutdown_tx,
@@ -409,6 +491,28 @@ impl FakeServer {
     pub async fn set_catalog(&self, catalog_body: &str) {
         let mut guard = self.catalog_json.write().await;
         *guard = Some(catalog_body.to_string());
+    }
+
+    pub async fn set_health_json(&self, health_body: &str) {
+        let mut guard = self.health_json.write().await;
+        *guard = Some(health_body.to_string());
+    }
+
+    pub fn set_health_503(&self, val: bool) {
+        self.health_503.store(val, Ordering::SeqCst);
+    }
+
+    pub async fn set_positions_json(&self, positions_body: &str) {
+        let mut guard = self.positions_json.write().await;
+        *guard = Some(positions_body.to_string());
+    }
+
+    pub fn health_calls(&self) -> usize {
+        self.health_calls.load(Ordering::SeqCst)
+    }
+
+    pub fn positions_calls(&self) -> usize {
+        self.positions_calls.load(Ordering::SeqCst)
     }
 
     pub fn rest_calls(&self) -> usize {

@@ -1,2 +1,2 @@
-pub mod models;
+pub mod health;
 pub mod store;
