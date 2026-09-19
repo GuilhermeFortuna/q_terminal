@@ -229,6 +229,34 @@ impl ExecutionStore {
         }
     }
 
+    /// The lines `--headless-report --execution` prints: entity counts, the kill switch and
+    /// the `(epoch, seq)` last applied on each topic.
+    pub fn report_lines(&self) -> Vec<String> {
+        let c = self.counts();
+        let mut lines = vec![
+            format!("confirmed: {}", self.confirmed),
+            format!("deployments: {}", c.deployments),
+            format!("accounts: {}", c.accounts),
+            format!("positions: {}", c.positions),
+            format!("orders: {}", c.orders),
+            format!("decisions: {}", c.decisions),
+            format!("fills: {}", c.fills),
+            format!("risk: {}", c.risk),
+            format!(
+                "kill_switch: {}",
+                match &self.data.control {
+                    Some(c) if c.kill_switch_enabled => "on",
+                    Some(_) => "off",
+                    None => "unknown",
+                }
+            ),
+        ];
+        for (topic, (epoch, seq)) in &self.watermarks {
+            lines.push(format!("seq {topic}: {seq} ({epoch})"));
+        }
+        lines
+    }
+
     /// Keeps the last state and marks it with the time it was last confirmed (§8.1).
     pub fn mark_unconfirmed(&mut self, since: SystemTime) {
         if self.confirmed {
