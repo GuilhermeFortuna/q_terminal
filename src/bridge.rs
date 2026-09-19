@@ -1,6 +1,10 @@
 #[path = "bar_feed.rs"]
 #[allow(clippy::float_cmp)]
 pub mod bar_feed;
+#[path = "execution_models.rs"]
+pub mod execution_models;
+#[path = "ops_status.rs"]
+pub mod ops_status;
 
 #[cxx_qt::bridge]
 pub mod ffi {
@@ -22,6 +26,7 @@ pub mod ffi {
             visible_buckets: i32,
             bar_count: i32,
             duration_ms: i32,
+            execution_rows: i32,
         );
     }
 

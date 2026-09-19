@@ -186,5 +186,7 @@ bool feed_history_loading(BarFeed* feed);
 std::int64_t feed_bar_count(BarFeed* feed);
 std::int64_t feed_rest_calls(BarFeed* feed);
 
+#include "cpp/execution_models_cxx.h"
+
 #endif // Q_TERMINAL_CHART_CXX_H
 

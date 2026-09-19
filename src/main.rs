@@ -6,7 +6,9 @@ pub mod bridge;
 pub mod chart_bridge;
 pub mod config;
 pub mod execution;
+pub use bridge::execution_models;
 pub mod history;
+pub use bridge::ops_status;
 pub mod startup;
 pub mod stream;
 
@@ -67,9 +69,19 @@ pub fn run_windowed() -> i32 {
     startup::run_slice(config::Config::load())
 }
 
-pub fn run_bench_frames(visible_buckets: i32, bar_count: i32, duration_ms: i32) -> i32 {
+pub fn run_bench_frames(
+    visible_buckets: i32,
+    bar_count: i32,
+    duration_ms: i32,
+    execution_rows: i32,
+) -> i32 {
     let _ = (visible_buckets, bar_count);
-    startup::run_slice_opts(config::Config::load(), true, duration_ms as u64)
+    startup::run_slice_opts(
+        config::Config::load(),
+        true,
+        duration_ms as u64,
+        execution_rows,
+    )
 }
 
 fn main() {
@@ -90,13 +102,20 @@ fn main() {
         let visible_buckets = read_arg_i32(&args, "--buckets", 2000);
         let bar_count = read_arg_i32(&args, "--bars", 500_000);
         let duration_ms = read_arg_i32(&args, "--duration-ms", 300_000);
-        std::process::exit(run_bench_frames(visible_buckets, bar_count, duration_ms));
+        let execution_rows = read_arg_i32(&args, "--execution-rows", 0);
+        std::process::exit(run_bench_frames(
+            visible_buckets,
+            bar_count,
+            duration_ms,
+            execution_rows,
+        ));
     }
     let auto_close_ms = read_arg_i32(&args, "--auto-close-ms", 0);
     std::process::exit(startup::run_slice_opts(
         config::Config::load(),
         false,
         auto_close_ms as u64,
+        0,
     ));
 }
 

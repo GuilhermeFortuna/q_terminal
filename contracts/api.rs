@@ -636,6 +636,14 @@ pub struct DiscoveryAbStatusResponse {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EdgeStatusResponse {
+    pub checked_at: Option<String>,
+    pub mt5_connected: Option<bool>,
+    pub reachable: bool,
+    pub terminal_build: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EncoderAblationRequest {
     pub configs: Vec<EncoderConfigSpec>,
     pub horizon: Option<i64>,
@@ -738,11 +746,41 @@ pub struct ExecutionHealthResponse {
     pub api_status: String,
     pub checked_at: String,
     pub deployments: Vec<DeploymentHealthResponse>,
+    pub edge: Option<EdgeStatusResponse>,
     pub kill_switch_enabled: bool,
     pub live_capability_locked: bool,
     pub market_data_status: String,
     pub unknown_order_count: i64,
+    pub worker_heartbeat_age_s: Option<f64>,
+    pub worker_started_at: Option<String>,
     pub worker_status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionSnapshotLimits {
+    pub recent_decisions: i64,
+    pub recent_fills: i64,
+    pub recent_orders: i64,
+    pub recent_risk: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionSnapshotRecent {
+    pub decisions: Vec<serde_json::Value>,
+    pub fills: Vec<serde_json::Value>,
+    pub risk: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionSnapshotResponse {
+    pub accounts: Vec<serde_json::Value>,
+    pub control: serde_json::Value,
+    pub deployments: Vec<serde_json::Value>,
+    pub limits: ExecutionSnapshotLimits,
+    pub orders: Vec<serde_json::Value>,
+    pub positions: Vec<serde_json::Value>,
+    pub recent: ExecutionSnapshotRecent,
+    pub watermark: serde_json::Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

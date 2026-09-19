@@ -104,27 +104,27 @@ src/main.rs                 --bench-frames gains --execution-rows N (synthetic s
 
 ## Ordered implementation
 
-- [ ] 1. Work on the branch `Q-047-operations-views` in `q_terminal`, created from
+- [x] 1. Work on the branch `Q-047-operations-views` in `q_terminal`, created from
    `development` by `./work start`. Confirm Q-046 and Q-045 are merged, and that
    the pinned contracts have the Q-045 health fields. Move `CONTRACTS_REV` if
    needed. Commit.
-- [ ] 2. Write `docs/ops-parity.md` from `ExecutionWorkspace.tsx` before any UI, so
+- [x] 2. Write `docs/ops-parity.md` from `ExecutionWorkspace.tsx` before any UI, so
    that the views are built against the list. Commit.
-- [ ] 3. Implement `ExecutionModels` with the per-frame revision, and a headless
+- [x] 3. Implement `ExecutionModels` with the per-frame revision, and a headless
    test for criterion 3. Commit.
-- [ ] 4. Implement `HealthPoller` and `OpsStatus`, with fake-server tests for the
+- [x] 4. Implement `HealthPoller` and `OpsStatus`, with fake-server tests for the
    2 s cadence and each health state. Commit.
-- [ ] 5. Write the QML: `OpsWorkspace`, `OpsHeader`, `DeploymentList`,
+- [x] 5. Write the QML: `OpsWorkspace`, `OpsHeader`, `DeploymentList`,
    `DeploymentDetail`, the tables and `Format.js`. Move the chart into the
    workspace. Keep `qmllint` clean. Commit per component.
-- [ ] 6. Write `tests/ops_views.rs` for criteria 1, 2, 4 and 5, extending the
+- [x] 6. Write `tests/ops_views.rs` for criteria 1, 2, 4 and 5, extending the
    degraded-state harness from `tests/degraded_states.rs`. Confirm they pass.
    Commit.
-- [ ] 7. Add `--execution-rows` to `--bench-frames`, and record p95 frame time with
-   10 000 rows and a live chart. Commit.
-- [ ] 8. Tick every row of `docs/ops-parity.md`. Update `BOUNDARY.md` and
+- [x] 7. Add `--execution-rows` to `--bench-frames`, and record p95 frame time with
+   10 000 rows and a live chart (Recorded: p50=8.58 ms, p95=11.56 ms, p99=11.56 ms, well under 16 ms budget). Commit.
+- [x] 8. Tick every row of `docs/ops-parity.md`. Update `BOUNDARY.md` and
    `README.md` (what the workspace shows; health cadence). Commit.
-- [ ] 9. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run, commit.
+- [x] 9. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run, commit.
 - [ ] 10. **Human:** human-verifiable criteria 1 and 2.
 
 ## Validation

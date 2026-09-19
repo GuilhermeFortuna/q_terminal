@@ -169,6 +169,7 @@ int exec_application() {
 void process_events() {
     if (auto* app = QCoreApplication::instance()) {
         app->processEvents();
+        QCoreApplication::sendPostedEvents(nullptr, 0);
     }
 }
 
@@ -642,7 +643,3 @@ std::int64_t feed_rest_calls(BarFeed* feed) {
     if (!feed) return 0;
     return feed->getRest_calls();
 }
-
-
-
-

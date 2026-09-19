@@ -71,20 +71,48 @@ fn main() {
             .qml_file("qml/Viewport.qml")
             .qml_file("qml/ChartPane.qml")
             .qml_file("qml/EmptyState.qml")
-            .qml_file("qml/StatusStrip.qml"),
+            .qml_file("qml/StatusStrip.qml")
+            .qml_file("qml/OpsHeader.qml")
+            .qml_file("qml/DeploymentList.qml")
+            .qml_file("qml/OrdersTable.qml")
+            .qml_file("qml/FillsTable.qml")
+            .qml_file("qml/DecisionsTable.qml")
+            .qml_file("qml/RiskTable.qml")
+            .qml_file("qml/LedgerTable.qml")
+            .qml_file("qml/DeploymentDetail.qml")
+            .qml_file("qml/OpsWorkspace.qml"),
+    )
+    .qrc_resources(
+        qt_build_utils::QResources::new()
+            .resource(
+                qt_build_utils::QResource::new()
+                    .prefix("/qt/qml/qml/qml")
+                    .file(qt_build_utils::QResourceFile::new("qml/Format.js").alias("Format.js")),
+            )
+            .resource(
+                qt_build_utils::QResource::new()
+                    .prefix("/qt/qml/qml")
+                    .file(qt_build_utils::QResourceFile::new("qml/Format.js").alias("Format.js")),
+            ),
     )
     .qt_module("Quick")
     .include_dir("cpp")
     .file("src/bridge.rs")
     .file("src/chart_bridge.rs")
     .file("src/bar_feed.rs")
+    .file("src/execution_models.rs")
+    .file("src/ops_status.rs")
     .cpp_file("src/render_backend.cpp")
     .cpp_file("cpp/bar_chart_node.cpp")
     .cpp_file("cpp/bar_chart_item.h")
     .cpp_file("cpp/bar_chart_item.cpp")
     .cpp_file("cpp/bar_chart_probe.cpp")
     .cpp_file("cpp/chart_cxx.cpp")
+    .cpp_file("cpp/execution_models_cxx.cpp")
     .cpp_file("cpp/frame_bench.cpp")
+    .cpp_file("cpp/table_model.h")
+    .cpp_file("cpp/table_model.cpp")
+    .cpp_file("cpp/table_bridge.cpp")
     .build();
 
     merge_chart_qmltypes();

@@ -113,7 +113,7 @@ Item {
 
             BarChartItem {
                 id: chart
-                objectName: "chartItem"
+                objectName: "benchChart"
                 width: chartContainer.width
                 height: chartContainer.height
                 series: root.feed

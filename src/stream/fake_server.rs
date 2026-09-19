@@ -41,6 +41,12 @@ pub struct FakeServer {
     snapshots: Arc<RwLock<HashMap<String, SnapshotEntry>>>,
     history: Arc<RwLock<HistoryMap>>,
     catalog_json: Arc<RwLock<Option<String>>>,
+    health_json: Arc<RwLock<Option<String>>>,
+    health_503: Arc<AtomicBool>,
+    positions_json: Arc<RwLock<Option<String>>>,
+    health_calls: Arc<std::sync::atomic::AtomicUsize>,
+    positions_calls: Arc<std::sync::atomic::AtomicUsize>,
+    paged_calls: Arc<std::sync::atomic::AtomicUsize>,
     rest_calls: Arc<std::sync::atomic::AtomicUsize>,
     command_tx: mpsc::Sender<ServerCommand>,
     shutdown_tx: mpsc::Sender<()>,
@@ -61,6 +67,12 @@ impl FakeServer {
         let snapshots = Arc::new(RwLock::new(HashMap::<String, SnapshotEntry>::new()));
         let history = Arc::new(RwLock::new(HashMap::<String, Vec<(i64, BarColumns)>>::new()));
         let catalog_json = Arc::new(RwLock::new(None::<String>));
+        let health_json = Arc::new(RwLock::new(None::<String>));
+        let health_503 = Arc::new(AtomicBool::new(false));
+        let positions_json = Arc::new(RwLock::new(None::<String>));
+        let health_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let positions_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let paged_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let rest_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
         let (cmd_tx, mut cmd_rx) = mpsc::channel::<ServerCommand>(100);
@@ -105,6 +117,12 @@ impl FakeServer {
         let snap_arc = snapshots.clone();
         let hist_arc = history.clone();
         let cat_arc = catalog_json.clone();
+        let hjson_arc = health_json.clone();
+        let h503_arc = health_503.clone();
+        let pjson_arc = positions_json.clone();
+        let hcalls_arc = health_calls.clone();
+        let pcalls_arc = positions_calls.clone();
+        let paged_calls_arc = paged_calls.clone();
         let rest_cnt = rest_calls.clone();
 
         tokio::spawn(async move {
@@ -125,6 +143,12 @@ impl FakeServer {
                             let snap_arc = snap_arc.clone();
                             let hist_arc = hist_arc.clone();
                             let cat_arc = cat_arc.clone();
+                            let hjson_arc = hjson_arc.clone();
+                            let h503_arc = h503_arc.clone();
+                            let pjson_arc = pjson_arc.clone();
+                            let hcalls_arc = hcalls_arc.clone();
+                            let pcalls_arc = pcalls_arc.clone();
+                            let paged_calls_arc = paged_calls_arc.clone();
                             let rest_cnt = rest_cnt.clone();
                             let ws_sender_clone = ws_sender_clone.clone();
 
@@ -247,6 +271,158 @@ impl FakeServer {
                                         let _ = socket.shutdown().await;
                                         return;
                                     }
+                                }
+
+                                if path.ends_with("/api/v1/execution/health") {
+                                    hcalls_arc.fetch_add(1, Ordering::SeqCst);
+                                    if h503_arc.load(Ordering::SeqCst) {
+                                        let resp = "HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nContent-Length: 33\r\nConnection: close\r\n\r\n{\"code\":\"database_unavailable\"}";
+                                        let _ = socket.write_all(resp.as_bytes()).await;
+                                        let _ = socket.shutdown().await;
+                                        return;
+                                    }
+                                    let body = {
+                                        let guard = hjson_arc.read().await;
+                                        guard.clone().unwrap_or_else(|| {
+                                            json!({
+                                                "api_status": "ok",
+                                                "checked_at": "2026-09-19T00:00:00Z",
+                                                "deployments": [],
+                                                "edge": {
+                                                    "checked_at": "2026-09-19T00:00:00Z",
+                                                    "mt5_connected": true,
+                                                    "reachable": true,
+                                                    "terminal_build": 4150
+                                                },
+                                                "kill_switch_enabled": false,
+                                                "live_capability_locked": false,
+                                                "market_data_status": "streaming",
+                                                "unknown_order_count": 0,
+                                                "worker_heartbeat_age_s": 0.5,
+                                                "worker_started_at": "2026-09-19T00:00:00Z",
+                                                "worker_status": "active"
+                                            }).to_string()
+                                        })
+                                    };
+                                    let resp = format!(
+                                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                        body.len(),
+                                        body
+                                    );
+                                    let _ = socket.write_all(resp.as_bytes()).await;
+                                    let _ = socket.shutdown().await;
+                                    return;
+                                }
+
+                                if path.ends_with("/api/v1/execution/positions") {
+                                    pcalls_arc.fetch_add(1, Ordering::SeqCst);
+                                    let body = {
+                                        let guard = pjson_arc.read().await;
+                                        guard.clone().unwrap_or_else(|| "[]".to_string())
+                                    };
+                                    let resp = format!(
+                                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                        body.len(),
+                                        body
+                                    );
+                                    let _ = socket.write_all(resp.as_bytes()).await;
+                                    let _ = socket.shutdown().await;
+                                    return;
+                                }
+
+                                if path.starts_with("/api/v1/execution/")
+                                    && (path.ends_with("/orders")
+                                        || path.ends_with("/fills")
+                                        || path.ends_with("/decisions")
+                                        || path.ends_with("/risk-events")
+                                        || path.ends_with("/ledger"))
+                                {
+                                    paged_calls_arc.fetch_add(1, Ordering::SeqCst);
+                                    let resp_body = if path.ends_with("/orders") {
+                                        json!({
+                                            "items": [
+                                                {
+                                                    "id": "older-order-99",
+                                                    "created_at": "2026-09-18T10:00:00Z",
+                                                    "intent_id": "older-intent-99",
+                                                    "side": "buy",
+                                                    "order_type": "limit",
+                                                    "quantity": "50.00",
+                                                    "status": "filled",
+                                                    "reconciliation_state": "reconciled",
+                                                    "rejection_reason": ""
+                                                }
+                                            ]
+                                        })
+                                        .to_string()
+                                    } else if path.ends_with("/fills") {
+                                        json!({
+                                            "items": [
+                                                {
+                                                    "id": "older-fill-99",
+                                                    "order_id": "older-order-99",
+                                                    "created_at": "2026-09-18T10:00:01Z",
+                                                    "filled_at": "2026-09-18T10:00:01Z",
+                                                    "side": "buy",
+                                                    "price": "34.50",
+                                                    "quantity": "50.00",
+                                                    "fee": "0.15",
+                                                    "slippage": "0.00"
+                                                }
+                                            ]
+                                        })
+                                        .to_string()
+                                    } else if path.ends_with("/decisions") {
+                                        json!({
+                                            "items": [
+                                                {
+                                                    "id": "older-dec-99",
+                                                    "created_at": "2026-09-18T09:59:00Z",
+                                                    "bar_close_time": "2026-09-18T09:59:00Z",
+                                                    "signal_action": "buy",
+                                                    "outcome": "executed",
+                                                    "requested_quantity": "50.00",
+                                                    "reason": "ema_cross"
+                                                }
+                                            ]
+                                        })
+                                        .to_string()
+                                    } else if path.ends_with("/risk-events") {
+                                        json!({
+                                            "items": [
+                                                {
+                                                    "id": "older-risk-99",
+                                                    "created_at": "2026-09-18T09:55:00Z",
+                                                    "rejection_code": "max_drawdown_limit",
+                                                    "message": "Drawdown exceeded 5%",
+                                                    "context": {}
+                                                }
+                                            ]
+                                        })
+                                        .to_string()
+                                    } else {
+                                        json!({
+                                            "items": [
+                                                {
+                                                    "id": "older-ledger-99",
+                                                    "created_at": "2026-09-18T09:50:00Z",
+                                                    "entry_type": "deposit",
+                                                    "amount": "10000.00",
+                                                    "balance_after": "100000.00",
+                                                    "description": "Initial funding"
+                                                }
+                                            ]
+                                        })
+                                        .to_string()
+                                    };
+                                    let resp = format!(
+                                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                        resp_body.len(),
+                                        resp_body
+                                    );
+                                    let _ = socket.write_all(resp.as_bytes()).await;
+                                    let _ = socket.shutdown().await;
+                                    return;
                                 }
 
                                 if path.ends_with("/stream/execution/snapshot") {
@@ -396,6 +572,12 @@ impl FakeServer {
             snapshots,
             history,
             catalog_json,
+            health_json,
+            health_503,
+            positions_json,
+            health_calls,
+            positions_calls,
+            paged_calls,
             rest_calls,
             command_tx: cmd_tx,
             shutdown_tx,
@@ -409,6 +591,32 @@ impl FakeServer {
     pub async fn set_catalog(&self, catalog_body: &str) {
         let mut guard = self.catalog_json.write().await;
         *guard = Some(catalog_body.to_string());
+    }
+
+    pub async fn set_health_json(&self, health_body: &str) {
+        let mut guard = self.health_json.write().await;
+        *guard = Some(health_body.to_string());
+    }
+
+    pub fn set_health_503(&self, val: bool) {
+        self.health_503.store(val, Ordering::SeqCst);
+    }
+
+    pub async fn set_positions_json(&self, positions_body: &str) {
+        let mut guard = self.positions_json.write().await;
+        *guard = Some(positions_body.to_string());
+    }
+
+    pub fn health_calls(&self) -> usize {
+        self.health_calls.load(Ordering::SeqCst)
+    }
+
+    pub fn positions_calls(&self) -> usize {
+        self.positions_calls.load(Ordering::SeqCst)
+    }
+
+    pub fn paged_calls(&self) -> usize {
+        self.paged_calls.load(Ordering::SeqCst)
     }
 
     pub fn rest_calls(&self) -> usize {

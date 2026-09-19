@@ -1,11 +1,19 @@
+#[rustfmt::skip]
+#[path = "../contracts/stream.rs"]
+pub mod contracts_stream;
+
 #[path = "../src/bridge.rs"]
 #[allow(dead_code)]
 mod bridge;
 #[path = "../src/config.rs"]
 #[allow(dead_code)]
 mod config;
+#[path = "../src/execution/mod.rs"]
+pub mod execution;
 #[path = "../src/history/mod.rs"]
 mod history;
+#[path = "../src/stream/mod.rs"]
+pub mod stream;
 
 use config::Config;
 use history::{load, ApiClient, Source, VerifiedSet};
