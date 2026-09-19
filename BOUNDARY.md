@@ -12,6 +12,16 @@ This document defines the strict ownership scope and architectural boundaries fo
 - Real-time account risk, margins, and fill state display.
 - Operational telemetry and real-time trading session status.
 
+### Operations surfaces (Q-047)
+
+The terminal's read-only operations workspace (`qml/OpsWorkspace.qml` and its components) displays:
+- **Deployments** — lifecycle, broker mode, positions, pending actions, and unknown-order counts (`DeploymentList.qml`).
+- **Execution detail tables** — orders, fills, decisions, and risk events for the selected deployment (`DeploymentDetail.qml`, `*Table.qml`).
+- **Accounts and ledger** — paper-account balances and ledger entries with paged "load older" (`DeploymentDetail.qml`, `LedgerTable.qml`).
+- **Health and marks** — stream/API/worker/edge/kill-switch/live-lock status plus backend-computed unrealized P&L and mark prices, polled every two seconds (`OpsHeader.qml`, `OpsStatus`, `HealthPoller`).
+
+These surfaces are **read-only** in Q-047; command controls arrive in Q-048.
+
 ---
 
 ## 2. Surfaces This Repository Will Never Grow

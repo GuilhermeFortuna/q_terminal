@@ -24,6 +24,28 @@ The live chart slice provides a read-only, reactive candlestick chart window dis
 
 ---
 
+## The Operations Workspace
+
+The operations workspace (Q-047) is the terminal's read-only execution surface. It sits alongside the live chart in `OpsWorkspace.qml` and is driven by the in-memory execution store plus a two-second health/positions poller.
+
+### What It Shows
+
+- **Status Header (`OpsHeader.qml`)**: Stream connection (with age when disconnected), API status, worker status and heartbeat age, MT5 edge reachability and terminal build, kill switch, live-trading lock, unknown-order count, and §8.1 degraded banners (Postgres down, worker offline/stale, reconciliation required).
+- **Deployments List (`DeploymentList.qml`)**: Name, symbol, timeframe, broker mode (live visually distinct), lifecycle, pending action, net position with entry price, last evaluated bar, and per-deployment unknown-order count.
+- **Deployment Detail (`DeploymentDetail.qml`)**: Tabbed tables for orders, fills, decisions, risk events, and account ledger (newest first). Position marks and unrealized P&L come from `GET /api/v1/execution/positions` — never computed in the terminal. Account summary shows cash balance, equity, and session P&L from store strings.
+- **Chart Pane (`ChartPane.qml`)**: The existing candlestick chart for the configured symbol (unchanged until Q-049).
+- **Paging**: "Load older" on each table issues one paged REST request and appends rows below the streamed snapshot window.
+
+### Health and Marks Cadence
+
+`HealthPoller` is the only periodic client in the workspace. Every two seconds it calls:
+1. `GET /api/v1/execution/health`
+2. `GET /api/v1/execution/positions`
+
+All other execution state arrives over the WebSocket stream. See [`docs/ops-parity.md`](docs/ops-parity.md) for the frontend field mapping.
+
+---
+
 ## Configuration
 
 `q_terminal` is configured through a TOML file or environment variables.
@@ -92,7 +114,11 @@ q_terminal/
 │   ├── bar_chart_probe.cpp       # Headless vertex and scene graph inspection
 │   └── chart_cxx.h / .cpp        # CXX-Qt bridge helper functions and event pump
 ├── qml/                # Declarative QML scenes
-│   ├── Main.qml        # Main application window composing Header, ChartPane, StatusStrip
+│   ├── Main.qml        # Main application window wiring OpsWorkspace and models
+│   ├── OpsWorkspace.qml# Operations layout: header, deployments, chart, detail tables
+│   ├── OpsHeader.qml   # Stream/API/worker/edge/kill-switch health header
+│   ├── DeploymentList.qml / DeploymentDetail.qml / *Table.qml
+│   ├── Format.js       # Decimal-string and time formatting (no money arithmetic)
 │   ├── Viewport.qml    # Viewport tracking newest bar and sticky price bounds
 │   ├── ChartPane.qml   # Chart pane with gridlines, price/time axes, and BarChartItem
 │   ├── StatusStrip.qml # Live connection, freshness, history source, and error status
@@ -105,7 +131,7 @@ q_terminal/
 │   ├── bar_feed.rs     # CXX-Qt BarFeed model binding live and historical bars to QML
 │   ├── bridge.rs       # CXX-Qt AppInfo projection over q_core::CoreInfo
 │   ├── chart_bridge.rs # CXX-Qt chart probe bindings for headless testing
-│   ├── execution/      # Execution store: exact live state keyed by entity id
+│   ├── execution/      # Execution store, models, health poller, and ops status bridge
 │   ├── history/        # Catalog-driven parquet load, seam stitching, and verification
 │   └── stream/         # WebSocket client, envelope framing, and sequence gap recovery
 └── tests/              # End-to-end and headless integration tests
@@ -126,7 +152,7 @@ q_terminal/
 open positions, orders, decisions, fills, risk events and the kill switch. It is kept by the
 same snapshot-then-delta protocol as the bars (subscribe, snapshot, discard at or below the
 watermark, fill gaps from history by sequence, re-snapshot on expiry or epoch change), over
-the **same stream connection**. There is no QML for it yet; Q-047 draws it.
+the **same stream connection**. Q-047 draws it in `OpsWorkspace.qml` (read-only; commands in Q-048).
 
 - **Six topics, one snapshot.** `decisions`, `orders`, `fills`, `risk`, `ledger` and
   `deployments` each follow the protocol independently. A re-snapshot triggered by any one of

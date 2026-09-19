@@ -122,9 +122,9 @@ src/main.rs                 --bench-frames gains --execution-rows N (synthetic s
    Commit.
 - [x] 7. Add `--execution-rows` to `--bench-frames`, and record p95 frame time with
    10 000 rows and a live chart (Recorded: p50=8.58 ms, p95=11.56 ms, p99=11.56 ms, well under 16 ms budget). Commit.
-- [ ] 8. Tick every row of `docs/ops-parity.md`. Update `BOUNDARY.md` and
+- [x] 8. Tick every row of `docs/ops-parity.md`. Update `BOUNDARY.md` and
    `README.md` (what the workspace shows; health cadence). Commit.
-- [ ] 9. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run, commit.
+- [x] 9. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run, commit.
 - [ ] 10. **Human:** human-verifiable criteria 1 and 2.
 
 ## Validation
