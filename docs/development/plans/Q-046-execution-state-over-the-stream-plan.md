@@ -113,32 +113,32 @@ CONTRACTS_REV                     → the Q-043 recapture commit in q_contracts 
 
 ## Ordered implementation
 
-- [ ] 1. Work on the branch `Q-046-execution-state-over-the-stream` in `q_terminal`,
+- [x] 1. Work on the branch `Q-046-execution-state-over-the-stream` in `q_terminal`,
    created from `development` by `./work start`. Confirm Q-043 and its
    `q_contracts` recapture are merged. Move `CONTRACTS_REV`, run
    `make contracts` and `make contracts-check`. Confirm the execution types are
    in `contracts/stream.rs`. Commit.
-- [ ] 2. Refactor `run_client_loop` to a topic map, with no behaviour change.
+- [x] 2. Refactor `run_client_loop` to a topic map, with no behaviour change.
    Confirm `tests/stream_protocol.rs`, `tests/stream_faults.rs` and
    `slice_end_to_end.rs` pass unchanged. Commit.
-- [ ] 3. Generalize `TopicState` to `Payload` and `TopicFilter`. Confirm every
+- [x] 3. Generalize `TopicState` to `Payload` and `TopicFilter`. Confirm every
    `topic_state.rs` unit test and the stream tests pass unchanged. Commit.
-- [ ] 4. Add the execution topics to `policy.rs`, with a test for criterion 8.
+- [x] 4. Add the execution topics to `policy.rs`, with a test for criterion 8.
    Commit.
-- [ ] 5. Write `src/stream/execution.rs` (decode) and `src/execution/store.rs`, with
+- [x] 5. Write `src/stream/execution.rs` (decode) and `src/execution/store.rs`, with
    unit tests: replace-by-id; at-or-below-watermark no-op; fill updates
    position; ledger updates account; rings bounded by limits; revision
    increments on change only. Commit.
-- [ ] 6. Extend `fake_server.rs` with the execution snapshot and durable-topic
+- [x] 6. Extend `fake_server.rs` with the execution snapshot and durable-topic
    history. Write `tests/execution_store.rs` for criteria 1–6. Wire the
    execution sink and the fan-out snapshot into the client. Confirm they
    pass. Commit.
-- [ ] 7. Write `tests/execution_convergence.rs` (criterion 7) and fix anything it
+- [x] 7. Write `tests/execution_convergence.rs` (criterion 7) and fix anything it
    finds. Commit.
-- [ ] 8. Add `--headless-report --execution`. Commit.
-- [ ] 9. Run `make bench-stream` and compare the bar figures with the Q-035
+- [x] 8. Add `--headless-report --execution`. Commit.
+- [x] 9. Run `make bench-stream` and compare the bar figures with the Q-035
    record (criterion 9). Commit the numbers in the handoff, not in the repo.
-- [ ] 10. Update `README.md` (execution store, headless report flag). Run
+- [x] 10. Update `README.md` (execution store, headless report flag). Run
    `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run, commit.
 - [ ] 11. **Human:** human-verifiable criterion 1.
 
