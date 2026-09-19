@@ -148,6 +148,13 @@ async fn run_seed(seed: u64) {
     let fresh = exec_common::fresh_from(&snap);
     let data = h.handle.read(|s| s.data().clone());
     let confirmed = h.handle.read(|s| s.is_confirmed());
+    eprintln!(
+        "client: {:?} last_error {:?} counters {:?} rest_calls {}",
+        h.client.connection_state(),
+        h.client.last_error(),
+        h.client.counters(),
+        h.server.rest_calls()
+    );
     panic!(
         "seed {seed} did not converge: confirmed {confirmed}, store {counts:?}, watermarks {marks:?}, \
          snapshot watermark {}\nequal parts: deployments {} accounts {} positions {} orders {} \

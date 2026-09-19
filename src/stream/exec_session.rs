@@ -176,6 +176,11 @@ impl ExecSession {
     /// Reads the execution snapshot and applies it to all six topics, repeating while a
     /// topic still asks for one. A failure leaves the store as it was, unconfirmed.
     async fn request_snapshot(&mut self, net: &Net<'_>, resnapshot: bool) {
+        // A failed snapshot already has a retry on the clock; events that ask for another
+        // one meanwhile wait for it instead of hammering the API and inflating the backoff.
+        if self.retry_at.is_some() {
+            return;
+        }
         let mut resnapshot = resnapshot;
         for _ in 0..MAX_SNAPSHOT_ROUNDS {
             match self.snapshot_once(net, resnapshot).await {

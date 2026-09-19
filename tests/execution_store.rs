@@ -283,3 +283,24 @@ async fn snapshot_503_keeps_prior_state_unconfirmed_and_recovers() {
     h.wait_converged().await;
     h.stop().await;
 }
+
+#[tokio::test]
+async fn events_during_a_snapshot_outage_do_not_inflate_the_retry_backoff() {
+    let h = start().await;
+    preload(&h.server).await;
+    h.wait_converged().await;
+
+    // Found by the convergence property test (seed 591): each event that asked for a
+    // snapshot during the outage used to count as a failed attempt, so the backoff
+    // outgrew the outage by orders of magnitude.
+    h.server.set_snapshot_503(true);
+    for n in 2..14 {
+        h.server
+            .send_epoch_changed("orders", &format!("epoch-{n}"))
+            .await;
+    }
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    h.server.set_snapshot_503(false);
+    h.wait_converged().await;
+    h.stop().await;
+}
