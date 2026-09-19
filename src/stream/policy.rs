@@ -5,6 +5,15 @@ pub struct TopicPolicy {
     pub coalesce_key: &'static [&'static str],
 }
 
+pub const EXECUTION_TOPICS: [&str; 6] = [
+    "decisions",
+    "orders",
+    "fills",
+    "risk",
+    "ledger",
+    "deployments",
+];
+
 pub const KNOWN_TOPICS: &[TopicPolicy] = &[
     TopicPolicy {
         name: "bars.forming",
@@ -14,6 +23,36 @@ pub const KNOWN_TOPICS: &[TopicPolicy] = &[
     TopicPolicy {
         name: "bars.completed",
         topic_class: "ephemeral",
+        coalesce_key: &[],
+    },
+    TopicPolicy {
+        name: "decisions",
+        topic_class: "durable",
+        coalesce_key: &[],
+    },
+    TopicPolicy {
+        name: "orders",
+        topic_class: "durable",
+        coalesce_key: &[],
+    },
+    TopicPolicy {
+        name: "fills",
+        topic_class: "durable",
+        coalesce_key: &[],
+    },
+    TopicPolicy {
+        name: "risk",
+        topic_class: "durable",
+        coalesce_key: &[],
+    },
+    TopicPolicy {
+        name: "ledger",
+        topic_class: "durable",
+        coalesce_key: &[],
+    },
+    TopicPolicy {
+        name: "deployments",
+        topic_class: "durable",
         coalesce_key: &[],
     },
 ];
@@ -113,6 +152,28 @@ where
         });
     }
 
+    // Execution events are never coalesced or dropped on the client.
+    for topic in EXECUTION_TOPICS {
+        let p = policy_list
+            .iter()
+            .find(|p| p.name == topic)
+            .ok_or_else(|| PolicyError::MissingTopic(topic.to_string()))?;
+        if p.topic_class != "durable" {
+            return Err(PolicyError::ClassMismatch {
+                topic: topic.to_string(),
+                expected: "durable",
+                actual: p.topic_class.to_string(),
+            });
+        }
+        if !p.coalesce_key.is_empty() {
+            return Err(PolicyError::CoalesceKeyMismatch {
+                topic: topic.to_string(),
+                expected: vec![],
+                actual: p.coalesce_key.iter().map(|s| s.to_string()).collect(),
+            });
+        }
+    }
+
     Ok(())
 }
 
@@ -187,5 +248,47 @@ mod tests {
                 actual: vec!["symbol".to_string()],
             })
         );
+    }
+
+    #[test]
+    fn test_coalescing_execution_topic_fails() {
+        let mut topics: Vec<TopicPolicy> = KNOWN_TOPICS.to_vec();
+        for t in topics.iter_mut() {
+            if t.name == "fills" {
+                t.coalesce_key = &["deployment_id"];
+            }
+        }
+        assert_eq!(
+            assert_topic_policies(&topics),
+            Err(PolicyError::CoalesceKeyMismatch {
+                topic: "fills".to_string(),
+                expected: vec![],
+                actual: vec!["deployment_id".to_string()],
+            })
+        );
+    }
+
+    #[test]
+    fn test_missing_or_ephemeral_execution_topic_fails() {
+        let without: Vec<TopicPolicy> = KNOWN_TOPICS
+            .iter()
+            .filter(|t| t.name != "ledger")
+            .cloned()
+            .collect();
+        assert_eq!(
+            assert_topic_policies(&without),
+            Err(PolicyError::MissingTopic("ledger".to_string()))
+        );
+
+        let mut topics: Vec<TopicPolicy> = KNOWN_TOPICS.to_vec();
+        for t in topics.iter_mut() {
+            if t.name == "orders" {
+                t.topic_class = "ephemeral";
+            }
+        }
+        assert!(matches!(
+            assert_topic_policies(&topics),
+            Err(PolicyError::ClassMismatch { .. })
+        ));
     }
 }

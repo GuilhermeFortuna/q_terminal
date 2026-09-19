@@ -1,9 +1,11 @@
+#[rustfmt::skip]
 #[path = "../contracts/stream.rs"]
 pub mod contracts_stream;
 
 pub mod bridge;
 pub mod chart_bridge;
 pub mod config;
+pub mod execution;
 pub mod history;
 pub mod startup;
 pub mod stream;
@@ -16,6 +18,47 @@ pub fn headless_report() -> i32 {
     println!("{}", app_info.core_version);
     println!("{}", app_info.contracts_rev);
     println!("{}", app_info.render_backend);
+    0
+}
+
+/// Connects, lets the execution store converge on the backend's snapshot, prints its
+/// counts and applied sequences, and exits 0. Exits 1 if it cannot be confirmed.
+pub fn headless_execution_report() -> i32 {
+    let config = match config::Config::load() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("configuration error: {e}");
+            return 1;
+        }
+    };
+    let handle = execution::store::ExecutionHandle::new();
+    let client = stream::client::StreamClient::start_with(
+        config,
+        stream::client::Sinks {
+            bars: stream::sink::BarSink::new(),
+            execution: Some(handle.clone()),
+        },
+    );
+    let timeout_ms: u64 = std::env::var("Q_TERMINAL_REPORT_TIMEOUT_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(20_000);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+    while !handle.read(|s| s.is_confirmed()) && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    // Let events already in flight land, then read.
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let confirmed = handle.read(|s| s.is_confirmed());
+    for line in handle.read(|s| s.report_lines()) {
+        println!("{line}");
+    }
+    let last_error = client.last_error();
+    client.shutdown();
+    if !confirmed {
+        eprintln!("execution state not confirmed: {last_error}");
+        return 1;
+    }
     0
 }
 
@@ -38,6 +81,9 @@ fn main() {
 
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|arg| arg == "--headless-report") {
+        if args.iter().any(|arg| arg == "--execution") {
+            std::process::exit(headless_execution_report());
+        }
         std::process::exit(headless_report());
     }
     if args.iter().any(|arg| arg == "--bench-frames") {

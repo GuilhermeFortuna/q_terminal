@@ -400,6 +400,28 @@ pub struct DataSourceUpdateRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DatasetListResponse {
+    pub datasets: Vec<DatasetManifestResponse>,
+    pub root: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DatasetManifestResponse {
+    pub arrow_schema: serde_json::Value,
+    pub checksum_algorithm: String,
+    pub dataset_id: String,
+    pub files: Vec<ManifestFile>,
+    pub published_at: String,
+    pub row_count: i64,
+    pub state: String,
+    pub subject: serde_json::Value,
+    pub supersedes: Option<String>,
+    pub time_range: serde_json::Value,
+    pub tombstone: Option<serde_json::Value>,
+    pub version: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DecisionListResponse {
     pub items: Vec<DecisionResponse>,
     pub limit: i64,
@@ -684,9 +706,23 @@ pub struct EntryManagerConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EpochMismatchResponse {
+    pub current_epoch: String,
+    pub requested_epoch: String,
+    pub topic: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EquityArtifactPoint {
     pub equity: f64,
     pub time: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ErrorResponse {
+    pub code: Option<String>,
+    pub details: Option<serde_json::Value>,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1023,6 +1059,21 @@ pub struct HTTPValidationError {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HistoryExpiredResponse {
+    pub oldest_available_seq: Option<i64>,
+    pub requested_from_seq: i64,
+    pub topic: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HistoryPageResponse {
+    pub entries: Vec<serde_json::Value>,
+    pub epoch: String,
+    pub next_seq: Option<i64>,
+    pub topic: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IngestJobRequest {
     pub end: String,
     pub kind: Option<String>,
@@ -1077,6 +1128,23 @@ pub struct InverseVolatilityPositionSizing {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JobSnapshotItem {
+    pub job_id: String,
+    pub kind: String,
+    pub message: Option<String>,
+    pub progress: Option<f64>,
+    pub progress_epoch: Option<String>,
+    pub progress_seq: Option<i64>,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JobSnapshotResponse {
+    pub jobs: Vec<JobSnapshotItem>,
+    pub watermark: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct KillSwitchResponse {
     pub enabled: bool,
     pub reason: Option<String>,
@@ -1108,6 +1176,12 @@ pub struct LatentGateResultResponse {
     pub passed: bool,
     pub target_horizon: Option<i64>,
     pub target_name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LatestResponse {
+    pub entries: serde_json::Value,
+    pub topic: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1146,6 +1220,13 @@ pub struct LogFloatParam {
     pub low: f64,
     #[serde(rename = "type")]
     pub r#type: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ManifestFile {
+    pub checksum: String,
+    pub path: String,
+    pub size_bytes: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

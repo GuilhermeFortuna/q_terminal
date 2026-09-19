@@ -1,5 +1,6 @@
 #![allow(clippy::await_holding_lock)]
 
+#[rustfmt::skip]
 #[path = "../contracts/stream.rs"]
 pub mod contracts_stream;
 
@@ -9,6 +10,8 @@ pub mod bridge;
 pub mod chart_bridge;
 #[path = "../src/config.rs"]
 pub mod config;
+#[path = "../src/execution/mod.rs"]
+pub mod execution;
 #[path = "../src/history/mod.rs"]
 pub mod history;
 #[path = "../src/startup.rs"]
