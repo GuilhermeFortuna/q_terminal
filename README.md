@@ -54,24 +54,42 @@ If configuration is missing or invalid, or if the API cannot be reached at start
 
 ---
 
-## Running Against `./research`
+## Running locally
 
-To run `q_terminal` against a live local stack:
+The canonical workflow is the workspace `./dev` launcher (Docker-backed Postgres
+and Redis; API, outbox relay, and execution worker as systemd user units;
+`q_terminal` runs in the foreground and does not supervise them):
 
-1. Start the Q research stack from the workspace meta-repo:
-   ```bash
-   cd /home/gui/projects/q
-   ./research
-   ```
-   This starts containerized Postgres and Redis, the FastAPI control API, and Dramatiq workers.
+```bash
+cd /path/to/q
+./dev up terminal
+```
 
-2. Launch `q_terminal`:
-   ```bash
-   cd /home/gui/projects/q/q_terminal
-   make run
-   # or with environment overrides:
-   Q_TERMINAL_API_BASE="http://127.0.0.1:8000" Q_TERMINAL_SYMBOL="PETR4" Q_TERMINAL_TIMEFRAME="1m" cargo run
-   ```
+This starts Postgres, Redis, the control API, and the outbox relay, then launches
+`q_terminal`. Ctrl+C stops only the terminal; backends keep running until
+`./dev down`.
+
+Override defaults with environment variables:
+
+```bash
+Q_TERMINAL_API_BASE="http://127.0.0.1:8000" \
+Q_TERMINAL_SYMBOL="PETR4" \
+Q_TERMINAL_TIMEFRAME="1m" \
+./dev up terminal
+```
+
+Or launch the terminal alone after `./dev up execution` (or after starting the
+backend stack manually):
+
+```bash
+cd q_terminal && make run
+```
+
+### Alternative: `./research`
+
+For Research UI / backtest work, use `./research` from the workspace root instead.
+It starts a different stack (including the Dramatiq worker) and tears everything
+down on Ctrl+C. It is not required for `q_terminal` development.
 
 ---
 
