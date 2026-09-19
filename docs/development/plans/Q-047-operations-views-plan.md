@@ -108,7 +108,7 @@ src/main.rs                 --bench-frames gains --execution-rows N (synthetic s
    `development` by `./work start`. Confirm Q-046 and Q-045 are merged, and that
    the pinned contracts have the Q-045 health fields. Move `CONTRACTS_REV` if
    needed. Commit.
-- [ ] 2. Write `docs/ops-parity.md` from `ExecutionWorkspace.tsx` before any UI, so
+- [x] 2. Write `docs/ops-parity.md` from `ExecutionWorkspace.tsx` before any UI, so
    that the views are built against the list. Commit.
 - [ ] 3. Implement `ExecutionModels` with the per-frame revision, and a headless
    test for criterion 3. Commit.
