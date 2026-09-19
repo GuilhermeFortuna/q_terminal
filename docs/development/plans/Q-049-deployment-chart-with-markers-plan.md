@@ -94,9 +94,9 @@ src/main.rs                   --bench-frames gains --markers N --overlays N
 
 ## Ordered implementation
 
-- [ ] 1. Work on the branch `Q-049-deployment-chart-with-markers` in `q_terminal`,
+- [x] 1. Work on the branch `Q-049-deployment-chart-with-markers` in `q_terminal`,
    created from `development` by `./work start`. Confirm Q-047 is merged.
-- [ ] 2. Port the placement rules into `tests/markers.rs` as vectors, including
+- [x] 2. Port the placement rules into `tests/markers.rs` as vectors, including
    close-time and open-time conventions, a fill inside a bar, a fill before the
    first bar, and holds. Implement `markers.rs`. Confirm they pass. Commit.
 - [ ] 3. Implement `ChartTarget` and `retarget`, and write `tests/chart_target.rs`
