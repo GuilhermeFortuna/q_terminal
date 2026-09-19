@@ -71,6 +71,15 @@ pub mod ffi {
         fn load_older(self: Pin<&mut ExecutionModels>, table: QString);
 
         #[qinvokable]
+        fn field_for_selected_deployment(
+            self: Pin<&mut ExecutionModels>,
+            field: QString,
+        ) -> QString;
+
+        #[qinvokable]
+        fn field_for_selected_account(self: Pin<&mut ExecutionModels>, field: QString) -> QString;
+
+        #[qinvokable]
         fn setup(self: Pin<&mut ExecutionModels>, api_base: QString);
     }
 
@@ -631,6 +640,36 @@ impl ExecutionModelsRust {
     pub fn accounts_count(&self) -> i32 {
         unsafe { ffi::table_model_count(self.m_accounts.0) }
     }
+
+    fn field_for_id(model: RawTableModel, selected_id: &str, field: &str) -> String {
+        if selected_id.is_empty() {
+            return String::new();
+        }
+        let count = unsafe { ffi::table_model_count(model.0) };
+        for index in 0..count {
+            let id = unsafe { ffi::table_model_get_field(model.0, index, "id") };
+            if id == selected_id {
+                return unsafe { ffi::table_model_get_field(model.0, index, field) };
+            }
+        }
+        String::new()
+    }
+
+    pub fn field_for_selected_deployment(&self, field: &str) -> String {
+        Self::field_for_id(
+            self.m_deployments,
+            &self.selected_deployment_id.to_string(),
+            field,
+        )
+    }
+
+    pub fn field_for_selected_account(&self, field: &str) -> String {
+        Self::field_for_id(
+            self.m_accounts,
+            &self.selected_account_id.to_string(),
+            field,
+        )
+    }
 }
 
 impl ffi::ExecutionModels {
@@ -656,6 +695,18 @@ impl ffi::ExecutionModels {
     pub fn select_account(mut self: Pin<&mut Self>, account_id: QString) {
         self.as_mut().set_selected_account_id(account_id);
         self.as_mut().rust_mut().refresh_ledger();
+    }
+
+    pub fn field_for_selected_deployment(self: Pin<&mut Self>, field: QString) -> QString {
+        QString::from(
+            &self
+                .rust()
+                .field_for_selected_deployment(&field.to_string()),
+        )
+    }
+
+    pub fn field_for_selected_account(self: Pin<&mut Self>, field: QString) -> QString {
+        QString::from(&self.rust().field_for_selected_account(&field.to_string()))
     }
 
     pub fn load_older(self: Pin<&mut Self>, table: QString) {

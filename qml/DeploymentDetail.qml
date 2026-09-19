@@ -41,7 +41,7 @@ Rectangle {
         // Top Header: Selected Deployment info and Net Position Card
         Rectangle {
             Layout.fillWidth: true
-            height: 64
+            height: 72
             color: "#1e222d"
             border.color: "#334155"
             border.width: 1
@@ -52,16 +52,70 @@ Rectangle {
                 anchors.rightMargin: 16
                 spacing: 16
 
-                // Deployment Name / ID
+                // Deployment identity, lifecycle, pending action, last bar
                 ColumnLayout {
-                    spacing: 2
+                    spacing: 4
                     Layout.alignment: Qt.AlignVCenter
+                    Layout.fillWidth: true
 
                     Text {
-                        text: "DEPLOYMENT: " + (root.executionModels.selected_deployment_id !== "" ? root.executionModels.selected_deployment_id : "None selected")
+                        text: {
+                            var name = root.executionModels.field_for_selected_deployment("name");
+                            var id = root.executionModels.selected_deployment_id;
+                            if (id === "") return "DEPLOYMENT: None selected";
+                            return "DEPLOYMENT: " + (name !== "" ? name : id);
+                        }
                         color: "#f8fafc"
                         font.pixelSize: 13
                         font.bold: true
+                    }
+
+                    RowLayout {
+                        visible: root.executionModels.selected_deployment_id !== ""
+                        spacing: 8
+
+                        Rectangle {
+                            height: 18
+                            implicitWidth: lifeDetailText.implicitWidth + 8
+                            radius: 3
+                            color: {
+                                var life = root.executionModels.field_for_selected_deployment("lifecycle");
+                                if (life === "running") return "#064e3b";
+                                if (life === "paused") return "#451a03";
+                                if (life === "stopped") return "#450a0a";
+                                return "#1e293b";
+                            }
+
+                            Text {
+                                id: lifeDetailText
+                                anchors.centerIn: parent
+                                text: root.executionModels.field_for_selected_deployment("lifecycle").toUpperCase()
+                                color: {
+                                    var life = root.executionModels.field_for_selected_deployment("lifecycle");
+                                    if (life === "running") return "#34d399";
+                                    if (life === "paused") return "#fbbf24";
+                                    if (life === "stopped") return "#f87171";
+                                    return "#94a3b8";
+                                }
+                                font.pixelSize: 9
+                                font.bold: true
+                            }
+                        }
+
+                        Text {
+                            visible: root.executionModels.field_for_selected_deployment("pending_action") !== ""
+                            text: "Desired: " + root.executionModels.field_for_selected_deployment("pending_action")
+                            color: "#f59e0b"
+                            font.pixelSize: 10
+                            font.bold: true
+                        }
+
+                        Text {
+                            visible: root.executionModels.field_for_selected_deployment("last_bar_close_time") !== ""
+                            text: "Last bar: " + Format.formatIsoTime(root.executionModels.field_for_selected_deployment("last_bar_close_time"))
+                            color: "#64748b"
+                            font.pixelSize: 10
+                        }
                     }
 
                     Text {
@@ -214,78 +268,140 @@ Rectangle {
         // Account Details sub-bar (visible only on "Account & Ledger" tab)
         Rectangle {
             Layout.fillWidth: true
-            height: (root.currentTabIndex === 4) ? 44 : 0
+            height: (root.currentTabIndex === 4) ? 92 : 0
             visible: root.currentTabIndex === 4
             color: "#161c28"
             border.color: "#1e293b"
             border.width: 1
             clip: true
 
-            RowLayout {
+            ColumnLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 16
                 anchors.rightMargin: 16
-                spacing: 12
+                anchors.topMargin: 8
+                anchors.bottomMargin: 8
+                spacing: 8
 
-                Text {
-                    text: "ACCOUNTS:"
-                    color: "#64748b"
-                    font.pixelSize: 10
-                    font.bold: true
-                    Layout.alignment: Qt.AlignVCenter
-                }
-
-                ListView {
-                    id: accountsList
+                RowLayout {
                     Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    orientation: ListView.Horizontal
-                    clip: true
-                    model: root.executionModels.accounts
-                    spacing: 8
+                    spacing: 12
 
-                    delegate: Rectangle {
-                        id: accChip
-                        required property string id
-                        required property string name
-                        required property string currency
-                        required property string cash_balance
+                    Text {
+                        text: "ACCOUNTS:"
+                        color: "#64748b"
+                        font.pixelSize: 10
+                        font.bold: true
+                        Layout.alignment: Qt.AlignVCenter
+                    }
 
-                        readonly property bool isSelected: root.executionModels.selected_account_id === accChip.id
+                    ListView {
+                        id: accountsList
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 28
+                        orientation: ListView.Horizontal
+                        clip: true
+                        model: root.executionModels.accounts
+                        spacing: 8
 
-                        height: 28
-                        implicitWidth: accRow.implicitWidth + 16
-                        radius: 4
-                        color: accChip.isSelected ? "#1e293b" : (accMouse.containsMouse ? "#243044" : "#131722")
-                        border.color: accChip.isSelected ? "#38bdf8" : "#334155"
-                        border.width: 1
-                        anchors.verticalCenter: parent.verticalCenter
+                        delegate: Rectangle {
+                            id: accChip
+                            required property string id
+                            required property string name
+                            required property string currency
+                            required property string cash_balance
 
-                        MouseArea {
-                            id: accMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onClicked: {
-                                root.executionModels.select_account(accChip.id);
+                            readonly property bool isSelected: root.executionModels.selected_account_id === accChip.id
+
+                            height: 28
+                            implicitWidth: accRow.implicitWidth + 16
+                            radius: 4
+                            color: accChip.isSelected ? "#1e293b" : (accMouse.containsMouse ? "#243044" : "#131722")
+                            border.color: accChip.isSelected ? "#38bdf8" : "#334155"
+                            border.width: 1
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            MouseArea {
+                                id: accMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: {
+                                    root.executionModels.select_account(accChip.id);
+                                }
+                            }
+
+                            RowLayout {
+                                id: accRow
+                                anchors.centerIn: parent
+                                spacing: 8
+
+                                Text {
+                                    text: accChip.name !== "" ? accChip.name : accChip.id
+                                    color: accChip.isSelected ? "#38bdf8" : "#f8fafc"
+                                    font.pixelSize: 11
+                                    font.bold: true
+                                }
+
+                                Text {
+                                    text: accChip.cash_balance + " " + accChip.currency
+                                    color: "#94a3b8"
+                                    font.pixelSize: 10
+                                }
                             }
                         }
+                    }
+                }
 
-                        RowLayout {
-                            id: accRow
-                            anchors.centerIn: parent
-                            spacing: 8
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+                    visible: root.executionModels.selected_account_id !== ""
 
-                            Text {
-                                text: accChip.name !== "" ? accChip.name : accChip.id
-                                color: accChip.isSelected ? "#38bdf8" : "#f8fafc"
-                                font.pixelSize: 11
-                                font.bold: true
-                            }
+                    Repeater {
+                        model: [
+                            { label: "Cash balance", field: "cash_balance", color: "#f8fafc" },
+                            { label: "Equity (cash)", field: "cash_balance", color: "#f8fafc" },
+                            { label: "Session P&L vs initial", field: "session_pnl", color: "#cbd5e1" }
+                        ]
 
-                            Text {
-                                text: accChip.cash_balance + " " + accChip.currency
-                                color: "#94a3b8"
-                                font.pixelSize: 10
+                        delegate: Rectangle {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            height: 40
+                            radius: 4
+                            color: "#131722"
+                            border.color: "#334155"
+                            border.width: 1
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 8
+                                spacing: 2
+
+                                Text {
+                                    text: modelData.label.toUpperCase()
+                                    color: "#64748b"
+                                    font.pixelSize: 9
+                                    font.bold: true
+                                }
+
+                                Text {
+                                    text: {
+                                        var value = root.executionModels.field_for_selected_account(modelData.field);
+                                        if (value === "") return "--";
+                                        var currency = root.executionModels.field_for_selected_account("currency");
+                                        return value + (currency !== "" ? " " + currency : "");
+                                    }
+                                    color: {
+                                        if (modelData.field !== "session_pnl") return modelData.color;
+                                        var value = root.executionModels.field_for_selected_account("session_pnl");
+                                        if (value.startsWith("-")) return "#f87171";
+                                        if (value !== "" && value !== "0" && value !== "0.00") return "#34d399";
+                                        return "#f8fafc";
+                                    }
+                                    font.pixelSize: 11
+                                    font.bold: true
+                                }
                             }
                         }
                     }
