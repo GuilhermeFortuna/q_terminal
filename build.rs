@@ -78,6 +78,7 @@ fn main() {
     .file("src/bridge.rs")
     .file("src/chart_bridge.rs")
     .file("src/bar_feed.rs")
+    .file("src/execution_models.rs")
     .cpp_file("src/render_backend.cpp")
     .cpp_file("cpp/bar_chart_node.cpp")
     .cpp_file("cpp/bar_chart_item.h")
@@ -85,6 +86,9 @@ fn main() {
     .cpp_file("cpp/bar_chart_probe.cpp")
     .cpp_file("cpp/chart_cxx.cpp")
     .cpp_file("cpp/frame_bench.cpp")
+    .cpp_file("cpp/table_model.h")
+    .cpp_file("cpp/table_model.cpp")
+    .cpp_file("cpp/table_bridge.cpp")
     .build();
 
     merge_chart_qmltypes();

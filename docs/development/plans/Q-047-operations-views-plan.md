@@ -110,7 +110,7 @@ src/main.rs                 --bench-frames gains --execution-rows N (synthetic s
    needed. Commit.
 - [x] 2. Write `docs/ops-parity.md` from `ExecutionWorkspace.tsx` before any UI, so
    that the views are built against the list. Commit.
-- [ ] 3. Implement `ExecutionModels` with the per-frame revision, and a headless
+- [x] 3. Implement `ExecutionModels` with the per-frame revision, and a headless
    test for criterion 3. Commit.
 - [ ] 4. Implement `HealthPoller` and `OpsStatus`, with fake-server tests for the
    2 s cadence and each health state. Commit.

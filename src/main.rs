@@ -6,6 +6,7 @@ pub mod bridge;
 pub mod chart_bridge;
 pub mod config;
 pub mod execution;
+pub mod execution_models;
 pub mod history;
 pub mod startup;
 pub mod stream;
