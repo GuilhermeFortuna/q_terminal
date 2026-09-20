@@ -19,6 +19,12 @@ jobs:
           toolchain: 1.98.0
           components: rustfmt, clippy
 
+      - name: Restore Rust and Qt build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-workspace-crates: true
+          cache-directories: ~/.local/share/qt_minimal_download
+
       - name: Install system dependencies
         run: |
           sudo apt-get update

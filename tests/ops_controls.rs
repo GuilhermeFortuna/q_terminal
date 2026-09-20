@@ -1,22 +1,9 @@
 #![allow(clippy::float_cmp)]
 
-#[rustfmt::skip]
-#[path = "../contracts/stream.rs"]
-pub mod contracts_stream;
-
-#[path = "../src/bridge.rs"]
-pub mod bridge;
-#[path = "../src/chart_bridge.rs"]
-pub mod chart_bridge;
-#[path = "../src/config.rs"]
-pub mod config;
-#[path = "../src/execution/mod.rs"]
-pub mod execution;
-pub use bridge::execution_controls;
-#[path = "../src/history/mod.rs"]
-pub mod history;
-#[path = "../src/stream/mod.rs"]
-pub mod stream;
+pub use q_terminal::{
+    bridge, chart_bridge, chart_target, config, contracts_stream, execution, execution_controls,
+    execution_models, history, ops_session, ops_status, startup, stream,
+};
 
 use std::pin::Pin;
 use std::time::Duration;

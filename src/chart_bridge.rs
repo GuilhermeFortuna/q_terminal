@@ -63,7 +63,7 @@ pub mod chart {
     }
 
     unsafe extern "C++" {
-        include!("cpp/chart_cxx.h");
+        include!("chart_cxx.h");
 
         type BarSeries;
         type BarChartItem;

@@ -2,19 +2,10 @@
 //! frontend's `liveChartMarkers.ts` (decision on the bar whose open equals its close time,
 //! else `close - timeframe`; fill on the greatest open at or before it; `hold` unmarked).
 
-#[rustfmt::skip]
-#[path = "../contracts/stream.rs"]
-pub mod contracts_stream;
-#[path = "../src/bridge.rs"]
-pub mod bridge;
-#[path = "../src/config.rs"]
-pub mod config;
-#[path = "../src/execution/mod.rs"]
-pub mod execution;
-#[path = "../src/history/mod.rs"]
-pub mod history;
-#[path = "../src/stream/mod.rs"]
-pub mod stream;
+pub use q_terminal::{
+    bridge, chart_bridge, chart_target, config, contracts_stream, execution, execution_controls,
+    execution_models, history, ops_session, ops_status, startup, stream,
+};
 
 use execution::markers;
 

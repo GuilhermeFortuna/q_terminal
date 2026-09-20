@@ -1,27 +1,7 @@
-#[rustfmt::skip]
-#[path = "../contracts/stream.rs"]
-pub mod contracts_stream;
-
-#[path = "../src/bridge.rs"]
-pub mod bridge;
-#[path = "../src/chart_bridge.rs"]
-pub mod chart_bridge;
-#[path = "../src/chart_target.rs"]
-pub mod chart_target;
-#[path = "../src/config.rs"]
-pub mod config;
-#[path = "../src/execution/mod.rs"]
-pub mod execution;
-#[path = "../src/history/mod.rs"]
-pub mod history;
-#[path = "../src/ops_session.rs"]
-pub mod ops_session;
-pub use bridge::execution_controls;
-pub use bridge::execution_models;
-#[path = "../src/startup.rs"]
-pub mod startup;
-#[path = "../src/stream/mod.rs"]
-pub mod stream;
+pub use q_terminal::{
+    bridge, chart_bridge, chart_target, config, contracts_stream, execution, execution_controls,
+    execution_models, history, ops_session, ops_status, startup, stream,
+};
 
 use chart_bridge::chart::{self, make_test_chart_item, make_test_series, ProbeState};
 

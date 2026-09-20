@@ -199,7 +199,7 @@ std::int64_t feed_rebuild_overlays(BarFeed* feed, int first_bar, int last_bar, d
 
 #include <cstdint>
 
-#include "cpp/execution_models_cxx.h"
+#include "execution_models_cxx.h"
 
 class ExecutionModels;
 class OpsStatus;
@@ -229,4 +229,3 @@ void execution_controls_update_health(
 std::uintptr_t make_test_execution_controls();
 
 #endif // Q_TERMINAL_CHART_CXX_H
-

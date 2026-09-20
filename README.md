@@ -145,7 +145,8 @@ q_terminal/
 │   ├── EmptyState.qml  # Placeholder before initial bars arrive
 │   └── qmldir          # QML module definition
 ├── src/                # Rust application and bridge code
-│   ├── main.rs         # Entry point: CLI args and window launch
+│   ├── lib.rs          # Library crate: modules, headless reports, and window launch helpers
+│   ├── main.rs         # Entry point: CXX-Qt init, CLI args, and dispatch to lib.rs
 │   ├── startup.rs      # Slice startup sequence and degraded state setup
 │   ├── config.rs       # TOML configuration and environment loading
 │   ├── bar_feed.rs     # CXX-Qt BarFeed model binding live and historical bars to QML
@@ -267,13 +268,14 @@ env -u WAYLAND_DISPLAY -u DISPLAY make check
 ```
 
 This runs:
-1. `fmt-check`: Rust formatting verification (`cargo fmt --all --check`).
-2. `lint`: Clippy lints denying warnings (`cargo clippy --all-targets -- -D warnings`).
-3. `build`: Compiles the binary and generated Qt artifacts.
-4. `qml-lint`: Validates QML syntax and property bindings (`qmllint -W 0`).
-5. `test`: Unit and integration test suite (`cargo test`).
+1. `ci-structure-check`: Guards against CI regressions (redundant builds, split `RUSTFLAGS`, embedded test modules).
+2. `fmt-check`: Rust formatting verification (`cargo fmt --all --check`).
+3. `lint`: Clippy lints denying warnings (`cargo clippy --all-targets -- -D warnings`); also compiles all targets and generated Qt artifacts.
+4. `test`: Unit and integration test suite (`cargo test`), including subprocess tests for `--headless-report`.
+5. `qml-lint-built`: Validates QML syntax and property bindings against the built module (`qmllint -W 0`).
 6. `contracts-check`: Verifies vendored `contracts/` match clean regeneration against `CONTRACTS_REV`.
-7. `headless-report`: Executes `cargo run -- --headless-report`.
+
+For ad-hoc use, `make build` and `cargo run -- --headless-report` remain available outside the CI gate.
 
 Individual test suites can be run with:
 

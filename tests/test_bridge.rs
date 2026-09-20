@@ -1,19 +1,7 @@
-#[rustfmt::skip]
-#[path = "../contracts/stream.rs"]
-pub mod contracts_stream;
-
-#[allow(dead_code)]
-#[path = "../src/bridge.rs"]
-mod bridge;
-#[path = "../src/config.rs"]
-#[allow(dead_code)]
-mod config;
-#[path = "../src/execution/mod.rs"]
-pub mod execution;
-#[path = "../src/history/mod.rs"]
-mod history;
-#[path = "../src/stream/mod.rs"]
-pub mod stream;
+pub use q_terminal::{
+    bridge, chart_bridge, chart_target, config, contracts_stream, execution, execution_controls,
+    execution_models, history, ops_session, ops_status, startup, stream,
+};
 
 #[test]
 fn test_app_info_core_version_matches_core_info() {

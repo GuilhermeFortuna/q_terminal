@@ -1,5 +1,5 @@
-#include "cpp/execution_models_cxx.h"
-#include "cpp/chart_cxx.h"
+#include "execution_models_cxx.h"
+#include "chart_cxx.h"
 #include "q_terminal/src/execution_models.cxxqt.h"
 
 ExecutionModels* make_test_execution_models() {

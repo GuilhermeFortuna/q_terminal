@@ -1,24 +1,9 @@
 #![allow(clippy::float_cmp)]
 
-#[rustfmt::skip]
-#[path = "../contracts/stream.rs"]
-pub mod contracts_stream;
-
-#[allow(dead_code)]
-#[path = "../src/bridge.rs"]
-pub mod bridge;
-#[allow(dead_code)]
-#[path = "../src/config.rs"]
-pub mod config;
-#[allow(dead_code)]
-#[path = "../src/execution/mod.rs"]
-pub mod execution;
-#[allow(dead_code)]
-#[path = "../src/history/mod.rs"]
-pub mod history;
-#[allow(dead_code)]
-#[path = "../src/stream/mod.rs"]
-pub mod stream;
+pub use q_terminal::{
+    bridge, chart_bridge, chart_target, config, contracts_stream, execution, execution_controls,
+    execution_models, history, ops_session, ops_status, startup, stream,
+};
 
 use execution::enablement::{enabled, CommandKind, Enablement, Health, WorkerStatus};
 

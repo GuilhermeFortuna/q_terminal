@@ -1,24 +1,9 @@
 //! `--headless-report --execution` against the fake server.
 
-#[rustfmt::skip]
-#[path = "../contracts/stream.rs"]
-pub mod contracts_stream;
-
-#[path = "../src/bridge.rs"]
-#[allow(dead_code)]
-pub mod bridge;
-#[path = "../src/config.rs"]
-#[allow(dead_code)]
-pub mod config;
-#[path = "../src/execution/mod.rs"]
-#[allow(dead_code)]
-pub mod execution;
-#[path = "../src/history/mod.rs"]
-#[allow(dead_code)]
-pub mod history;
-#[path = "../src/stream/mod.rs"]
-#[allow(dead_code)]
-pub mod stream;
+pub use q_terminal::{
+    bridge, chart_bridge, chart_target, config, contracts_stream, execution, execution_controls,
+    execution_models, history, ops_session, ops_status, startup, stream,
+};
 
 use std::process::Command;
 use stream::fake_exec as fx;

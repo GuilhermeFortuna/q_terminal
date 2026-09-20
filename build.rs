@@ -44,6 +44,7 @@ fn link_q_qt_headers(build_dir: &Path) {
     if link_path.symlink_metadata().is_ok() {
         let current = std::fs::read_link(&link_path).ok();
         if current.as_ref() == Some(&q_qt_headers) {
+            println!("cargo:rerun-if-changed={}", q_qt_headers.display());
             return;
         }
         std::fs::remove_file(&link_path)
@@ -108,8 +109,12 @@ fn main() {
                     .file(qt_build_utils::QResourceFile::new("qml/Format.js").alias("Format.js")),
             ),
     )
+    // The default is the entire crate root. That makes Cargo watch generated
+    // files below target/ and causes every successful build to invalidate the
+    // next one. Only cpp/ contains headers exported by this crate.
+    .crate_include_root(Some("cpp".to_owned()))
     .qt_module("Quick")
-    .include_dir("cpp")
+    .include_dir("src")
     .file("src/bridge.rs")
     .file("src/chart_bridge.rs")
     .file("src/bar_feed.rs")

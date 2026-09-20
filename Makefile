@@ -1,4 +1,4 @@
-.PHONY: check check-suite fmt fmt-check lint test build run qml-lint contracts contracts-check bench-stream bench-history-load bench-frames
+.PHONY: check check-suite ci-structure-check fmt fmt-check lint test build run qml-lint qml-lint-built contracts contracts-check bench-stream bench-history-load bench-frames
 .NOTPARALLEL:
 
 CONTRACTS_REPO ?= https://github.com/GuilhermeFortuna/q_contracts.git
@@ -9,9 +9,11 @@ check:
 	@./scripts/ci.sh
 
 # Actual suite body (invoked by scripts/ci.sh after optional slice enter).
-check-suite: fmt-check lint build qml-lint test contracts-check
-	cargo run -- --headless-report
+check-suite: ci-structure-check fmt-check lint test qml-lint-built contracts-check
 	@echo "All terminal checks passed successfully."
+
+ci-structure-check:
+	@./scripts/check_ci_structure.sh
 
 fmt:
 	cargo fmt --all
@@ -26,6 +28,9 @@ build:
 	cargo build
 
 qml-lint: build
+	@$(MAKE) --no-print-directory qml-lint-built
+
+qml-lint-built:
 	@if [ -z "$(QMLLINT)" ]; then \
 		echo "qmllint not found; please install qt6-declarative-dev-tools or use qt_minimal"; \
 		exit 1; \
@@ -34,16 +39,17 @@ qml-lint: build
 
 RUST_HOST := $(shell rustc -vV | awk '/^host:/ {print $$2}')
 RUST_GCC_LD := $(shell rustc --print sysroot)/lib/rustlib/$(RUST_HOST)/bin/gcc-ld
-CARGO_TEST_RUSTFLAGS := -C link-arg=-fuse-ld=lld -C link-arg=-B$(RUST_GCC_LD)
+CARGO_RUSTFLAGS := -C link-arg=-fuse-ld=lld -C link-arg=-B$(RUST_GCC_LD)
+export RUSTFLAGS ?= $(CARGO_RUSTFLAGS)
 
 test:
-	RUSTFLAGS="$(CARGO_TEST_RUSTFLAGS)" cargo test
+	cargo test
 
 bench-stream:
-	RUSTFLAGS="$(CARGO_TEST_RUSTFLAGS)" cargo test --release --test bench_stream -- --nocapture --ignored
+	cargo test --release --test bench_stream -- --nocapture --ignored
 
 bench-history-load:
-	RUSTFLAGS="$(CARGO_TEST_RUSTFLAGS)" cargo test --release --test bench_history_load -- --nocapture --ignored
+	cargo test --release --test bench_history_load -- --nocapture --ignored
 
 run:
 	cargo run

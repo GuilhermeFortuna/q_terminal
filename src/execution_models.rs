@@ -32,7 +32,7 @@ pub mod ffi {
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
 
-        include!("cpp/table_bridge.h");
+        include!("table_bridge.h");
         type TableModel;
 
         fn make_table_model() -> *mut TableModel;

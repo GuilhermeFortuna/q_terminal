@@ -1,95 +1,4 @@
-#[rustfmt::skip]
-#[path = "../contracts/stream.rs"]
-pub mod contracts_stream;
-
-pub mod bridge;
-pub mod chart_bridge;
-pub mod chart_target;
-pub mod config;
-pub mod execution;
-pub mod ops_session;
-pub use bridge::execution_controls;
-pub use bridge::execution_models;
-pub mod history;
-pub use bridge::ops_status;
-pub mod startup;
-pub mod stream;
-
-/// Prints app version, core version, contracts rev and render backend, then exits 0.
-/// Opens no window; the path CI and an agent session take.
-pub fn headless_report() -> i32 {
-    let app_info = bridge::AppInfoRust::default();
-    println!("{}", app_info.app_version);
-    println!("{}", app_info.core_version);
-    println!("{}", app_info.contracts_rev);
-    println!("{}", app_info.render_backend);
-    0
-}
-
-/// Connects, lets the execution store converge on the backend's snapshot, prints its
-/// counts and applied sequences, and exits 0. Exits 1 if it cannot be confirmed.
-pub fn headless_execution_report() -> i32 {
-    let config = match config::Config::load() {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("configuration error: {e}");
-            return 1;
-        }
-    };
-    let handle = execution::store::ExecutionHandle::new();
-    let client = stream::client::StreamClient::start_with(
-        config,
-        stream::client::Sinks {
-            bars: stream::sink::BarSink::new(),
-            execution: Some(handle.clone()),
-        },
-    );
-    let timeout_ms: u64 = std::env::var("Q_TERMINAL_REPORT_TIMEOUT_MS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(20_000);
-    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
-    while !handle.read(|s| s.is_confirmed()) && std::time::Instant::now() < deadline {
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
-    // Let events already in flight land, then read.
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    let confirmed = handle.read(|s| s.is_confirmed());
-    for line in handle.read(|s| s.report_lines()) {
-        println!("{line}");
-    }
-    let last_error = client.last_error();
-    client.shutdown();
-    if !confirmed {
-        eprintln!("execution state not confirmed: {last_error}");
-        return 1;
-    }
-    0
-}
-
-/// Loads qml/Main.qml and runs the slice.
-pub fn run_windowed() -> i32 {
-    startup::run_slice(config::Config::load())
-}
-
-pub fn run_bench_frames(
-    visible_buckets: i32,
-    bar_count: i32,
-    duration_ms: i32,
-    execution_rows: i32,
-    markers: i32,
-    overlays: i32,
-) -> i32 {
-    let _ = (visible_buckets, bar_count);
-    startup::run_slice_opts(
-        config::Config::load(),
-        true,
-        duration_ms as u64,
-        execution_rows,
-        markers,
-        overlays,
-    )
-}
+use q_terminal::{chart_bridge, config, headless_execution_report, headless_report};
 
 fn main() {
     cxx_qt::init_crate!(q_qt);
@@ -112,7 +21,7 @@ fn main() {
         let execution_rows = read_arg_i32(&args, "--execution-rows", 0);
         let markers = read_arg_i32(&args, "--markers", 0);
         let overlays = read_arg_i32(&args, "--overlays", 0);
-        std::process::exit(run_bench_frames(
+        std::process::exit(q_terminal::run_bench_frames(
             visible_buckets,
             bar_count,
             duration_ms,
@@ -122,7 +31,7 @@ fn main() {
         ));
     }
     let auto_close_ms = read_arg_i32(&args, "--auto-close-ms", 0);
-    std::process::exit(startup::run_slice_opts(
+    std::process::exit(q_terminal::startup::run_slice_opts(
         config::Config::load(),
         false,
         auto_close_ms as u64,
