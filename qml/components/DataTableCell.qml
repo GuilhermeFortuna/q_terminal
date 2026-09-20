@@ -1,5 +1,5 @@
 import QtQuick
-import "../theme"
+import qml
 
 Text {
     id: root

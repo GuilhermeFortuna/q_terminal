@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic as Basic
-import "../theme"
+import qml
 
 Basic.TextField {
     id: control

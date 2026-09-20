@@ -6,33 +6,33 @@ import "Format.js" as Format
 
 Rectangle {
     id: root
-    color: "#131722"
+    color: Theme.surfaceBase
 
     required property ExecutionModels executionModels
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 0
+        spacing: Spacing.size0
 
         // Table Header
         Rectangle {
             Layout.fillWidth: true
-            height: 28
-            color: "#182030"
-            border.color: "#334155"
-            border.width: 1
+            height: Spacing.size28
+            color: Theme.surfaceOverlay
+            border.color: Theme.borderDefault
+            border.width: Spacing.size1
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
-                spacing: 8
+                anchors.leftMargin: Spacing.size12
+                anchors.rightMargin: Spacing.size12
+                spacing: Spacing.size8
 
-                Text { text: "TIME"; color: "#64748b"; font.pixelSize: 10; font.bold: true; Layout.preferredWidth: 140 }
-                Text { text: "ACTION"; color: "#64748b"; font.pixelSize: 10; font.bold: true; Layout.preferredWidth: 80 }
-                Text { text: "OUTCOME"; color: "#64748b"; font.pixelSize: 10; font.bold: true; Layout.preferredWidth: 100 }
-                Text { text: "REQUESTED QTY"; color: "#64748b"; font.pixelSize: 10; font.bold: true; Layout.preferredWidth: 120 }
-                Text { text: "REASON"; color: "#64748b"; font.pixelSize: 10; font.bold: true; Layout.fillWidth: true }
+                Text { text: "TIME"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel; font.bold: true; Layout.preferredWidth: Spacing.size140 }
+                Text { text: "ACTION"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel; font.bold: true; Layout.preferredWidth: Spacing.size80 }
+                Text { text: "OUTCOME"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel; font.bold: true; Layout.preferredWidth: Spacing.size100 }
+                Text { text: "REQUESTED QTY"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel; font.bold: true; Layout.preferredWidth: Spacing.size120 }
+                Text { text: "REASON"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel; font.bold: true; Layout.fillWidth: true }
             }
         }
 
@@ -56,59 +56,48 @@ Rectangle {
                 required property string created_at
 
                 width: listView.width
-                height: 28
-                color: (index % 2 === 0) ? "#131722" : "#161c28"
+                height: Spacing.size28
+                color: (index % 2 === 0) ? Theme.surfaceBase : Theme.surfaceRaised
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: 12
-                    anchors.rightMargin: 12
-                    spacing: 8
+                    anchors.leftMargin: Spacing.size12
+                    anchors.rightMargin: Spacing.size12
+                    spacing: Spacing.size8
 
                     Text {
                         text: Format.formatIsoTime(rowRect.created_at)
-                        color: "#94a3b8"
-                        font.pixelSize: 11
-                        Layout.preferredWidth: 140
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.typeBodySmall
+                        Layout.preferredWidth: Spacing.size140
                     }
 
                     Text {
                         text: rowRect.signal_action.toUpperCase()
-                        color: {
-                            var a = rowRect.signal_action.toLowerCase();
-                            if (a === "buy" || a === "open_long") return "#34d399";
-                            if (a === "sell" || a === "open_short") return "#f87171";
-                            if (a === "hold") return "#94a3b8";
-                            return "#cbd5e1";
-                        }
-                        font.pixelSize: 11
+                        color: Semantic.foreground(Semantic.decisionAction(rowRect.signal_action))
+                        font.pixelSize: Theme.typeBodySmall
                         font.bold: true
-                        Layout.preferredWidth: 80
+                        Layout.preferredWidth: Spacing.size80
                     }
 
                     Text {
                         text: rowRect.outcome
-                        color: {
-                            var o = rowRect.outcome.toLowerCase();
-                            if (o === "executed" || o === "submitted") return "#34d399";
-                            if (o === "rejected" || o === "blocked") return "#f87171";
-                            return "#fbbf24";
-                        }
-                        font.pixelSize: 11
-                        Layout.preferredWidth: 100
+                        color: Semantic.foreground(Semantic.decisionOutcome(rowRect.outcome))
+                        font.pixelSize: Theme.typeBodySmall
+                        Layout.preferredWidth: Spacing.size100
                     }
 
                     Text {
                         text: rowRect.requested_quantity !== "" ? rowRect.requested_quantity : "--"
-                        color: "#f8fafc"
-                        font.pixelSize: 11
-                        Layout.preferredWidth: 120
+                        color: Theme.textStrong
+                        font.pixelSize: Theme.typeBodySmall
+                        Layout.preferredWidth: Spacing.size120
                     }
 
                     Text {
                         text: rowRect.reason
-                        color: "#94a3b8"
-                        font.pixelSize: 11
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.typeBodySmall
                         elide: Text.ElideRight
                         Layout.fillWidth: true
                     }

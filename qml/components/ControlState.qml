@@ -1,6 +1,6 @@
 pragma Singleton
 import QtQuick
-import "../theme"
+import qml
 
 QtObject {
     function treatment(state) {

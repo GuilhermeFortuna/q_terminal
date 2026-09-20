@@ -10,7 +10,7 @@ Dialog {
     title: "New deployment"
     modal: true
     standardButtons: Dialog.NoButton
-    width: 480
+    width: Spacing.size480
     anchors.centerIn: parent
 
     required property ExecutionControls executionControls
@@ -41,7 +41,7 @@ Dialog {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 8
+        spacing: Spacing.size8
 
         TextField {
             id: nameField
@@ -55,12 +55,12 @@ Dialog {
             model: ["paper", "mt5_live"]
         }
 
-        Label { text: "Saved backtest run"; color: "#94a3b8"; font.pixelSize: 10 }
+        Label { text: "Saved backtest run"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabel }
 
         ListView {
             id: runList
             Layout.fillWidth: true
-            Layout.preferredHeight: 160
+            Layout.preferredHeight: Spacing.size160
             clip: true
             model: root.savedRuns
             currentIndex: -1
@@ -69,9 +69,9 @@ Dialog {
                 required property var modelData
                 required property int index
                 width: runList.width
-                height: 44
-                color: runList.currentIndex === index ? "#1e293b" : (mouseArea.containsMouse ? "#182030" : "#131722")
-                border.color: runList.currentIndex === index ? "#38bdf8" : "#334155"
+                height: Spacing.size44
+                color: runList.currentIndex === index ? Theme.surfaceSelected : (mouseArea.containsMouse ? Theme.surfaceOverlay : Theme.surfaceBase)
+                border.color: runList.currentIndex === index ? Theme.accent : Theme.borderDefault
 
                 MouseArea {
                     id: mouseArea
@@ -82,17 +82,17 @@ Dialog {
 
                 ColumnLayout {
                     anchors.fill: parent
-                    anchors.margins: 8
+                    anchors.margins: Spacing.size8
                     Text {
                         text: (modelData.strategy_name || "?") + " · " + (modelData.symbol || "?") + " " + (modelData.timeframe || "?")
-                        color: "#f8fafc"
-                        font.pixelSize: 11
+                        color: Theme.textStrong
+                        font.pixelSize: Theme.typeBodySmall
                         font.bold: true
                     }
                     Text {
                         text: modelData.saved_at ? Format.formatIsoTime(modelData.saved_at) : ""
-                        color: "#64748b"
-                        font.pixelSize: 10
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.typeLabel
                     }
                 }
             }

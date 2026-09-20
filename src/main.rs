@@ -25,7 +25,9 @@ fn main() {
     }
     if args.iter().any(|arg| arg == "--gallery-shot") {
         #[cfg(feature = "gallery")]
-        std::process::exit(q_terminal::gallery::capture(std::path::Path::new("gallery-shots")));
+        std::process::exit(q_terminal::gallery::capture(std::path::Path::new(
+            "gallery-shots",
+        )));
         #[cfg(not(feature = "gallery"))]
         {
             eprintln!("--gallery-shot requires the gallery feature");

@@ -56,3 +56,19 @@ The application **owns no backend process**:
 - **Stops nothing:** `q_terminal` does not stop or kill backend daemon processes.
 
 `q_terminal` connects to already-running backend services and relays strictly over declared wire contracts and protocols. If a backend service is unavailable, `q_terminal` reports the disconnection; it never attempts to spawn or bootstrap the missing service.
+
+---
+
+## 4. Presentation ownership and enforcement
+
+The terminal design system owns presentation decisions only. `qml/theme/` is the source of
+truth for palette, typography, spacing, icons, and semantic role resolution; screens and
+components consume those tokens and do not infer trading meaning from raw values. Reusable
+controls live in `qml/components/`, while `qml/style/` supplies the Qt Quick Controls skin.
+
+The optional `gallery` Cargo feature builds the component/state catalog and `make gallery-shot`
+renders it headlessly for review. The normal operations binary does not include the gallery.
+`make check` enforces this boundary with `tools/token_gate.py` and full-module `qmllint`; the
+gate rejects screen-level colour literals, raw pixel font sizes, unscaled dimensions, and
+conditional colour decisions. These checks must not become a place to add backend state,
+protocol transformations, or money arithmetic.

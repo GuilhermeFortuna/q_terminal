@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import qml
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -16,7 +17,7 @@ Dialog {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 8
+        spacing: Spacing.size8
 
         TextField {
             id: nameField

@@ -6,9 +6,9 @@ import "Format.js" as Format
 
 Rectangle {
     id: root
-    color: "#131722"
-    border.color: "#1e293b"
-    border.width: 1
+    color: Theme.surfaceBase
+    border.color: Theme.surfaceSelected
+    border.width: Spacing.size1
 
     required property ExecutionModels executionModels
     required property OpsStatus opsStatus
@@ -73,25 +73,25 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 0
+        spacing: Spacing.size0
 
         // Top Header: Selected Deployment info and Net Position Card
         Rectangle {
             Layout.fillWidth: true
-            height: 72
-            color: "#1e222d"
-            border.color: "#334155"
-            border.width: 1
+            height: Spacing.size72
+            color: Theme.surfaceElevated
+            border.color: Theme.borderDefault
+            border.width: Spacing.size1
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 16
+                anchors.leftMargin: Spacing.size16
+                anchors.rightMargin: Spacing.size16
+                spacing: Spacing.size16
 
                 // Deployment identity, lifecycle, pending action, last bar
                 ColumnLayout {
-                    spacing: 4
+                    spacing: Spacing.size4
                     Layout.alignment: Qt.AlignVCenter
                     Layout.fillWidth: true
 
@@ -102,39 +102,27 @@ Rectangle {
                             if (id === "") return "DEPLOYMENT: None selected";
                             return "DEPLOYMENT: " + (name !== "" ? name : id);
                         }
-                        color: "#f8fafc"
-                        font.pixelSize: 13
+                        color: Theme.textStrong
+                        font.pixelSize: Theme.typeBodyLarge
                         font.bold: true
                     }
 
                     RowLayout {
                         visible: root.executionModels.selected_deployment_id !== ""
-                        spacing: 8
+                        spacing: Spacing.size8
 
                         Rectangle {
-                            height: 18
+                            height: Spacing.size18
                             implicitWidth: lifeDetailText.implicitWidth + 8
-                            radius: 3
-                            color: {
-                                var life = root.executionModels.field_for_selected_deployment("lifecycle");
-                                if (life === "running") return "#064e3b";
-                                if (life === "paused") return "#451a03";
-                                if (life === "stopped") return "#450a0a";
-                                return "#1e293b";
-                            }
+                            radius: Spacing.size3
+                            color: Semantic.background(Semantic.lifecycle(root.executionModels.field_for_selected_deployment("lifecycle")))
 
                             Text {
                                 id: lifeDetailText
                                 anchors.centerIn: parent
                                 text: root.executionModels.field_for_selected_deployment("lifecycle").toUpperCase()
-                                color: {
-                                    var life = root.executionModels.field_for_selected_deployment("lifecycle");
-                                    if (life === "running") return "#34d399";
-                                    if (life === "paused") return "#fbbf24";
-                                    if (life === "stopped") return "#f87171";
-                                    return "#94a3b8";
-                                }
-                                font.pixelSize: 9
+                                color: Semantic.foreground(Semantic.lifecycle(root.executionModels.field_for_selected_deployment("lifecycle")))
+                                font.pixelSize: Theme.typeLabelSmall
                                 font.bold: true
                             }
                         }
@@ -142,23 +130,23 @@ Rectangle {
                         Text {
                             visible: root.executionModels.field_for_selected_deployment("pending_action") !== ""
                             text: "Desired: " + root.executionModels.field_for_selected_deployment("pending_action")
-                            color: "#f59e0b"
-                            font.pixelSize: 10
+                            color: Theme.warningStrong
+                            font.pixelSize: Theme.typeLabel
                             font.bold: true
                         }
 
                         Text {
                             visible: root.executionModels.field_for_selected_deployment("last_bar_close_time") !== ""
                             text: "Last bar: " + Format.formatIsoTime(root.executionModels.field_for_selected_deployment("last_bar_close_time"))
-                            color: "#64748b"
-                            font.pixelSize: 10
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.typeLabel
                         }
                     }
 
                     Text {
                         text: "Click a deployment on the left to inspect"
-                        color: "#64748b"
-                        font.pixelSize: 10
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.typeLabel
                         visible: root.executionModels.selected_deployment_id === ""
                     }
                 }
@@ -166,7 +154,7 @@ Rectangle {
                 // Lifecycle action bar
                 RowLayout {
                     visible: root.executionModels.selected_deployment_id !== ""
-                    spacing: 6
+                    spacing: Spacing.size6
                     Layout.alignment: Qt.AlignVCenter
 
                     Repeater {
@@ -179,19 +167,19 @@ Rectangle {
 
                         delegate: Rectangle {
                             required property var modelData
-                            height: 24
+                            height: Spacing.size24
                             implicitWidth: actText.implicitWidth + 16
-                            radius: 4
+                            radius: Spacing.size4
                             opacity: root.executionControls.is_command_enabled(modelData.kind) ? 1.0 : 0.4
-                            color: actMouse.containsMouse ? "#2563eb" : "#1d4ed8"
-                            border.color: "#38bdf8"
+                            color: actMouse.containsMouse ? Theme.accentStrong : Theme.accentPressed
+                            border.color: Theme.accent
 
                             Text {
                                 id: actText
                                 anchors.centerIn: parent
                                 text: modelData.label
-                                color: "#ffffff"
-                                font.pixelSize: 10
+                                color: Theme.textOnAccent
+                                font.pixelSize: Theme.typeLabel
                                 font.bold: true
                             }
 
@@ -218,81 +206,70 @@ Rectangle {
 
                 // Position Marks & PnL Summary (read-only from backend /positions poller)
                 Rectangle {
-                    height: 48
+                    height: Spacing.size48
                     implicitWidth: posRow.implicitWidth + 20
-                    radius: 4
-                    color: "#131722"
-                    border.color: "#334155"
-                    border.width: 1
+                    radius: Spacing.size4
+                    color: Theme.surfaceBase
+                    border.color: Theme.borderDefault
+                    border.width: Spacing.size1
                     Layout.alignment: Qt.AlignVCenter
 
                     RowLayout {
                         id: posRow
                         anchors.centerIn: parent
-                        spacing: 16
+                        spacing: Spacing.size16
 
                         // Position Side & Qty
                         ColumnLayout {
-                            spacing: 1
-                            Text { text: "POSITION"; color: "#64748b"; font.pixelSize: 9; font.bold: true }
+                            spacing: Spacing.size1
+                            Text { text: "POSITION"; color: Theme.textMuted; font.pixelSize: Theme.typeLabelSmall; font.bold: true }
                             Text {
                                 property var pos: root.getSelectedPosition()
                                 text: {
                                     if (!pos || !pos.side || pos.side === "flat") return "FLAT";
                                     return pos.side.toUpperCase() + " " + (pos.quantity || "--");
                                 }
-                                color: {
-                                    var pos = root.getSelectedPosition();
-                                    if (!pos || !pos.side || pos.side === "flat") return "#94a3b8";
-                                    return (pos.side.toLowerCase() === "long") ? "#34d399" : "#f87171";
-                                }
-                                font.pixelSize: 11
+                                color: Semantic.foreground(Semantic.position(pos && pos.side ? pos.side : "flat"))
+                                font.pixelSize: Theme.typeBodySmall
                                 font.bold: true
                             }
                         }
 
                         // Avg Entry
                         ColumnLayout {
-                            spacing: 1
-                            Text { text: "AVG ENTRY"; color: "#64748b"; font.pixelSize: 9; font.bold: true }
+                            spacing: Spacing.size1
+                            Text { text: "AVG ENTRY"; color: Theme.textMuted; font.pixelSize: Theme.typeLabelSmall; font.bold: true }
                             Text {
                                 property var pos: root.getSelectedPosition()
                                 text: (pos && pos.average_entry_price) ? pos.average_entry_price : "--"
-                                color: "#cbd5e1"
-                                font.pixelSize: 11
+                                color: Theme.textPrimary
+                                font.pixelSize: Theme.typeBodySmall
                                 font.bold: true
                             }
                         }
 
                         // Mark Price
                         ColumnLayout {
-                            spacing: 1
-                            Text { text: "MARK PRICE"; color: "#64748b"; font.pixelSize: 9; font.bold: true }
+                            spacing: Spacing.size1
+                            Text { text: "MARK PRICE"; color: Theme.textMuted; font.pixelSize: Theme.typeLabelSmall; font.bold: true }
                             Text {
                                 property var pos: root.getSelectedPosition()
                                 text: (pos && pos.current_mark_price) ? pos.current_mark_price : "--"
-                                color: "#38bdf8"
-                                font.pixelSize: 11
+                                color: Theme.accent
+                                font.pixelSize: Theme.typeBodySmall
                                 font.bold: true
                             }
                         }
 
                         // Unrealized PnL
                         ColumnLayout {
-                            spacing: 1
-                            Text { text: "UNREALIZED PnL"; color: "#64748b"; font.pixelSize: 9; font.bold: true }
+                            spacing: Spacing.size1
+                            Text { text: "UNREALIZED PnL"; color: Theme.textMuted; font.pixelSize: Theme.typeLabelSmall; font.bold: true }
                             Text {
                                 property var pos: root.getSelectedPosition()
                                 text: (pos && pos.unrealized_pnl) ? pos.unrealized_pnl : "--"
-                                color: {
-                                    var pos = root.getSelectedPosition();
-                                    if (!pos || !pos.unrealized_pnl) return "#94a3b8";
-                                    var s = String(pos.unrealized_pnl);
-                                    if (s.startsWith("-")) return "#f87171";
-                                    if (s !== "0" && s !== "0.00") return "#34d399";
-                                    return "#f8fafc";
-                                }
-                                font.pixelSize: 11
+                                color: Semantic.foreground(Semantic.signedString(pos && pos.unrealized_pnl ? pos.unrealized_pnl : ""))
+                                font.pixelSize: Theme.typeBodySmall
                                 font.bold: true
                             }
                         }
@@ -304,15 +281,15 @@ Rectangle {
         // Tab Navigation Bar
         Rectangle {
             Layout.fillWidth: true
-            height: 32
-            color: "#182030"
-            border.color: "#334155"
-            border.width: 1
+            height: Spacing.size32
+            color: Theme.surfaceOverlay
+            border.color: Theme.borderDefault
+            border.width: Spacing.size1
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 8
-                spacing: 4
+                anchors.leftMargin: Spacing.size8
+                spacing: Spacing.size4
 
                 Repeater {
                     model: ["Orders", "Fills", "Decisions", "Risk Events", "Account & Ledger"]
@@ -323,12 +300,12 @@ Rectangle {
                         required property string modelData
                         readonly property bool isActive: root.currentTabIndex === tabButton.index
 
-                        height: 28
+                        height: Spacing.size28
                         implicitWidth: tabText.implicitWidth + 24
-                        radius: 4
-                        color: tabButton.isActive ? "#1e293b" : (tabMouse.containsMouse ? "#1e222d" : "transparent")
-                        border.color: tabButton.isActive ? "#38bdf8" : "transparent"
-                        border.width: 1
+                        radius: Spacing.size4
+                        color: tabButton.isActive ? Theme.surfaceSelected : (tabMouse.containsMouse ? Theme.surfaceElevated : Theme.transparent)
+                        border.color: tabButton.isActive ? Theme.accent : Theme.transparent
+                        border.width: Spacing.size1
                         Layout.alignment: Qt.AlignVCenter
 
                         MouseArea {
@@ -344,8 +321,8 @@ Rectangle {
                             id: tabText
                             anchors.centerIn: parent
                             text: tabButton.modelData
-                            color: tabButton.isActive ? "#38bdf8" : (tabMouse.containsMouse ? "#f8fafc" : "#94a3b8")
-                            font.pixelSize: 11
+                            color: tabButton.isActive ? Theme.accent : (tabMouse.containsMouse ? Theme.textStrong : Theme.textSecondary)
+                            font.pixelSize: Theme.typeBodySmall
                             font.bold: tabButton.isActive
                         }
                     }
@@ -358,27 +335,27 @@ Rectangle {
             Layout.fillWidth: true
             height: (root.currentTabIndex === 4) ? 92 : 0
             visible: root.currentTabIndex === 4
-            color: "#161c28"
-            border.color: "#1e293b"
-            border.width: 1
+            color: Theme.surfaceRaised
+            border.color: Theme.surfaceSelected
+            border.width: Spacing.size1
             clip: true
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                anchors.topMargin: 8
-                anchors.bottomMargin: 8
-                spacing: 8
+                anchors.leftMargin: Spacing.size16
+                anchors.rightMargin: Spacing.size16
+                anchors.topMargin: Spacing.size8
+                anchors.bottomMargin: Spacing.size8
+                spacing: Spacing.size8
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 12
+                    spacing: Spacing.size12
 
                     Text {
                         text: "ACCOUNTS:"
-                        color: "#64748b"
-                        font.pixelSize: 10
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.typeLabel
                         font.bold: true
                         Layout.alignment: Qt.AlignVCenter
                     }
@@ -386,11 +363,11 @@ Rectangle {
                     ListView {
                         id: accountsList
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 28
+                        Layout.preferredHeight: Spacing.size28
                         orientation: ListView.Horizontal
                         clip: true
                         model: root.executionModels.accounts
-                        spacing: 8
+                        spacing: Spacing.size8
 
                         delegate: Rectangle {
                             id: accChip
@@ -401,12 +378,12 @@ Rectangle {
 
                             readonly property bool isSelected: root.executionModels.selected_account_id === accChip.id
 
-                            height: 28
+                            height: Spacing.size28
                             implicitWidth: accRow.implicitWidth + 16
-                            radius: 4
-                            color: accChip.isSelected ? "#1e293b" : (accMouse.containsMouse ? "#243044" : "#131722")
-                            border.color: accChip.isSelected ? "#38bdf8" : "#334155"
-                            border.width: 1
+                            radius: Spacing.size4
+                            color: accChip.isSelected ? Theme.surfaceSelected : (accMouse.containsMouse ? Theme.surfaceHover : Theme.surfaceBase)
+                            border.color: accChip.isSelected ? Theme.accent : Theme.borderDefault
+                            border.width: Spacing.size1
                             anchors.verticalCenter: parent.verticalCenter
 
                             MouseArea {
@@ -421,19 +398,19 @@ Rectangle {
                             RowLayout {
                                 id: accRow
                                 anchors.centerIn: parent
-                                spacing: 8
+                                spacing: Spacing.size8
 
                                 Text {
                                     text: accChip.name !== "" ? accChip.name : accChip.id
-                                    color: accChip.isSelected ? "#38bdf8" : "#f8fafc"
-                                    font.pixelSize: 11
+                                    color: accChip.isSelected ? Theme.accent : Theme.textStrong
+                                    font.pixelSize: Theme.typeBodySmall
                                     font.bold: true
                                 }
 
                                 Text {
                                     text: accChip.cash_balance + " " + accChip.currency
-                                    color: "#94a3b8"
-                                    font.pixelSize: 10
+                                    color: Theme.textSecondary
+                                    font.pixelSize: Theme.typeLabel
                                 }
                             }
                         }
@@ -442,34 +419,34 @@ Rectangle {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 12
+                    spacing: Spacing.size12
                     visible: root.executionModels.selected_account_id !== ""
 
                     Repeater {
                         model: [
-                            { label: "Cash balance", field: "cash_balance", color: "#f8fafc" },
-                            { label: "Equity (cash)", field: "cash_balance", color: "#f8fafc" },
-                            { label: "Session P&L vs initial", field: "session_pnl", color: "#cbd5e1" }
+                            { label: "Cash balance", field: "cash_balance", color: Theme.textStrong },
+                            { label: "Equity (cash)", field: "cash_balance", color: Theme.textStrong },
+                            { label: "Session P&L vs initial", field: "session_pnl", color: Theme.textPrimary }
                         ]
 
                         delegate: Rectangle {
                             required property var modelData
                             Layout.fillWidth: true
-                            height: 40
-                            radius: 4
-                            color: "#131722"
-                            border.color: "#334155"
-                            border.width: 1
+                            height: Spacing.size40
+                            radius: Spacing.size4
+                            color: Theme.surfaceBase
+                            border.color: Theme.borderDefault
+                            border.width: Spacing.size1
 
                             ColumnLayout {
                                 anchors.fill: parent
-                                anchors.margins: 8
-                                spacing: 2
+                                anchors.margins: Spacing.size8
+                                spacing: Spacing.size2
 
                                 Text {
                                     text: modelData.label.toUpperCase()
-                                    color: "#64748b"
-                                    font.pixelSize: 9
+                                    color: Theme.textMuted
+                                    font.pixelSize: Theme.typeLabelSmall
                                     font.bold: true
                                 }
 
@@ -480,14 +457,8 @@ Rectangle {
                                         var currency = root.executionModels.field_for_selected_account("currency");
                                         return value + (currency !== "" ? " " + currency : "");
                                     }
-                                    color: {
-                                        if (modelData.field !== "session_pnl") return modelData.color;
-                                        var value = root.executionModels.field_for_selected_account("session_pnl");
-                                        if (value.startsWith("-")) return "#f87171";
-                                        if (value !== "" && value !== "0" && value !== "0.00") return "#34d399";
-                                        return "#f8fafc";
-                                    }
-                                    font.pixelSize: 11
+                                    color: modelData.field === "session_pnl" ? Semantic.foreground(Semantic.signedString(root.executionModels.field_for_selected_account("session_pnl"))) : modelData.color
+                                    font.pixelSize: Theme.typeBodySmall
                                     font.bold: true
                                 }
                             }
@@ -528,20 +499,20 @@ Rectangle {
         // Table Footer: "Load older" button for paging
         Rectangle {
             Layout.fillWidth: true
-            height: 32
-            color: "#182030"
-            border.color: "#334155"
-            border.width: 1
+            height: Spacing.size32
+            color: Theme.surfaceOverlay
+            border.color: Theme.borderDefault
+            border.width: Spacing.size1
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
+                anchors.leftMargin: Spacing.size12
+                anchors.rightMargin: Spacing.size12
 
                 Text {
                     text: "Newest rows streamed live · revision " + root.executionModels.revision
-                    color: "#64748b"
-                    font.pixelSize: 10
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.typeLabel
                     Layout.alignment: Qt.AlignVCenter
                 }
 
@@ -549,10 +520,10 @@ Rectangle {
 
                 Rectangle {
                     id: loadOlderBtn
-                    height: 22
+                    height: Spacing.size22
                     implicitWidth: loadOlderText.implicitWidth + 16
-                    radius: 3
-                    color: loadOlderMouse.containsMouse ? "#2563eb" : "#1d4ed8"
+                    radius: Spacing.size3
+                    color: loadOlderMouse.containsMouse ? Theme.accentStrong : Theme.accentPressed
                     Layout.alignment: Qt.AlignVCenter
 
                     MouseArea {
@@ -569,8 +540,8 @@ Rectangle {
                         id: loadOlderText
                         anchors.centerIn: parent
                         text: "Load older " + root.tabNames[root.currentTabIndex]
-                        color: "#ffffff"
-                        font.pixelSize: 10
+                        color: Theme.textOnAccent
+                        font.pixelSize: Theme.typeLabel
                         font.bold: true
                     }
                 }

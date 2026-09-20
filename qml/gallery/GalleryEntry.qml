@@ -1,12 +1,11 @@
 import QtQuick
 import QtQuick.Layouts
-import "../theme"
-import "../components"
+import qml
 
 Rectangle {
     id: root
     required property var entry
-    implicitHeight: Spacing.galleryCardHeight
+    implicitHeight: Spacing.galleryCardHeight * root.entry.states.length
     color: Theme.surfaceRaised
     border.color: Theme.borderDefault
     border.width: Theme.borderWidth
@@ -20,7 +19,16 @@ Rectangle {
             Item { Layout.fillWidth: true }
             Text { text: "REFERENCE ADAPTED"; color: Theme.textMuted; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
         }
-        ComponentPreview { Layout.fillWidth: true; Layout.preferredHeight: Spacing.galleryPreviewHeight; componentName: root.entry.name }
+        Repeater {
+            model: root.entry.states
+            delegate: ComponentPreview {
+                required property string modelData
+                Layout.fillWidth: true
+                Layout.preferredHeight: Spacing.galleryPreviewHeight
+                componentName: root.entry.name
+                previewState: modelData
+            }
+        }
         RowLayout {
             spacing: Theme.spaceXs
             Repeater {

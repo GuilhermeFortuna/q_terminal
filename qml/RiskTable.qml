@@ -6,32 +6,32 @@ import "Format.js" as Format
 
 Rectangle {
     id: root
-    color: "#131722"
+    color: Theme.surfaceBase
 
     required property ExecutionModels executionModels
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 0
+        spacing: Spacing.size0
 
         // Table Header
         Rectangle {
             Layout.fillWidth: true
-            height: 28
-            color: "#182030"
-            border.color: "#334155"
-            border.width: 1
+            height: Spacing.size28
+            color: Theme.surfaceOverlay
+            border.color: Theme.borderDefault
+            border.width: Spacing.size1
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
-                spacing: 8
+                anchors.leftMargin: Spacing.size12
+                anchors.rightMargin: Spacing.size12
+                spacing: Spacing.size8
 
-                Text { text: "TIME"; color: "#64748b"; font.pixelSize: 10; font.bold: true; Layout.preferredWidth: 140 }
-                Text { text: "REJECTION CODE"; color: "#64748b"; font.pixelSize: 10; font.bold: true; Layout.preferredWidth: 140 }
-                Text { text: "MESSAGE"; color: "#64748b"; font.pixelSize: 10; font.bold: true; Layout.preferredWidth: 200 }
-                Text { text: "CONTEXT"; color: "#64748b"; font.pixelSize: 10; font.bold: true; Layout.fillWidth: true }
+                Text { text: "TIME"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel; font.bold: true; Layout.preferredWidth: Spacing.size140 }
+                Text { text: "REJECTION CODE"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel; font.bold: true; Layout.preferredWidth: Spacing.size140 }
+                Text { text: "MESSAGE"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel; font.bold: true; Layout.preferredWidth: Spacing.size200 }
+                Text { text: "CONTEXT"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel; font.bold: true; Layout.fillWidth: true }
             }
         }
 
@@ -54,43 +54,43 @@ Rectangle {
                 required property string created_at
 
                 width: listView.width
-                height: 28
-                color: (index % 2 === 0) ? "#131722" : "#161c28"
+                height: Spacing.size28
+                color: (index % 2 === 0) ? Theme.surfaceBase : Theme.surfaceRaised
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: 12
-                    anchors.rightMargin: 12
-                    spacing: 8
+                    anchors.leftMargin: Spacing.size12
+                    anchors.rightMargin: Spacing.size12
+                    spacing: Spacing.size8
 
                     Text {
                         text: Format.formatIsoTime(rowRect.created_at)
-                        color: "#94a3b8"
-                        font.pixelSize: 11
-                        Layout.preferredWidth: 140
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.typeBodySmall
+                        Layout.preferredWidth: Spacing.size140
                     }
 
                     Text {
                         text: rowRect.rejection_code
-                        color: "#f87171"
-                        font.pixelSize: 11
+                        color: Semantic.foreground(Semantic.negative)
+                        font.pixelSize: Theme.typeBodySmall
                         font.bold: true
-                        Layout.preferredWidth: 140
+                        Layout.preferredWidth: Spacing.size140
                     }
 
                     Text {
                         text: rowRect.message
-                        color: "#fca5a5"
-                        font.pixelSize: 11
+                        color: Theme.negativeSoft
+                        font.pixelSize: Theme.typeBodySmall
                         elide: Text.ElideRight
-                        Layout.preferredWidth: 200
+                        Layout.preferredWidth: Spacing.size200
                     }
 
                     Text {
                         text: rowRect.context
-                        color: "#64748b"
-                        font.pixelSize: 10
-                        font.family: "monospace"
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.typeLabel
+                        font.family: Theme.numericFontFamily
                         elide: Text.ElideRight
                         Layout.fillWidth: true
                     }

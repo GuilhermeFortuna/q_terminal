@@ -18,7 +18,7 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 0
+        spacing: Spacing.size0
 
         // Status Header
         OpsHeader {
@@ -33,12 +33,12 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 0
+            spacing: Spacing.size0
 
             // Left Pane: Deployment List
             DeploymentList {
                 id: depList
-                Layout.preferredWidth: 320
+                Layout.preferredWidth: Spacing.size320
                 Layout.fillHeight: true
                 executionModels: root.executionModels
                 executionControls: root.executionControls
@@ -47,16 +47,16 @@ Item {
 
             // Vertical Divider
             Rectangle {
-                Layout.preferredWidth: 1
+                Layout.preferredWidth: Spacing.size1
                 Layout.fillHeight: true
-                color: "#1e293b"
+                color: Theme.surfaceSelected
             }
 
             // Right Pane: Top Chart, Bottom Detail Tables
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                spacing: 0
+                spacing: Spacing.size0
 
                 // Top Half: Candlestick Chart Pane
                 ChartPane {
@@ -69,8 +69,8 @@ Item {
                 // Horizontal Divider
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: "#1e293b"
+                    Layout.preferredHeight: Spacing.size1
+                    color: Theme.surfaceSelected
                 }
 
                 // Bottom Half: Deployment Detail & Tabbed Tables
@@ -89,7 +89,7 @@ Item {
         StatusStrip {
             id: statusStrip
             Layout.fillWidth: true
-            height: 24
+            height: Spacing.size24
             feed: root.feed
         }
     }

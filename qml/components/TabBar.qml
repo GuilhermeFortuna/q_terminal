@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls as Controls
-import "../theme"
+import qml
 
 Controls.TabBar {
     id: root

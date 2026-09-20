@@ -1,11 +1,12 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import qml
 
 Rectangle {
     id: root
 
     property var feed: null
-    color: "#131722"
+    color: Theme.surfaceBase
 
     readonly property string connectionState: root.feed ? root.feed.connection_state : "disconnected"
     readonly property string lastError: root.feed ? root.feed.last_error : ""
@@ -14,14 +15,14 @@ Rectangle {
 
     Column {
         anchors.centerIn: parent
-        spacing: 8
+        spacing: Spacing.size8
 
         Text {
             id: messageText
             objectName: "emptyMessageText"
             anchors.horizontalCenter: parent.horizontalCenter
-            color: "#d1d4dc"
-            font.pixelSize: 16
+            color: Theme.textPrimary
+            font.pixelSize: Theme.typeTitle
             font.bold: true
             text: {
                 var s = root.connectionState.toLowerCase();
@@ -43,8 +44,8 @@ Rectangle {
             objectName: "emptyReasonText"
             anchors.horizontalCenter: parent.horizontalCenter
             visible: root.lastError !== ""
-            color: "#f23645"
-            font.pixelSize: 12
+            color: Theme.critical
+            font.pixelSize: Theme.typeBody
             text: root.lastError
         }
     }

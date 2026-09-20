@@ -1,8 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import "../theme"
-import "../components"
+import qml
 import "../components/ComponentCatalog.js" as ComponentCatalog
 
 ApplicationWindow {

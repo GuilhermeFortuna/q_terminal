@@ -79,7 +79,7 @@ fn main() {
         .qml_file("qml/Main.qml")
         .qml_file("qml/Viewport.qml")
         .qml_file("qml/ChartPane.qml")
-        .qml_file("qml/EmptyState.qml")
+        .qml_file("qml/ChartEmptyState.qml")
         .qml_file("qml/StatusStrip.qml")
         .qml_file("qml/OpsHeader.qml")
         .qml_file("qml/DeploymentList.qml")
