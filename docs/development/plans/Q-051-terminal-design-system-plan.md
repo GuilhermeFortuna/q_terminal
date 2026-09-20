@@ -129,9 +129,9 @@ docs/design/components.md     new: per component — reference adapted, what was
 
 ## Ordered implementation
 
-- [ ] 1. Work on the branch `Q-051-terminal-design-system` in `q_terminal`, created from
+- [x] 1. Work on the branch `Q-051-terminal-design-system` in `q_terminal`, created from
    `development` by `./work start`. Confirm Q-049 is merged. Commit.
-- [ ] 2. Select and record references for every component in `docs/design/components.md`,
+- [x] 2. Select and record references for every component in `docs/design/components.md`,
    before any component is written. Review this against the register as a gate on step 5.
    Commit.
 - [ ] 3. Vendor the fonts and the Lucide subset; wire the `qrc`;
