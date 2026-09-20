@@ -114,7 +114,7 @@ src/main.rs                   --bench-frames gains --markers N --overlays N
    Keep `qmllint` clean. Commit.
 - [x] 8. Extend `--bench-frames` with markers and overlays, and record p95.
    Commit.
-- [ ] 9. Tick the chart rows of `docs/ops-parity.md`, and update `README.md`.
+- [x] 9. Tick the chart rows of `docs/ops-parity.md`, and update `README.md`.
    Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run, commit.
 - [ ] 10. **Human:** human-verifiable criteria 1 and 2.
 
