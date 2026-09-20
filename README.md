@@ -20,13 +20,11 @@ The live chart slice provides a read-only, reactive candlestick chart window dis
   - History source & shortfall: indicates whether history loaded from lake or API, and shortfall bar count if any.
   - Reconnect / error banner: displays actionable diagnostics and retry status.
 - **Empty State (`EmptyState.qml`)**: Informative placeholder presented while history is loading or before the first bar arrives.
-- **Non-Interactive Boundary**: This slice is strictly read-only visualization. It contains no order entry, kill switch, or strategy modification controls.
-
 ---
 
 ## The Operations Workspace
 
-The operations workspace (Q-047) is the terminal's read-only execution surface. It sits alongside the live chart in `OpsWorkspace.qml` and is driven by the in-memory execution store plus a two-second health/positions poller.
+The operations workspace is the terminal's execution surface. It sits alongside the live chart in `OpsWorkspace.qml` and is driven by the in-memory execution store plus a two-second health/positions poller. Q-048 adds command controls (accounts, deployments, lifecycle, flatten, kill switch, resolve) with confirmations and §8.1 enablement.
 
 ### What It Shows
 
@@ -69,6 +67,9 @@ Any configuration setting can be overridden using environment variables:
 | Control API URL | `api_base` | `Q_TERMINAL_API_BASE` | None (required) |
 | Trading Symbol | `symbol` | `Q_TERMINAL_SYMBOL` | `PETR4` |
 | Bar Timeframe | `timeframe` | `Q_TERMINAL_TIMEFRAME` | `1m` |
+| Operator / actor name | `operator` | `Q_TERMINAL_OPERATOR` | `$USER`, else `operator` |
+
+Command confirmations use the operator name as the `actor` on lifecycle and resolve requests.
 
 ### Degraded Startup
 

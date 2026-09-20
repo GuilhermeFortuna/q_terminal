@@ -2,6 +2,7 @@
 #[path = "../contracts/stream.rs"]
 pub mod contracts_stream;
 
+#[allow(dead_code)]
 #[path = "../src/bridge.rs"]
 mod bridge;
 #[path = "../src/config.rs"]

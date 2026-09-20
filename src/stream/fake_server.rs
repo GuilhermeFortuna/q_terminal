@@ -1,5 +1,8 @@
 use crate::stream::arrow_decode::encode_arrow_bars;
 use crate::stream::base64::b64_encode;
+use crate::stream::fake_commands::{
+    parse_body_from_request, parse_idempotency_key, CommandFakeState, CommandLogEntry,
+};
 use crate::stream::fake_exec::ExecFake;
 use crate::stream::frame::{make_binary_frame, EnvelopeHeader};
 use crate::stream::topic_state::BarColumns;
@@ -48,6 +51,7 @@ pub struct FakeServer {
     positions_calls: Arc<std::sync::atomic::AtomicUsize>,
     paged_calls: Arc<std::sync::atomic::AtomicUsize>,
     rest_calls: Arc<std::sync::atomic::AtomicUsize>,
+    command_state: Arc<RwLock<CommandFakeState>>,
     command_tx: mpsc::Sender<ServerCommand>,
     shutdown_tx: mpsc::Sender<()>,
 }
@@ -124,6 +128,8 @@ impl FakeServer {
         let pcalls_arc = positions_calls.clone();
         let paged_calls_arc = paged_calls.clone();
         let rest_cnt = rest_calls.clone();
+        let command_state = Arc::new(RwLock::new(CommandFakeState::default()));
+        let command_state_loop = command_state.clone();
 
         tokio::spawn(async move {
             loop {
@@ -150,6 +156,7 @@ impl FakeServer {
                             let pcalls_arc = pcalls_arc.clone();
                             let paged_calls_arc = paged_calls_arc.clone();
                             let rest_cnt = rest_cnt.clone();
+                            let command_state_arc = command_state_loop.clone();
                             let ws_sender_clone = ws_sender_clone.clone();
 
                             tokio::spawn(async move {
@@ -247,7 +254,9 @@ impl FakeServer {
                                 }
 
                                 // Consume REST request bytes
-                                let _ = socket.read(&mut buf[..n]).await;
+                                let mut request_buf = vec![0u8; 8192];
+                                let read_n = socket.read(&mut request_buf).await.unwrap_or(0);
+                                let request_text = String::from_utf8_lossy(&request_buf[..read_n]);
 
                                 rest_cnt.fetch_add(1, Ordering::SeqCst);
 
@@ -256,8 +265,54 @@ impl FakeServer {
                                 if parts.len() < 2 {
                                     return;
                                 }
+                                let method = parts[0];
                                 let path_and_query = parts[1];
                                 let path = path_and_query.split('?').next().unwrap_or("");
+
+                                // Command routes (Q-048)
+                                let is_command_route = path.contains("/api/v1/backtests")
+                                    || (path.contains("/api/v1/execution/")
+                                        && (path.ends_with("/accounts")
+                                            || path.ends_with("/deployments")
+                                            || path.ends_with("/actions")
+                                            || path.ends_with("/kill-switch")
+                                            || path.contains("/resolve")));
+                                if is_command_route {
+                                    {
+                                        let mut cmd_state = command_state_arc.write().await;
+                                        if cmd_state.should_fail_transport() {
+                                            let _ = socket.shutdown().await;
+                                            return;
+                                        }
+                                    }
+                                    let key = parse_idempotency_key(&request_text);
+                                    let body = parse_body_from_request(&request_text);
+                                    let response = {
+                                        let mut cmd_state = command_state_arc.write().await;
+                                        cmd_state.handle(method, path, key, &body)
+                                    };
+                                    if let Some((status, extra_headers, resp_body)) = response {
+                                        let status_line = if status == 200 {
+                                            "HTTP/1.1 200 OK"
+                                        } else if status == 409 {
+                                            "HTTP/1.1 409 Conflict"
+                                        } else {
+                                            "HTTP/1.1 404 Not Found"
+                                        };
+                                        let mut header_block = format!(
+                                            "{status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close",
+                                            resp_body.len()
+                                        );
+                                        for (k, v) in extra_headers {
+                                            header_block.push_str(&format!("\r\n{k}: {v}"));
+                                        }
+                                        header_block.push_str("\r\n\r\n");
+                                        let resp = format!("{header_block}{resp_body}");
+                                        let _ = socket.write_all(resp.as_bytes()).await;
+                                        let _ = socket.shutdown().await;
+                                        return;
+                                    }
+                                }
 
                                 if path.contains("/api/v1/catalog/datasets") {
                                     let cat_guard = cat_arc.read().await;
@@ -579,6 +634,7 @@ impl FakeServer {
             positions_calls,
             paged_calls,
             rest_calls,
+            command_state,
             command_tx: cmd_tx,
             shutdown_tx,
         }
@@ -621,6 +677,21 @@ impl FakeServer {
 
     pub fn rest_calls(&self) -> usize {
         self.rest_calls.load(Ordering::SeqCst)
+    }
+
+    pub fn command_log(&self) -> Vec<CommandLogEntry> {
+        self.command_state
+            .try_read()
+            .map(|s| s.log().to_vec())
+            .unwrap_or_default()
+    }
+
+    pub async fn set_command_transport_failures(&self, n: usize) {
+        self.command_state.write().await.set_transport_failures(n);
+    }
+
+    pub async fn set_command_script(&self, script: CommandFakeState) {
+        *self.command_state.write().await = script;
     }
 
     pub fn set_deny_503(&self, val: bool) {

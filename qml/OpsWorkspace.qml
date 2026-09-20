@@ -8,6 +8,7 @@ Item {
 
     required property ExecutionModels executionModels
     required property OpsStatus opsStatus
+    required property ExecutionControls executionControls
     property var feed: null
 
     readonly property alias opsHeader: header
@@ -24,6 +25,8 @@ Item {
             id: header
             Layout.fillWidth: true
             opsStatus: root.opsStatus
+            executionControls: root.executionControls
+            executionModels: root.executionModels
         }
 
         // Main Area: Left (Deployments) + Right (Chart + Tables)
@@ -38,6 +41,8 @@ Item {
                 Layout.preferredWidth: 320
                 Layout.fillHeight: true
                 executionModels: root.executionModels
+                executionControls: root.executionControls
+                opsStatus: root.opsStatus
             }
 
             // Vertical Divider
@@ -75,6 +80,7 @@ Item {
                     Layout.fillHeight: true
                     executionModels: root.executionModels
                     opsStatus: root.opsStatus
+                    executionControls: root.executionControls
                 }
             }
         }

@@ -88,6 +88,7 @@ fn test_config(base: &str) -> Config {
         api_base: base.to_string(),
         symbol: "PETR4".to_string(),
         timeframe: "1m".to_string(),
+        operator: "operator".to_string(),
     }
 }
 

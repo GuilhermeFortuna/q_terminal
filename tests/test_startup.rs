@@ -12,6 +12,13 @@ pub mod config;
 pub mod execution;
 #[path = "../src/history/mod.rs"]
 pub mod history;
+#[allow(dead_code)]
+#[path = "../src/ops_session.rs"]
+pub mod ops_session;
+#[allow(unused_imports)]
+pub use bridge::execution_controls;
+#[allow(unused_imports)]
+pub use bridge::execution_models;
 #[path = "../src/startup.rs"]
 pub mod startup;
 #[path = "../src/stream/mod.rs"]
@@ -40,6 +47,7 @@ fn test_startup_unreachable_api_opens_window_retrying() {
         api_base: "http://127.0.0.1:39999".into(),
         symbol: "PETR4".into(),
         timeframe: "1m".into(),
+        operator: "operator".into(),
     };
     let ctx = setup_slice(&Ok(config));
     assert!(!ctx.feed_ptr.is_null());

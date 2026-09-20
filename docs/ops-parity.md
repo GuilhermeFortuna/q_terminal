@@ -5,7 +5,7 @@ This document establishes the 1:1 mapping between each visual field, signal, pan
 ## Summary Counts
 
 - **Fields and signals mapped to terminal:** 42 (all verified against Q-047 implementation)
-- **Controls deferred or omitted with stated reasons:** 12 (Command mutations deferred to Q-048; web/Tauri multi-window controls omitted by architecture; create dialogs deferred to Q-048)
+- **Controls deferred or omitted with stated reasons:** 2 (web/Tauri multi-window controls omitted by architecture)
 
 **Verification:** Every row below is checked `[x]` against the terminal implementation in branch `Q-047-operations-views`.
 
@@ -25,7 +25,7 @@ This document establishes the 1:1 mapping between each visual field, signal, pan
 | [x] Worker Lease Offline Banner | `execution-worker-down-banner` | `qml/OpsHeader.qml` Warning banner | Mapped (shown when API ok but worker offline/stale) |
 | [x] Reconciliation Required Banner | `execution-unknown-orders-banner` | `qml/OpsHeader.qml` Reconciliation banner | Mapped (shown when `unknown_orders > 0`) |
 | [x] Global Kill Switch State | `execution-kill-switch-state` (`Engaged`/`Off`) | `qml/OpsHeader.qml` Kill switch indicator | Mapped (`OpsStatus.kill_switch_enabled`) |
-| [x] Global Kill Switch Slide / Release | `PowerOffSlide`, `execution-kill-switch-release` | N/A (read-only in Q-047) | Deferred to Q-048 (Commands) |
+| [x] Global Kill Switch Slide / Release | `PowerOffSlide`, `execution-kill-switch-release` | `qml/OpsHeader.qml` engage/release + `ConfirmDialog.qml` | Mapped (Q-048) |
 | [x] Manual Refresh Button | `Button` (calls `refetch()`) | N/A | Automated via live WebSocket stream & 2s health/positions poller |
 
 ---
@@ -35,7 +35,7 @@ This document establishes the 1:1 mapping between each visual field, signal, pan
 | Frontend Element / Field | Frontend Source / Component | Terminal Location (`q_terminal`) | Status / Rationale |
 |---|---|---|---|
 | [x] Account Selector Tabs | `activeAccountId` tab chips | `qml/DeploymentDetail.qml` (Account tab) | Mapped |
-| [x] Create Account Button (`+ Account`) | `Button` (`setShowCreateAccount`) | N/A (read-only in Q-047) | Deferred to Q-048 (Commands) |
+| [x] Create Account Button (`+ Account`) | `Button` (`setShowCreateAccount`) | `qml/DeploymentList.qml` + `AccountDialog.qml` | Mapped (Q-048) |
 | [x] Cash Balance | `StatTile` ("Cash balance") | `qml/DeploymentDetail.qml` Account summary | Mapped (`account.cash_balance` via `field_for_selected_account`) |
 | [x] Equity (cash) | `StatTile` ("Equity (cash)") | `qml/DeploymentDetail.qml` Account summary | Mapped (`account.cash_balance`, same as frontend) |
 | [x] Session P&L vs Initial | `StatTile` ("Session P&L vs initial") | `qml/DeploymentDetail.qml` Account summary | Mapped (`session_pnl` from store stream; no terminal arithmetic) |
@@ -46,7 +46,7 @@ This document establishes the 1:1 mapping between each visual field, signal, pan
 
 | Frontend Element / Field | Frontend Source / Component | Terminal Location (`q_terminal`) | Status / Rationale |
 |---|---|---|---|
-| [x] New Deployment Button (`+ New`) | `Button` (`setShowCreateDeployment`) | N/A (read-only in Q-047) | Deferred to Q-048 (Commands) |
+| [x] New Deployment Button (`+ New`) | `Button` (`setShowCreateDeployment`) | `qml/DeploymentList.qml` + `DeployDialog.qml` | Mapped (Q-048; saved-run picker only) |
 | [x] Deployment Name | `item.name` | `qml/DeploymentList.qml` name | Mapped |
 | [x] Deployment Lifecycle | `item.lifecycle` (`running`, `paused`, `stopped`) | `qml/DeploymentList.qml` lifecycle badge | Mapped |
 | [x] Deployment Status Color Bar | `statusBorder` (green, amber, rose) | `qml/DeploymentList.qml` border indicator | Mapped |
@@ -66,9 +66,9 @@ This document establishes the 1:1 mapping between each visual field, signal, pan
 | [x] Current Status (Lifecycle) | `deployment.lifecycle` | `qml/DeploymentDetail.qml` header | Mapped |
 | [x] Pending Action (Desired) | `deployment.pending_action` | `qml/DeploymentDetail.qml` header | Mapped |
 | [x] Last Bar Close Time | `deployment.last_bar_close_time` | `qml/DeploymentDetail.qml` header | Mapped (formatted UTC time) |
-| [x] Lifecycle Actions (Start, Pause, Stop) | `Button` controls | N/A (read-only in Q-047) | Deferred to Q-048 (Commands) |
+| [x] Lifecycle Actions (Start, Pause, Stop) | `Button` controls | `qml/DeploymentDetail.qml` action bar + `ConfirmDialog.qml` | Mapped (Q-048) |
 | [x] Monitor Live Action | `Button` (`openExecutionMonitor`) | N/A | Omitted: Native terminal view |
-| [x] Flatten Action | `Button` (`setConfirmKind('flatten')`) | N/A (read-only in Q-047) | Deferred to Q-048 (Commands) |
+| [x] Flatten Action | `Button` (`setConfirmKind('flatten')`) | `qml/DeploymentDetail.qml` + `ConfirmDialog.qml` | Mapped (Q-048) |
 | [x] Open Position Side | `deployment.open_position.side` (`long`/`short`/flat) | `qml/DeploymentDetail.qml` Position card | Mapped |
 | [x] Open Position Quantity | `deployment.open_position.quantity` | `qml/DeploymentDetail.qml` Position card | Mapped |
 | [x] Open Position Avg Entry Price | `deployment.open_position.average_entry_price` | `qml/DeploymentDetail.qml` Position card | Mapped (formatted string) |
@@ -147,6 +147,7 @@ This document establishes the 1:1 mapping between each visual field, signal, pan
 
 | Frontend Dialog | Frontend Purpose | Terminal Status / Rationale |
 |---|---|---|
-| [x] Create Paper Account Modal | POST `/api/v1/execution/paper-accounts` | Deferred to Q-048 (read-only boundary in Q-047) |
-| [x] Create Deployment Modal | POST `/api/v1/execution/deployments` | Deferred to Q-048 (read-only boundary in Q-047) |
-| [x] Confirm Flatten Dialog | POST `/api/v1/execution/deployments/{id}/actions` | Deferred to Q-048 (read-only boundary in Q-047) |
+| [x] Create Paper Account Modal | POST `/api/v1/execution/accounts` | `qml/AccountDialog.qml` | Mapped (Q-048) |
+| [x] Create Deployment Modal | POST `/api/v1/execution/deployments` | `qml/DeployDialog.qml` | Mapped (Q-048) |
+| [x] Confirm Flatten Dialog | POST `/api/v1/execution/deployments/{id}/actions` | `qml/ConfirmDialog.qml` | Mapped (Q-048) |
+| [x] Resolve Unknown Order Dialog | POST `/api/v1/execution/orders/{id}/resolve` | `qml/ResolveDialog.qml` | Mapped (Q-048; no default outcome) |
