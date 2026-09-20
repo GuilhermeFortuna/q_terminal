@@ -107,25 +107,25 @@ src/config.rs                operator (actor) name: config key `operator`, env Q
 
 ## Ordered implementation
 
-- [ ] 1. Work on the branch `Q-048-execution-controls` in `q_terminal`, created from
+- [x] 1. Work on the branch `Q-048-execution-controls` in `q_terminal`, created from
    `development` by `./work start`. Confirm Q-044 and Q-047 are merged, and that
    the pinned contracts include the Q-044 recapture. Move `CONTRACTS_REV` if
    needed. Commit.
-- [ ] 2. Write `enablement.rs` and `tests/enablement_matrix.rs` from the spec's
+- [x] 2. Write `enablement.rs` and `tests/enablement_matrix.rs` from the spec's
    table. Commit.
-- [ ] 3. Extend `fake_server.rs` with the five command routes, the idempotency
+- [x] 3. Extend `fake_server.rs` with the five command routes, the idempotency
    semantics, a request log, and scripted refusals and delays. Write
    `CommandClient` with tests for keys, retries and error surfacing. Commit.
-- [ ] 4. Write `ExecutionControls` with the action lifecycle (in-flight, awaiting
+- [x] 4. Write `ExecutionControls` with the action lifecycle (in-flight, awaiting
    stream, settled, refused, pending past the bound), and headless tests for
    criterion 2. Commit.
-- [ ] 5. Write the dialogs and wire the action bar and the kill switch. Write
+- [x] 5. Write the dialogs and wire the action bar and the kill switch. Write
    `tests/ops_controls.rs` for criteria 1, 3, 5, 6 and 7. Keep `qmllint`
    clean. Commit per dialog.
-- [ ] 6. Add the operator setting to `config.rs`, with tests. Commit.
-- [ ] 7. Update `BOUNDARY.md`, `README.md` and the command rows of
+- [x] 6. Add the operator setting to `config.rs`, with tests. Commit.
+- [x] 7. Update `BOUNDARY.md`, `README.md` and the command rows of
    `docs/ops-parity.md`. Commit.
-- [ ] 8. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run, commit.
+- [x] 8. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run, commit.
 - [ ] 9. **Human:** human-verifiable criteria 1–3.
 
 ## Validation

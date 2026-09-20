@@ -12,6 +12,10 @@ pub mod config;
 pub mod execution;
 #[path = "../src/history/mod.rs"]
 pub mod history;
+#[path = "../src/ops_session.rs"]
+pub mod ops_session;
+pub use bridge::execution_controls;
+pub use bridge::execution_models;
 #[path = "../src/startup.rs"]
 pub mod startup;
 #[path = "../src/stream/mod.rs"]

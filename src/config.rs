@@ -9,6 +9,7 @@ pub struct Config {
     pub api_base: String,
     pub symbol: String,
     pub timeframe: String,
+    pub operator: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,10 +154,19 @@ impl Config {
             .filter(|s| !s.is_empty())
             .ok_or_else(|| ConfigError::MissingField("timeframe".to_string()))?;
 
+        let operator = get_env("Q_TERMINAL_OPERATOR")
+            .or_else(|| file_values.get("operator").cloned())
+            .or_else(|| get_env("USER"))
+            .or_else(|| get_env("USERNAME"))
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "operator".to_string());
+
         Ok(Self {
             api_base,
             symbol,
             timeframe,
+            operator,
         })
     }
 }
@@ -194,6 +204,25 @@ mod tests {
         assert_eq!(config.api_base, "http://127.0.0.1:8000");
         assert_eq!(config.symbol, "PETR4");
         assert_eq!(config.timeframe, "1m");
+        assert_eq!(config.operator, "operator");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_operator_from_env() {
+        let dir = temp_test_dir("operator_env");
+        let config_path = dir.join("config.toml");
+        let mut file = std::fs::File::create(&config_path).unwrap();
+        writeln!(file, "api_base = \"http://127.0.0.1:8000\"").unwrap();
+        writeln!(file, "symbol = \"PETR4\"").unwrap();
+        writeln!(file, "timeframe = \"1m\"").unwrap();
+
+        let env_map = |key: &str| match key {
+            "Q_TERMINAL_OPERATOR" => Some("desk-alpha".into()),
+            _ => None,
+        };
+        let config = Config::load_from_path_and_env(Some(&config_path), env_map).unwrap();
+        assert_eq!(config.operator, "desk-alpha");
         let _ = std::fs::remove_dir_all(dir);
     }
 

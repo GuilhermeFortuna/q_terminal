@@ -6,6 +6,7 @@ use crate::bridge;
 use crate::bridge::bar_feed::parse_timeframe_ms;
 use crate::chart_bridge;
 use crate::config::{Config, ConfigError};
+use crate::ops_session;
 use crate::stream::client::{ConnectionState, StreamClient};
 use crate::stream::sink::BarSink;
 
@@ -14,6 +15,16 @@ pub struct SliceContext {
     pub engine: cxx::UniquePtr<cxx_qt_lib::QQmlApplicationEngine>,
     pub feed_ptr: *mut chart_bridge::BarFeed,
     pub stream_client: Option<StreamClient>,
+    pub health_poller: Option<std::sync::Arc<crate::execution::health::HealthPoller>>,
+}
+
+impl Drop for SliceContext {
+    fn drop(&mut self) {
+        if let Some(poller) = &self.health_poller {
+            poller.stop();
+        }
+        let _ = self.stream_client.take();
+    }
 }
 
 /// Sets up the window and slice context for the given config.
@@ -36,6 +47,7 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
 
     let feed_ptr = unsafe { chart_bridge::find_window_feed(engine.as_mut().unwrap()) };
     let mut stream_client: Option<StreamClient> = None;
+    let mut health_poller: Option<std::sync::Arc<crate::execution::health::HealthPoller>> = None;
 
     if !feed_ptr.is_null() {
         match config {
@@ -55,9 +67,10 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
                 }
 
                 let sink = BarSink::new();
-                let client = StreamClient::start(cfg.clone(), sink.clone());
+                let (_exec_handle, client_opt, poller) =
+                    ops_session::wire_ops_session(&mut engine, cfg, sink.clone());
+                let client = client_opt.expect("execution stream client");
 
-                // Set up reactive delivery drainer into feed
                 let sink_drainer = {
                     let sink = sink.clone();
                     let feed_addr = feed_ptr as usize;
@@ -99,38 +112,51 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
                 };
                 sink.set_listener(sink_drainer);
 
-                // Set up reactive client state listener without timer polling
-                let client_listener = {
-                    let shared = client.shared();
-                    let feed_addr = feed_ptr as usize;
-                    Arc::new(move || {
-                        let feed = feed_addr as *mut chart_bridge::BarFeed;
-                        let state = shared.connection_state();
-                        let state_str = match state {
-                            ConnectionState::Connecting => "connecting",
-                            ConnectionState::Live => "live",
-                            ConnectionState::Reconnecting { .. } => "retrying",
-                            ConnectionState::Unavailable => "unavailable",
-                        };
-                        let err = shared.last_error();
-                        let cnt = shared.counters();
-                        unsafe {
-                            chart_bridge::post_feed_stream_state(
-                                feed,
-                                state_str,
-                                &err,
-                                cnt.applied as i64,
-                                cnt.dropped as i64,
-                                cnt.gaps_closed as i64,
-                                cnt.resnapshots as i64,
-                                cnt.rest_calls as i64,
-                            );
-                        }
-                    })
+                let shared = client.shared();
+                let feed_addr = feed_ptr as usize;
+                let engine_addr = {
+                    let pin = engine.as_mut().unwrap();
+                    unsafe { std::ptr::from_mut(std::pin::Pin::get_unchecked_mut(pin)) as usize }
                 };
-                client.set_listener(client_listener);
+                client.set_listener(Arc::new(move || {
+                    let feed = feed_addr as *mut chart_bridge::BarFeed;
+                    let state = shared.connection_state();
+                    let state_str = match state {
+                        ConnectionState::Connecting => "connecting",
+                        ConnectionState::Live => "live",
+                        ConnectionState::Reconnecting { .. } => "retrying",
+                        ConnectionState::Unavailable => "unavailable",
+                    };
+                    let err = shared.last_error();
+                    let cnt = shared.counters();
+                    unsafe {
+                        chart_bridge::post_feed_stream_state(
+                            feed,
+                            state_str,
+                            &err,
+                            cnt.applied as i64,
+                            cnt.dropped as i64,
+                            cnt.gaps_closed as i64,
+                            cnt.resnapshots as i64,
+                            cnt.rest_calls as i64,
+                        );
+                        let ops_state = match state {
+                            ConnectionState::Connecting => "connecting",
+                            ConnectionState::Live => "connected",
+                            ConnectionState::Reconnecting { .. } => "reconnecting",
+                            ConnectionState::Unavailable => "disconnected",
+                        };
+                        let age = 0.0;
+                        let engine_mut = engine_addr as *mut cxx_qt_lib::QQmlApplicationEngine;
+                        let status = chart_bridge::find_window_ops_status(
+                            std::pin::Pin::new_unchecked(&mut *engine_mut),
+                        );
+                        if status != 0 {
+                            chart_bridge::ops_status_set_stream(status, ops_state, age);
+                        }
+                    }
+                }));
 
-                // Start historical catalog load
                 unsafe {
                     chart_bridge::feed_setup_and_load(
                         feed_ptr,
@@ -141,6 +167,7 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
                 }
 
                 stream_client = Some(client);
+                health_poller = Some(poller);
             }
         }
     }
@@ -149,6 +176,7 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
         engine,
         feed_ptr,
         stream_client,
+        health_poller,
     }
 }
 

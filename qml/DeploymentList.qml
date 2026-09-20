@@ -11,6 +11,40 @@ Rectangle {
     border.width: 1
 
     required property ExecutionModels executionModels
+    required property ExecutionControls executionControls
+    required property OpsStatus opsStatus
+
+    AccountDialog {
+        id: accountDialog
+        onCreateRequested: function(name, balance, currency) {
+            var payload = { name: name, initial_balance: balance, currency: currency };
+            executionControls.request("create_account", JSON.stringify(payload));
+        }
+    }
+
+    DeployDialog {
+        id: deployDialog
+        executionControls: root.executionControls
+        accountId: root.executionModels.selected_account_id
+        onDeployRequested: function(payload) {
+            executionControls.request("create_deployment", JSON.stringify(payload));
+        }
+        onLiveDeployConfirmed: function(payload) {
+            liveDeployConfirm.payload = payload;
+            liveDeployConfirm.open();
+        }
+    }
+
+    ConfirmDialog {
+        id: liveDeployConfirm
+        property var payload: ({})
+        actionTitle: "Deploy LIVE deployment"
+        consequenceText: "Creates a live MT5 deployment that can place real broker orders when gates permit."
+        liveWarning: true
+        onConfirmed: {
+            executionControls.request("create_deployment", JSON.stringify(liveDeployConfirm.payload));
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -35,6 +69,58 @@ Rectangle {
                     font.pixelSize: 11
                     font.bold: true
                     Layout.alignment: Qt.AlignVCenter
+                }
+
+                Rectangle {
+                    height: 22
+                    implicitWidth: acctBtnText.implicitWidth + 12
+                    radius: 3
+                    color: acctMouse.containsMouse ? "#243044" : "#1e293b"
+                    border.color: "#334155"
+                    opacity: root.executionControls.is_command_enabled("create_account") ? 1.0 : 0.4
+
+                    Text {
+                        id: acctBtnText
+                        anchors.centerIn: parent
+                        text: "+ Account"
+                        color: "#38bdf8"
+                        font.pixelSize: 10
+                        font.bold: true
+                    }
+
+                    MouseArea {
+                        id: acctMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        enabled: root.executionControls.is_command_enabled("create_account")
+                        onClicked: accountDialog.open()
+                    }
+                }
+
+                Rectangle {
+                    height: 22
+                    implicitWidth: newBtnText.implicitWidth + 12
+                    radius: 3
+                    color: newMouse.containsMouse ? "#1d4ed8" : "#1e3a8a"
+                    border.color: "#2563eb"
+                    opacity: root.executionControls.is_command_enabled("create_deployment") ? 1.0 : 0.4
+
+                    Text {
+                        id: newBtnText
+                        anchors.centerIn: parent
+                        text: "+ New"
+                        color: "#ffffff"
+                        font.pixelSize: 10
+                        font.bold: true
+                    }
+
+                    MouseArea {
+                        id: newMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        enabled: root.executionControls.is_command_enabled("create_deployment")
+                        onClicked: deployDialog.open()
+                    }
                 }
 
                 Item {

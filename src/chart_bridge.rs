@@ -245,23 +245,53 @@ pub mod chart {
         unsafe fn execution_models_select_deployment(models: *mut ExecutionModels, id: &str);
         unsafe fn execution_models_select_account(models: *mut ExecutionModels, id: &str);
         unsafe fn execution_models_load_older(models: *mut ExecutionModels, table: &str);
+
+        fn find_window_execution_models(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> *mut ExecutionModels;
+        fn find_window_ops_status(engine: Pin<&mut QQmlApplicationEngine>) -> usize;
+        fn find_window_execution_controls(engine: Pin<&mut QQmlApplicationEngine>) -> usize;
+        unsafe fn execution_models_setup(models: *mut ExecutionModels, api_base: &str);
+        unsafe fn execution_models_bind_handle(models: *mut ExecutionModels);
+        unsafe fn ops_status_mark_api_offline(status: usize);
+        unsafe fn ops_status_mark_postgres_down(status: usize);
+        unsafe fn ops_status_apply_health(status: usize, health_json: &str);
+        unsafe fn ops_status_apply_positions(status: usize, positions_json: &str);
+        unsafe fn ops_status_set_stream(status: usize, state: &str, age_s: f64);
+        unsafe fn execution_controls_setup(controls: usize, api_base: &str, operator_name: &str);
+        unsafe fn execution_controls_bind_handle(controls: usize);
+        unsafe fn execution_controls_update_health(
+            controls: usize,
+            api_offline: bool,
+            postgres_available: bool,
+            worker_status: &str,
+            worker_heartbeat_age_s: f64,
+            edge_reachable: bool,
+            edge_mt5_connected: bool,
+        );
+        fn make_test_execution_controls() -> usize;
     }
 }
 
 pub use chart::{
     delete_test_execution_models, ensure_application, exec_application,
-    execution_models_load_older, execution_models_redraw_count, execution_models_revision,
-    execution_models_select_account, execution_models_select_deployment, execution_models_sync,
-    feed_bar_count, feed_bar_time_at, feed_bar_times_len, feed_history_error, feed_history_loading,
-    feed_history_source, feed_rebuild_geometry, feed_rest_calls, feed_set_bar_count,
-    feed_set_connection_state, feed_set_data_age_ms, feed_set_history, feed_set_last_error,
-    feed_set_live_only, feed_set_stale, feed_set_symbol, feed_set_timeframe, feed_setup_and_load,
-    feed_vertex_at, feed_vertex_len, find_window_feed, make_chart_pane_probe,
-    make_empty_state_probe, make_status_strip_probe, make_test_execution_models, make_test_feed,
-    make_viewport_probe, post_feed_completed_bar, post_feed_forming_bar, post_feed_stream_state,
-    process_events, setup_window_auto_close, setup_window_feed, BarFeed, ChartPaneProbe,
-    ChartPaneProbeResult, EmptyStateProbe, EmptyStateProbeResult, ExecutionModels, ProbeResult,
-    ProbeVertex, StatusStripProbe, StatusStripProbeResult, ViewportProbe, ViewportProbeResult,
+    execution_controls_bind_handle, execution_controls_setup, execution_controls_update_health,
+    execution_models_bind_handle, execution_models_load_older, execution_models_redraw_count,
+    execution_models_revision, execution_models_select_account, execution_models_select_deployment,
+    execution_models_setup, execution_models_sync, feed_bar_count, feed_bar_time_at,
+    feed_bar_times_len, feed_history_error, feed_history_loading, feed_history_source,
+    feed_rebuild_geometry, feed_rest_calls, feed_set_bar_count, feed_set_connection_state,
+    feed_set_data_age_ms, feed_set_history, feed_set_last_error, feed_set_live_only,
+    feed_set_stale, feed_set_symbol, feed_set_timeframe, feed_setup_and_load, feed_vertex_at,
+    feed_vertex_len, find_window_execution_controls, find_window_execution_models,
+    find_window_feed, find_window_ops_status, make_chart_pane_probe, make_empty_state_probe,
+    make_status_strip_probe, make_test_execution_controls, make_test_execution_models,
+    make_test_feed, make_viewport_probe, ops_status_apply_health, ops_status_apply_positions,
+    ops_status_mark_api_offline, ops_status_mark_postgres_down, ops_status_set_stream,
+    post_feed_completed_bar, post_feed_forming_bar, post_feed_stream_state, process_events,
+    setup_window_auto_close, setup_window_feed, BarFeed, ChartPaneProbe, ChartPaneProbeResult,
+    EmptyStateProbe, EmptyStateProbeResult, ExecutionModels, ProbeResult, ProbeVertex,
+    StatusStripProbe, StatusStripProbeResult, ViewportProbe, ViewportProbeResult,
 };
 
 pub fn register_chart_types() {

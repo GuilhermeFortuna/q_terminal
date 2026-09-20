@@ -730,6 +730,7 @@ mod tests {
             api_base: server.api_base(),
             symbol: "PETR4".to_string(),
             timeframe: "1m".to_string(),
+            operator: "operator".to_string(),
         };
 
         let sink = BarSink::new();

@@ -11,6 +11,13 @@ use serde_json::json;
 
 use crate::execution::store::{ExecutionHandle, GLOBAL_KEY};
 
+static PENDING_MODEL_HANDLE: std::sync::Mutex<Option<ExecutionHandle>> =
+    std::sync::Mutex::new(None);
+
+pub fn stage_execution_handle(handle: ExecutionHandle) {
+    *PENDING_MODEL_HANDLE.lock().unwrap() = Some(handle);
+}
+
 #[derive(Clone, Copy)]
 pub struct RawTableModel(pub *mut ffi::TableModel);
 unsafe impl Send for RawTableModel {}
@@ -81,6 +88,9 @@ pub mod ffi {
 
         #[qinvokable]
         fn setup(self: Pin<&mut ExecutionModels>, api_base: QString);
+
+        #[qinvokable]
+        fn bind_store(self: Pin<&mut ExecutionModels>);
     }
 
     impl cxx_qt::Threading for ExecutionModels {}
@@ -675,6 +685,12 @@ impl ExecutionModelsRust {
 impl ffi::ExecutionModels {
     pub fn setup(mut self: Pin<&mut Self>, api_base: QString) {
         self.as_mut().set_api_base(api_base);
+    }
+
+    pub fn bind_store(mut self: Pin<&mut Self>) {
+        if let Some(handle) = PENDING_MODEL_HANDLE.lock().unwrap().take() {
+            self.as_mut().rust_mut().bind_handle(handle);
+        }
     }
 
     pub fn sync(mut self: Pin<&mut Self>) {

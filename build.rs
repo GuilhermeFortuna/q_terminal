@@ -80,7 +80,11 @@ fn main() {
             .qml_file("qml/RiskTable.qml")
             .qml_file("qml/LedgerTable.qml")
             .qml_file("qml/DeploymentDetail.qml")
-            .qml_file("qml/OpsWorkspace.qml"),
+            .qml_file("qml/OpsWorkspace.qml")
+            .qml_file("qml/ConfirmDialog.qml")
+            .qml_file("qml/AccountDialog.qml")
+            .qml_file("qml/DeployDialog.qml")
+            .qml_file("qml/ResolveDialog.qml"),
     )
     .qrc_resources(
         qt_build_utils::QResources::new()
@@ -101,6 +105,7 @@ fn main() {
     .file("src/chart_bridge.rs")
     .file("src/bar_feed.rs")
     .file("src/execution_models.rs")
+    .file("src/execution_controls.rs")
     .file("src/ops_status.rs")
     .cpp_file("src/render_backend.cpp")
     .cpp_file("cpp/bar_chart_node.cpp")
