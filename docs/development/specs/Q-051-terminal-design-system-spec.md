@@ -80,6 +80,10 @@ reference register, per the UI direction's reference-driven rule.
   gallery reads the same component-and-state enumeration the interaction-state test uses.
 - The gallery is reachable in a development build and absent from a normal run. It carries
   no live data and is not an operations surface.
+- The gallery also renders offscreen to image files on one command, at both workstation
+  resolutions, so that it can be looked at without a display — by a reviewer over SSH, and
+  by an implementing agent inspecting its own output. Rendering uses the vendored fonts
+  and software rasterisation, so the same commit produces the same image.
 
 ### Migration
 
@@ -127,27 +131,30 @@ reference register, per the UI direction's reference-driven rule.
    type scale, the colour tokens and the icon set. A test fails if a component or a
    declared state has no gallery entry, and the gallery is absent from a normal run and
    present in a development build, asserted both ways.
-5. The semantic mapping is tested exhaustively: every role has exactly one treatment, and
+5. One command renders the gallery offscreen to image files at both workstation
+   resolutions, with no display available, and the images are non-empty and correctly
+   sized. Q-054 builds comparison on top of this; here it only has to produce the images.
+6. The semantic mapping is tested exhaustively: every role has exactly one treatment, and
    a test fails if a role is added without one. No QML file contains a comparison against
    zero, a colour name, or a lifecycle string literal.
-6. Fonts resolve from the vendored resources with the system font directories emptied in
+7. Fonts resolve from the vendored resources with the system font directories emptied in
    the test environment, and numeric text uses tabular figures, asserted by measuring that
    two different digit strings of equal length have equal advance width.
-7. Every Q-035 to Q-049 test passes unchanged, including the degraded-state suite, the
+8. Every Q-035 to Q-049 test passes unchanged, including the degraded-state suite, the
    ops-views suite and the execution-controls suite.
-8. `BENCH_EXECUTION_ROWS=10000 make bench-frames` stays within the §4.6 budget: p95 under
+9. `BENCH_EXECUTION_ROWS=10000 make bench-frames` stays within the §4.6 budget: p95 under
    16 ms, and no worse than the figure Q-047 recorded.
-9. `docs/design/references.md` names a register entry for every component in the set, and
+10. `docs/design/references.md` names a register entry for every component in the set, and
    `docs/design/components.md` records, per component, the reference adapted, what was
    taken and what was deliberately changed.
-10. `make check` passes.
+11. `make check` passes.
 
 ### Human-verifiable
 
 1. The gallery is reviewed entry by entry against the reference register, and any
    divergence from the adapted reference is either fixed or recorded in
    `docs/design/components.md` as deliberate.
-   Command: `cargo run --features gallery -- --gallery`
+   Command: `make gallery` for the window, `make gallery-shot` for the images
 2. The operations workspace is compared side by side against the adapted references at
    both monitor resolutions (1920×1080 and 2560×1440). Screenshots of the deployments
    list, a detail table, the header in a healthy state and the header in a worker-down

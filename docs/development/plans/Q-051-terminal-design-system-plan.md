@@ -47,7 +47,9 @@ qml/components/               new: Panel, SectionHeader, Toolbar, AppButton, Ico
 qml/style/                    new: the custom Qt Quick Controls style (Button.qml, TabButton.qml, …)
 qml/gallery/Gallery.qml       new: every component × state, roles, type scale, tokens, icons
 qml/gallery/GalleryEntry.qml  new: one section, with its register citation
-src/gallery.rs                new: registration behind the "gallery" cargo feature
+src/gallery.rs                new: registration behind the "gallery" cargo feature;
+                              --gallery opens the window, --gallery-shot renders to PNG
+Makefile                      new targets: gallery, gallery-shot
 
 assets/fonts/                 new: Inter, JetBrains Mono
 assets/icons/                 new: the Lucide subset actually used
@@ -103,6 +105,14 @@ docs/design/components.md     new: per component — reference adapted, what was
   fails a test rather than quietly going unreviewed, and it sits behind a `gallery` cargo
   feature so it is absent from the operations binary entirely.
 
+- **The gallery renders to files, not only to a window.** `make gallery-shot` writes it
+  offscreen with software rasterisation and the vendored fonts. This is what makes the
+  feedback loop available to an implementing agent: both agent CLIs in use here can view a
+  PNG mid-session — Claude Code through `Read`, codex through `view_image` — but neither
+  can look at a window. An agent that cannot see its own output is designing blind
+  whatever model is behind it. Q-054 adds comparison against committed baselines on top of
+  this capture; the capture itself belongs here, with the thing it photographs.
+
 - **Fonts are vendored, not assumed.** Inter and JetBrains Mono go into the `qrc`. Two
   reasons beyond determinism: tabular figures are what make price columns align, and
   Q-054's screenshot baselines are worthless if the font can shift under them.
@@ -130,8 +140,9 @@ docs/design/components.md     new: per component — reference adapted, what was
 - [ ] 4. Write `qml/theme/`: `Palette`, `Typography`, `Spacing`, `Icons`, `Theme`,
    `Semantic`, and `src/semantic.rs` with its exhaustive mapping test. Commit.
 - [ ] 5. Build the gallery shell behind the `gallery` feature, reading the component and
-   state enumeration, before the component set is written. It is the instrument for the
-   next step, not a report on it. Commit.
+   state enumeration, before the component set is written, with both `make gallery` and
+   `make gallery-shot`. Confirm the shot works with no display, since that is how it will
+   be used. It is the instrument for the next step, not a report on it. Commit.
 - [ ] 6. Write `qml/style/` and `qml/components/`, one commit per component, each citing
    its reference, each appearing in the gallery as it lands, and each rendered and looked
    at before it is committed. Add the interaction-state and gallery-completeness tests as
@@ -158,7 +169,7 @@ docs/design/components.md     new: per component — reference adapted, what was
 - **Performance:** `bench-frames` with 10 000 rows, compared against the Q-047 baseline.
 - **Static:** `qmllint` over every module file; `tools/token_gate.py`; `make contracts-check`
   (unchanged — this task touches no contract).
-- **Manual:** gallery review against the register; side-by-side reference comparison at
+- **Manual:** gallery review against the register, from the rendered images and the window; side-by-side reference comparison at
   both resolutions; keyboard-only traversal; live-mode distinctness.
 
 ```bash
@@ -166,9 +177,10 @@ cd /home/gui/projects/q/q_terminal
 env -u WAYLAND_DISPLAY -u DISPLAY make check
 python3 tools/token_gate.py --check qml/
 BENCH_EXECUTION_ROWS=10000 make bench-frames
-cargo run --features gallery -- --gallery
+env -u WAYLAND_DISPLAY -u DISPLAY make gallery-shot   # the agent's design loop
 
 # human (step 12)
+make gallery
 make run
 ```
 

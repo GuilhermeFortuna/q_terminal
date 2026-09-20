@@ -7,7 +7,8 @@
 ## Current-system context
 
 After Q-051 the design system exists, the gallery renders every component in every state
-behind the `gallery` cargo feature, the fonts are vendored in the `qrc`, and
+behind the `gallery` cargo feature and captures itself offscreen through `make
+gallery-shot`, the fonts are vendored in the `qrc`, and
 `tools/token_gate.py` enforces the rules statically. After Q-052 the shell composes
 panels into windows; after Q-053 workspaces restore them. Appearance itself is checked only by a
 human opening the gallery or comparing screenshots attached to a handoff; nothing notices
