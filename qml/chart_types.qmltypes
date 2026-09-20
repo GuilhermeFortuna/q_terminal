@@ -33,3 +33,16 @@
         Property { name: "width"; type: "double"; index: 8 }
         Property { name: "height"; type: "double"; index: 9 }
     }
+    Component {
+        name: "OverlayChartItem"
+        accessSemantics: "reference"
+        prototype: "QObject"
+        exports: ["qml/OverlayChartItem 1.0"]
+        Property { name: "series"; type: "QObject"; index: 0 }
+        Property { name: "firstBar"; type: "int"; index: 1 }
+        Property { name: "lastBar"; type: "int"; index: 2 }
+        Property { name: "lowPrice"; type: "double"; index: 3 }
+        Property { name: "highPrice"; type: "double"; index: 4 }
+        Property { name: "width"; type: "double"; index: 5 }
+        Property { name: "height"; type: "double"; index: 6 }
+    }

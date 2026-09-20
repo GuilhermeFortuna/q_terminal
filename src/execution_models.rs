@@ -103,8 +103,11 @@ pub struct ExecutionModelsRust {
     pub handle: Option<ExecutionHandle>,
     /// Called with the selected deployment's symbol and timeframe, or `None`, whenever
     /// they change (Q-049). Runs on the Qt thread.
-    pub on_target: Option<Arc<dyn Fn(Option<(String, String)>) + Send + Sync>>,
-    last_target: Option<Option<(String, String)>>,
+    pub on_target: Option<Arc<dyn Fn(Option<(String, String, String)>) + Send + Sync>>,
+    last_target: Option<Option<(String, String, String)>>,
+    /// Called on every store change with the selected deployment's decisions and fills as
+    /// JSON arrays, oldest first.
+    pub on_rows: Option<Arc<dyn Fn(String, String) + Send + Sync>>,
     pub dirty: Arc<AtomicBool>,
 
     pub m_deployments: RawTableModel,
@@ -182,6 +185,7 @@ impl Default for ExecutionModelsRust {
                 api_base: QString::default(),
                 handle: None,
                 on_target: None,
+                on_rows: None,
                 last_target: None,
                 dirty: Arc::new(AtomicBool::new(false)),
                 m_deployments,
@@ -228,7 +232,7 @@ impl ExecutionModelsRust {
 
     /// Tells `on_target` the selected deployment's symbol and timeframe when they changed.
     pub fn notify_target(&mut self) {
-        let (Some(handle), Some(hook)) = (self.handle.clone(), self.on_target.clone()) else {
+        let Some(handle) = self.handle.clone() else {
             return;
         };
         let id = self.selected_deployment_id.to_string();
@@ -236,11 +240,25 @@ impl ExecutionModelsRust {
             s.data()
                 .deployments
                 .get(&id)
-                .map(|d| (d.symbol.clone(), d.timeframe.clone()))
+                .map(|d| (d.id.clone(), d.symbol.clone(), d.timeframe.clone()))
         });
         if self.last_target.as_ref() != Some(&target) {
             self.last_target = Some(target.clone());
-            hook(target);
+            if let Some(hook) = self.on_target.clone() {
+                hook(target);
+            }
+        }
+        if let Some(rows) = self.on_rows.clone() {
+            let (dec, fills) = handle.read(|s| {
+                let d = s.data();
+                let dec: Vec<_> = d.decisions.get(&id).into_iter().flatten().collect();
+                let fills: Vec<_> = d.fills.get(&id).into_iter().flatten().collect();
+                (
+                    serde_json::to_string(&dec).unwrap_or_else(|_| "[]".into()),
+                    serde_json::to_string(&fills).unwrap_or_else(|_| "[]".into()),
+                )
+            });
+            rows(dec, fills);
         }
     }
 

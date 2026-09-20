@@ -6,6 +6,9 @@ use cxx_qt_lib::QString;
 use q_buffers::frame::{BarColumns, TimeLabel, VolumeSet};
 
 use crate::config::Config;
+use crate::contracts_stream::{ExecutionDecisionState, ExecutionFillEvent};
+use crate::execution::markers::{self, Marker};
+use crate::execution::overlays::{self, Hit, Layer, OverlaySeries, View};
 use crate::history::{HistoryController, Loaded, DEFAULT_HISTORY_BARS};
 
 #[derive(Debug, Clone)]
@@ -80,6 +83,7 @@ pub mod ffi {
         #[qproperty(i64, last_time)]
         #[qproperty(f64, low)]
         #[qproperty(f64, high)]
+        #[qproperty(i64, overlay_revision)]
         type BarFeed = super::BarFeedRust;
 
         #[qinvokable]
@@ -145,6 +149,53 @@ pub mod ffi {
             timeframe: QString,
             generation: i64,
         ) -> bool;
+
+        /// Replaces the selected deployment's decisions and fills (JSON arrays of the stream
+        /// contract's states). Markers are placed on the bars at the next rebuild.
+        #[qinvokable]
+        fn set_execution_rows(
+            self: Pin<&mut BarFeed>,
+            decisions_json: QString,
+            fills_json: QString,
+        );
+
+        /// Sets the overlays from a deployment chart response, unless it was requested for
+        /// an older target.
+        #[qinvokable]
+        fn set_overlays_json(self: Pin<&mut BarFeed>, generation: i64, json: QString) -> bool;
+
+        #[qinvokable]
+        fn rebuild_overlays(
+            self: Pin<&mut BarFeed>,
+            first_bar: i64,
+            last_bar: i64,
+            low: f64,
+            high: f64,
+            width_px: f32,
+            height_px: f32,
+        );
+
+        #[qinvokable]
+        fn overlay_layer_count(self: &BarFeed) -> i32;
+
+        #[qinvokable]
+        fn overlay_layer_ptr(self: &BarFeed, layer: i32) -> i64;
+
+        #[qinvokable]
+        fn overlay_layer_len(self: &BarFeed, layer: i32) -> i64;
+
+        #[qinvokable]
+        fn overlay_layer_mode(self: &BarFeed, layer: i32) -> i32;
+
+        #[qinvokable]
+        fn overlay_layer_color(self: &BarFeed, layer: i32) -> i64;
+
+        #[qinvokable]
+        fn marker_count(self: &BarFeed) -> i32;
+
+        /// Detail text of the marker drawn within `radius` px of (x, y), or empty.
+        #[qinvokable]
+        fn marker_detail_at(self: &BarFeed, x: f32, y: f32, radius: f32) -> QString;
 
         #[qinvokable]
         fn target_generation(self: &BarFeed) -> i64;
@@ -253,6 +304,7 @@ pub struct BarFeedRust {
     pub last_time: i64,
     pub low: f64,
     pub high: f64,
+    pub overlay_revision: i64,
 
     pub bar_times: Vec<i64>,
     pub series: q_qt::BarSeriesRust,
@@ -265,6 +317,20 @@ pub struct BarFeedRust {
     pending_deliveries: Vec<BarDelivery>,
     /// Chart target generation. Bars and history results stamped with another one belong
     /// to a previous target and are dropped.
+    /// High, low and close of each completed bar, indexed like `bar_times`.
+    pub bar_hlc: Vec<(f64, f64, f64)>,
+    decisions: Vec<ExecutionDecisionState>,
+    fills: Vec<ExecutionFillEvent>,
+    overlay_series: Vec<OverlaySeries>,
+    markers: Vec<Marker>,
+    /// What the cached markers were placed against: bar count, first bar time, rows revision.
+    markers_key: Option<(usize, i64, u64)>,
+    rows_rev: u64,
+    layers: Vec<Layer>,
+    hits: Vec<Hit>,
+    /// Called on the Qt thread with the target generation after each completed bar is
+    /// applied to the chart. The overlay fetcher hangs off it.
+    pub on_completed: Option<Arc<dyn Fn(u64) + Send + Sync>>,
     pub generation: u64,
     /// Deliveries and history results dropped for carrying an older generation.
     pub stale_dropped: u64,
@@ -349,6 +415,17 @@ impl BarFeedRust {
             pending_deliveries: Vec::new(),
             generation: 0,
             stale_dropped: 0,
+            overlay_revision: 0,
+            bar_hlc: Vec::new(),
+            decisions: Vec::new(),
+            fills: Vec::new(),
+            overlay_series: Vec::new(),
+            markers: Vec::new(),
+            markers_key: None,
+            rows_rev: 0,
+            layers: Vec::new(),
+            hits: Vec::new(),
+            on_completed: None,
         }
     }
 
@@ -417,6 +494,12 @@ impl BarFeedRust {
             real_volume: false,
         };
         self.bar_times.clear();
+        self.bar_hlc.clear();
+        self.overlay_series.clear();
+        self.markers.clear();
+        self.markers_key = None;
+        self.layers.clear();
+        self.hits.clear();
         self.pending_deliveries.clear();
         self.history = Arc::new(HistoryController::new());
         self.applied = 0;
@@ -430,6 +513,80 @@ impl BarFeedRust {
         }
         self.sync_series_properties();
         self.sync_history_properties();
+    }
+
+    /// Bar opens in milliseconds, ascending, whatever unit the feed's times use.
+    fn bar_opens_ms(&self) -> Vec<i64> {
+        self.bar_times
+            .iter()
+            .map(|t| markers::normalize_ms(*t))
+            .collect()
+    }
+
+    fn refresh_markers(&mut self) {
+        let key = (
+            self.bar_times.len(),
+            self.bar_times.first().copied().unwrap_or(0),
+            self.rows_rev,
+        );
+        if self.markers_key == Some(key) {
+            return;
+        }
+        let opens = self.bar_opens_ms();
+        let tf = self.timeframe_ms;
+        let mut m = markers::decision_markers(&self.decisions, &opens, tf);
+        m.extend(markers::fill_markers(&self.fills, &opens));
+        self.markers = m;
+        self.markers_key = Some(key);
+    }
+
+    /// Packs markers and overlay lines for the view into `layers` and `hits`.
+    pub fn build_overlays(&mut self, view: View) {
+        self.refresh_markers();
+        let opens = self.bar_opens_ms();
+        let mut layers = overlays::line_layers(&self.overlay_series, &opens, view);
+        let (marker_layers, hits) = overlays::marker_layers(&self.markers, &self.bar_hlc, view);
+        layers.extend(marker_layers);
+        self.layers = layers;
+        self.hits = hits;
+    }
+
+    pub fn layers(&self) -> &[Layer] {
+        &self.layers
+    }
+
+    pub fn hits(&self) -> &[Hit] {
+        &self.hits
+    }
+
+    pub fn markers(&self) -> &[Marker] {
+        &self.markers
+    }
+
+    pub fn set_rows(
+        &mut self,
+        decisions: Vec<ExecutionDecisionState>,
+        fills: Vec<ExecutionFillEvent>,
+    ) {
+        self.decisions = decisions;
+        self.fills = fills;
+        self.rows_rev += 1;
+        self.overlay_revision += 1;
+    }
+
+    /// Sets the overlays unless they were requested for a previous target.
+    pub fn set_overlays(&mut self, generation: u64, series: Vec<OverlaySeries>) -> bool {
+        if generation != self.generation {
+            self.stale_dropped += 1;
+            return false;
+        }
+        self.overlay_series = series;
+        self.overlay_revision += 1;
+        true
+    }
+
+    pub fn overlay_series(&self) -> &[OverlaySeries] {
+        &self.overlay_series
     }
 
     /// Applies a delivery stamped with the generation it was produced for. Returns false,
@@ -588,6 +745,8 @@ impl BarFeedRust {
             self.series_label = bars.label;
             self.series_vols = VolumeSet::from_bars(&bars);
             self.bar_times.extend_from_slice(&bars.time);
+            self.bar_hlc
+                .extend((0..bar_count).map(|i| (bars.high[i], bars.low[i], bars.close[i])));
             let _ = self.series.load_history(bars);
         }
         self.history.finish_load(
@@ -648,7 +807,13 @@ impl BarFeedRust {
             self.pending_deliveries.push(delivery);
             return;
         }
+        let completed = matches!(delivery, BarDelivery::Completed(_));
         self.apply_delivery_now(delivery);
+        if completed {
+            if let Some(hook) = &self.on_completed {
+                hook(self.generation);
+            }
+        }
     }
 
     fn apply_delivery_now(&mut self, delivery: BarDelivery) {
@@ -657,16 +822,28 @@ impl BarFeedRust {
                 let count = bars.time.len() as i64;
                 let adapted = self.adapt_bars(bars);
                 let times = adapted.time.clone();
+                let (highs, lows, closes) = (
+                    adapted.high.clone(),
+                    adapted.low.clone(),
+                    adapted.close.clone(),
+                );
                 if self.series.ingest_completed(adapted).is_ok() {
-                    for t in times {
-                        if let Some(&last) = self.bar_times.last() {
-                            if t > last {
+                    for (i, t) in times.into_iter().enumerate() {
+                        let hlc = (highs[i], lows[i], closes[i]);
+                        match self.bar_times.last().copied() {
+                            Some(last) if t > last => {
                                 self.bar_times.push(t);
-                            } else if t == last {
-                                *self.bar_times.last_mut().unwrap() = t;
+                                self.bar_hlc.push(hlc);
                             }
-                        } else {
-                            self.bar_times.push(t);
+                            Some(last) if t == last => {
+                                *self.bar_times.last_mut().unwrap() = t;
+                                *self.bar_hlc.last_mut().unwrap() = hlc;
+                            }
+                            Some(_) => {}
+                            None => {
+                                self.bar_times.push(t);
+                                self.bar_hlc.push(hlc);
+                            }
                         }
                     }
                     self.applied += count;
@@ -783,6 +960,105 @@ impl ffi::BarFeed {
         );
         self.as_mut().notify_props(before);
         self.load_history()
+    }
+
+    pub fn set_execution_rows(
+        mut self: std::pin::Pin<&mut Self>,
+        decisions_json: QString,
+        fills_json: QString,
+    ) {
+        let decisions = serde_json::from_str(&decisions_json.to_string()).unwrap_or_default();
+        let fills = serde_json::from_str(&fills_json.to_string()).unwrap_or_default();
+        self.as_mut().rust_mut().set_rows(decisions, fills);
+        let rev = self.rust().overlay_revision;
+        self.as_mut().rust_mut().overlay_revision = rev - 1;
+        self.as_mut().set_overlay_revision(rev);
+    }
+
+    pub fn set_overlays_json(
+        mut self: std::pin::Pin<&mut Self>,
+        generation: i64,
+        json: QString,
+    ) -> bool {
+        let Ok(series) = overlays::parse_chart(&json.to_string()) else {
+            return false;
+        };
+        let ok = self
+            .as_mut()
+            .rust_mut()
+            .set_overlays(generation as u64, series);
+        if ok {
+            let rev = self.rust().overlay_revision;
+            self.as_mut().rust_mut().overlay_revision = rev - 1;
+            self.as_mut().set_overlay_revision(rev);
+        }
+        ok
+    }
+
+    pub fn rebuild_overlays(
+        mut self: std::pin::Pin<&mut Self>,
+        first_bar: i64,
+        last_bar: i64,
+        low: f64,
+        high: f64,
+        width_px: f32,
+        height_px: f32,
+    ) {
+        self.as_mut().rust_mut().build_overlays(View {
+            first: first_bar.max(0) as usize,
+            last: last_bar.max(0) as usize,
+            low,
+            high,
+            width: width_px,
+            height: height_px,
+        });
+    }
+
+    pub fn overlay_layer_count(&self) -> i32 {
+        self.rust().layers().len() as i32
+    }
+
+    pub fn overlay_layer_ptr(&self, layer: i32) -> i64 {
+        self.rust()
+            .layers()
+            .get(layer as usize)
+            .map_or(0, |l| l.xy.as_ptr() as usize as i64)
+    }
+
+    pub fn overlay_layer_len(&self, layer: i32) -> i64 {
+        self.rust()
+            .layers()
+            .get(layer as usize)
+            .map_or(0, |l| (l.xy.len() / 2) as i64)
+    }
+
+    pub fn overlay_layer_mode(&self, layer: i32) -> i32 {
+        self.rust()
+            .layers()
+            .get(layer as usize)
+            .map_or(0, |l| i32::from(l.mode))
+    }
+
+    pub fn overlay_layer_color(&self, layer: i32) -> i64 {
+        self.rust()
+            .layers()
+            .get(layer as usize)
+            .map_or(0, |l| i64::from(l.rgba))
+    }
+
+    pub fn marker_count(&self) -> i32 {
+        self.rust().markers().len() as i32
+    }
+
+    pub fn marker_detail_at(&self, x: f32, y: f32, radius: f32) -> QString {
+        let best = self
+            .rust()
+            .hits()
+            .iter()
+            .map(|h| ((h.x - x).powi(2) + (h.y - y).powi(2), h))
+            .filter(|(d, _)| *d <= radius * radius)
+            .min_by(|a, b| a.0.total_cmp(&b.0));
+        QString::from(best.map_or("", |(_, h)| h.detail.as_str()))
     }
 
     pub fn target_generation(&self) -> i64 {

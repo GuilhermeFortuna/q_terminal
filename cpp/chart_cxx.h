@@ -192,6 +192,10 @@ bool feed_retarget(BarFeed* feed, rust::Str symbol, rust::Str timeframe, std::in
 std::int64_t feed_target_generation(BarFeed* feed);
 std::int64_t feed_stale_dropped(BarFeed* feed);
 rust::String feed_symbol(BarFeed* feed);
+void post_feed_overlays(BarFeed* feed, std::int64_t generation, rust::Str json);
+void feed_set_execution_rows(BarFeed* feed, rust::Str decisions, rust::Str fills);
+std::int64_t feed_marker_count(BarFeed* feed);
+std::int64_t feed_rebuild_overlays(BarFeed* feed, int first_bar, int last_bar, double low, double high, float width, float height);
 
 #include "cpp/execution_models_cxx.h"
 

@@ -106,6 +106,8 @@ fn main() {
     .cpp_file("cpp/bar_chart_node.cpp")
     .cpp_file("cpp/bar_chart_item.h")
     .cpp_file("cpp/bar_chart_item.cpp")
+    .cpp_file("cpp/overlay_chart_item.h")
+    .cpp_file("cpp/overlay_chart_item.cpp")
     .cpp_file("cpp/bar_chart_probe.cpp")
     .cpp_file("cpp/chart_cxx.cpp")
     .cpp_file("cpp/execution_models_cxx.cpp")

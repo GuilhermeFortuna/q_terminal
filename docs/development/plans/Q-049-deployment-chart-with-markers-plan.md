@@ -102,10 +102,10 @@ src/main.rs                   --bench-frames gains --markers N --overlays N
 - [x] 3. Implement `ChartTarget` and `retarget`, and write `tests/chart_target.rs`
    (criterion 1, including a switch during a slow fake history load and during
    a burst of stream frames). Wire the selection to retarget. Commit.
-- [ ] 4. Write `marker_node` and `marker_chart_item`, feed them from the store's
+- [x] 4. Write `marker_node` and `marker_chart_item`, feed them from the store's
    revision for the selected deployment, and test criterion 3 headlessly.
    Commit.
-- [ ] 5. Write `OverlayFetcher`, `line_series_node` and `overlay_chart_item`, add
+- [x] 5. Write `OverlayFetcher`, `line_series_node` and `overlay_chart_item`, add
    the oscillator pane to `ChartPane.qml`, and write `tests/overlays.rs`.
    Commit.
 - [ ] 6. Write `tests/chart_alignment.rs` with the probe across a pan and two zoom

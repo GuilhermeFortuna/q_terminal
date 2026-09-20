@@ -1,6 +1,7 @@
 #include "bar_chart_item.h"
 
 #include "bar_chart_node.h"
+#include "overlay_chart_item.h"
 
 #include <mutex>
 #include <QtQml/qqml.h>
@@ -176,5 +177,6 @@ void register_bar_chart_types() {
     std::call_once(once, []() {
         qmlRegisterType<BarSeries>("qml", 1, 0, "BarSeries");
         qmlRegisterType<BarChartItem>("qml", 1, 0, "BarChartItem");
+        qmlRegisterType<OverlayChartItem>("qml", 1, 0, "OverlayChartItem");
     });
 }

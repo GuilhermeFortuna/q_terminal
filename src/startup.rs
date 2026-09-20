@@ -5,7 +5,7 @@ use cxx_qt_lib::{QQmlApplicationEngine, QString, QUrl};
 use crate::bridge;
 use crate::bridge::bar_feed::parse_timeframe_ms;
 use crate::chart_bridge;
-use crate::chart_target::ChartTargeter;
+use crate::chart_target::{ChartTargeter, OverlayFetcher};
 use crate::config::{Config, ConfigError};
 use crate::execution::store::ExecutionHandle;
 use crate::stream::client::{ConnectionState, Sinks, StreamClient};
@@ -25,7 +25,9 @@ fn wire_execution(
     engine: std::pin::Pin<&mut QQmlApplicationEngine>,
     handle: ExecutionHandle,
     targeter: std::sync::Arc<ChartTargeter>,
+    feed_ptr: *mut chart_bridge::BarFeed,
 ) {
+    let feed_addr = feed_ptr as usize;
     let models = unsafe { chart_bridge::find_window_execution_models(engine) };
     if models.is_null() {
         return;
@@ -38,6 +40,13 @@ fn wire_execution(
         rust.bind_handle(handle.clone());
         rust.on_target = Some(std::sync::Arc::new(move |dep| {
             targeter.select(dep);
+        }));
+        rust.on_rows = Some(std::sync::Arc::new(move |dec, fills| unsafe {
+            chart_bridge::feed_set_execution_rows(
+                feed_addr as *mut chart_bridge::BarFeed,
+                &dec,
+                &fills,
+            )
         }));
         rust.dirty.clone()
     };
@@ -98,12 +107,28 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
                         execution: Some(exec_handle.clone()),
                     },
                 );
+                let fetcher = OverlayFetcher::new(&cfg.api_base, feed_ptr);
                 let targeter = ChartTargeter::new(
                     feed_ptr,
                     (cfg.symbol.clone(), cfg.timeframe.clone()),
                     client.retargeter(),
+                    fetcher.clone(),
                 );
-                wire_execution(engine.as_mut().unwrap(), exec_handle, targeter.clone());
+                unsafe {
+                    use cxx_qt::CxxQtType;
+                    let ffi_feed = feed_ptr as *mut crate::bridge::bar_feed::ffi::BarFeed;
+                    let mut pin = std::pin::Pin::new_unchecked(&mut *ffi_feed);
+                    pin.as_mut().rust_mut().on_completed =
+                        Some(std::sync::Arc::new(move |generation| {
+                            fetcher.request(generation)
+                        }));
+                }
+                wire_execution(
+                    engine.as_mut().unwrap(),
+                    exec_handle,
+                    targeter.clone(),
+                    feed_ptr,
+                );
                 chart_targeter = Some(targeter);
 
                 crate::chart_target::install_bar_drainer(&sink, feed_ptr);

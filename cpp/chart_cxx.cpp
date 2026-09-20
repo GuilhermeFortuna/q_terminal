@@ -680,3 +680,29 @@ void post_execution_models_sync(ExecutionModels* models) {
     if (!models) return;
     QMetaObject::invokeMethod(models, [models]() { models->sync(); }, Qt::QueuedConnection);
 }
+
+void post_feed_overlays(BarFeed* feed, std::int64_t generation, rust::Str json) {
+    if (!feed) return;
+    QString text = QString::fromUtf8(json.data(), static_cast<int>(json.size()));
+    QMetaObject::invokeMethod(feed, [feed, generation, text]() {
+        feed->set_overlays_json(generation, text);
+    }, Qt::QueuedConnection);
+}
+
+void feed_set_execution_rows(BarFeed* feed, rust::Str decisions, rust::Str fills) {
+    if (!feed) return;
+    feed->set_execution_rows(
+        QString::fromUtf8(decisions.data(), static_cast<int>(decisions.size())),
+        QString::fromUtf8(fills.data(), static_cast<int>(fills.size())));
+}
+
+std::int64_t feed_marker_count(BarFeed* feed) {
+    return feed ? feed->marker_count() : 0;
+}
+
+std::int64_t feed_rebuild_overlays(BarFeed* feed, int first_bar, int last_bar, double low,
+                                   double high, float width, float height) {
+    if (!feed) return 0;
+    feed->rebuild_overlays(first_bar, last_bar, low, high, width, height);
+    return feed->overlay_layer_count();
+}

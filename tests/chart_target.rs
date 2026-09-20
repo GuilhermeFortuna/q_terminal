@@ -141,7 +141,7 @@ async fn switch_shows_only_the_new_symbol_even_mid_burst() {
             .await;
     }
     let target = targeter
-        .select(Some(("VALE3".into(), "1m".into())))
+        .select(Some(("dep-2".into(), "VALE3".into(), "1m".into())))
         .expect("target changed");
     assert_eq!(target.generation as i64, gen_before + 1);
     assert_eq!(symbol(feed), "VALE3");
@@ -169,7 +169,7 @@ async fn switch_shows_only_the_new_symbol_even_mid_burst() {
 
     // Same target again changes nothing; None goes back to the configured symbol.
     assert!(targeter
-        .select(Some(("VALE3".into(), "1m".into())))
+        .select(Some(("dep-2".into(), "VALE3".into(), "1m".into())))
         .is_none());
     assert!(targeter.select(None).is_some());
     assert_eq!(symbol(feed), "PETR4");
