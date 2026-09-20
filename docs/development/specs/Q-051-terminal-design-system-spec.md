@@ -68,6 +68,19 @@ reference register, per the UI direction's reference-driven rule.
   selected, disabled, and where it applies, degraded or stale. Focus is always visible.
 - Each component's spec names the register entry it adapts and what was taken from it.
 
+### Gallery
+
+- A gallery surface renders every component in every declared interaction state, every
+  semantic role in every treatment, the full type scale, the colour tokens and the icon
+  set, on one page.
+- It exists so that the design can be seen while it is being made, not only after. It is
+  the surface the agent renders and looks at while iterating, and the surface a reviewer
+  compares against the references.
+- A component that exists without a gallery entry is a failure, not an omission: the
+  gallery reads the same component-and-state enumeration the interaction-state test uses.
+- The gallery is reachable in a development build and absent from a normal run. It carries
+  no live data and is not an operations surface.
+
 ### Migration
 
 - All eighteen existing QML files are migrated onto the tokens and primitives. The
@@ -91,7 +104,9 @@ reference register, per the UI direction's reference-driven rule.
   payload. It is a presentation change over the state Q-046 to Q-049 already hold.
 - **No behaviour change in the operations workspace.** A field that was shown is still
   shown, in the same place, with the same source.
-- **No screenshot baselines.** Q-054, once the shell has stopped moving layouts.
+- **No screenshot baselines.** Q-054, once the shell has stopped moving layouts. The
+  gallery is built here because it is a design instrument; comparing renders against
+  committed images is a separate concern that would be invalidated by Q-052 and Q-053.
 - **No frame-budget regression.** The chart path and the render node are untouched.
 - **No trading logic anywhere in QML** (invariant 1), which is the point of the semantic
   layer.
@@ -108,30 +123,38 @@ reference register, per the UI direction's reference-driven rule.
 3. Every component in the set renders headlessly in each of its declared interaction
    states, and a test asserts that each state resolves to a distinct token — no state is
    silently identical to another.
-4. The semantic mapping is tested exhaustively: every role has exactly one treatment, and
+4. The gallery renders every component in every declared state, every semantic role, the
+   type scale, the colour tokens and the icon set. A test fails if a component or a
+   declared state has no gallery entry, and the gallery is absent from a normal run and
+   present in a development build, asserted both ways.
+5. The semantic mapping is tested exhaustively: every role has exactly one treatment, and
    a test fails if a role is added without one. No QML file contains a comparison against
    zero, a colour name, or a lifecycle string literal.
-5. Fonts resolve from the vendored resources with the system font directories emptied in
+6. Fonts resolve from the vendored resources with the system font directories emptied in
    the test environment, and numeric text uses tabular figures, asserted by measuring that
    two different digit strings of equal length have equal advance width.
-6. Every Q-035 to Q-049 test passes unchanged, including the degraded-state suite, the
+7. Every Q-035 to Q-049 test passes unchanged, including the degraded-state suite, the
    ops-views suite and the execution-controls suite.
-7. `BENCH_EXECUTION_ROWS=10000 make bench-frames` stays within the §4.6 budget: p95 under
+8. `BENCH_EXECUTION_ROWS=10000 make bench-frames` stays within the §4.6 budget: p95 under
    16 ms, and no worse than the figure Q-047 recorded.
-8. `docs/design/references.md` names a register entry for every component in the set, and
+9. `docs/design/references.md` names a register entry for every component in the set, and
    `docs/design/components.md` records, per component, the reference adapted, what was
    taken and what was deliberately changed.
-9. `make check` passes.
+10. `make check` passes.
 
 ### Human-verifiable
 
-1. The operations workspace is compared side by side against the adapted references at
+1. The gallery is reviewed entry by entry against the reference register, and any
+   divergence from the adapted reference is either fixed or recorded in
+   `docs/design/components.md` as deliberate.
+   Command: `cargo run --features gallery -- --gallery`
+2. The operations workspace is compared side by side against the adapted references at
    both monitor resolutions (1920×1080 and 2560×1440). Screenshots of the deployments
    list, a detail table, the header in a healthy state and the header in a worker-down
    state are recorded in the handoff.
    Command: `make run`
-2. Keyboard-only operation: every control in the workspace is reachable by tab traversal
+3. Keyboard-only operation: every control in the workspace is reachable by tab traversal
    with a visible focus indicator, and every dialog can be confirmed and dismissed without
    a mouse.
-3. The live-mode treatment is confirmed still unmistakable against a paper deployment on
+4. The live-mode treatment is confirmed still unmistakable against a paper deployment on
    the same screen.

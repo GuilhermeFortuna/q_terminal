@@ -95,13 +95,17 @@ confirmation never freezes the other window's live chart. Q-052.
 
 ### 12. How should visual regression or screenshot testing be incorporated?
 
-Two layers. Statically, the Q-051 token gate in `make check`. Visually, Q-054 renders the
-gallery and every screen offscreen in a pinned environment — software rasterisation,
+Three layers. Statically, the Q-051 token gate in `make check`. While the design is being
+made, Q-051's gallery renders every component in every state on one page, so an agent or a
+reviewer can see the whole system at once instead of hunting for a screen that contains
+the component. As a regression check, Q-054 renders that gallery and every screen
+offscreen in a pinned environment — software rasterisation,
 vendored fonts with system font paths excluded, fixed sizes and device pixel ratio — at
 both workstation resolutions, and compares against committed baselines with a written diff
 image. Acceptance is one explicit command that reports what it rewrote; a test run never
-rewrites a baseline. It comes after the shell and workspaces because baselines captured
-before layouts settle are baselines that get discarded.
+rewrites a baseline. The baselines come after the shell and workspaces
+because baselines captured before layouts settle are baselines that get discarded; the
+gallery does not, because it is a design instrument rather than a regression check.
 
 ### 13. Should QML expose a formal design-token API from the beginning?
 
@@ -142,5 +146,5 @@ status semantics.
 Each visual task carries a human-verifiable criterion that compares the result against its
 adapted references at both workstation resolutions, and `docs/design/components.md`
 records, per component, the reference, what was taken and what was deliberately changed. A
-divergence is either fixed or written down as intentional. Q-054's gallery makes the
-comparison a single surface to review rather than a walk through the application.
+divergence is either fixed or written down as intentional. Q-051's gallery makes the comparison a single
+surface to review rather than a walk through the application.

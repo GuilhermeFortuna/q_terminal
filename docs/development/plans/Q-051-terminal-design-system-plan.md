@@ -45,6 +45,9 @@ qml/components/               new: Panel, SectionHeader, Toolbar, AppButton, Ico
                               DataTableHeader, DataTableRow, TabBar, SplitPane,
                               EmptyState, AppDialog, AppTextField, AppComboBox
 qml/style/                    new: the custom Qt Quick Controls style (Button.qml, TabButton.qml, …)
+qml/gallery/Gallery.qml       new: every component × state, roles, type scale, tokens, icons
+qml/gallery/GalleryEntry.qml  new: one section, with its register citation
+src/gallery.rs                new: registration behind the "gallery" cargo feature
 
 assets/fonts/                 new: Inter, JetBrains Mono
 assets/icons/                 new: the Lucide subset actually used
@@ -91,6 +94,15 @@ docs/design/components.md     new: per component — reference adapted, what was
   invariant 1 applied to presentation: the terminal does not decide that a number is bad,
   it renders the badness the backend reported.
 
+- **The gallery is built early, because it is how the design gets seen.** It lands with
+  the first components rather than at the end, so that every later component is made
+  against a surface that shows the whole system at once — states side by side, roles side
+  by side, the type scale in one column. Working without it means judging a button by
+  finding a screen that happens to contain one. It reads the same component-and-state
+  enumeration as the interaction-state test, so a component added without a gallery entry
+  fails a test rather than quietly going unreviewed, and it sits behind a `gallery` cargo
+  feature so it is absent from the operations binary entirely.
+
 - **Fonts are vendored, not assumed.** Inter and JetBrains Mono go into the `qrc`. Two
   reasons beyond determinism: tabular figures are what make price columns align, and
   Q-054's screenshot baselines are worthless if the font can shift under them.
@@ -117,39 +129,46 @@ docs/design/components.md     new: per component — reference adapted, what was
    font paths emptied, and that tabular figures measure equal. Commit.
 - [ ] 4. Write `qml/theme/`: `Palette`, `Typography`, `Spacing`, `Icons`, `Theme`,
    `Semantic`, and `src/semantic.rs` with its exhaustive mapping test. Commit.
-- [ ] 5. Write `qml/style/` and `qml/components/`, one commit per component, each citing
-   its reference. Add the interaction-state test as components land. Commit per component.
-- [ ] 6. Write `tools/token_gate.py` with its deliberate-violation fixture, wire it into
+- [ ] 5. Build the gallery shell behind the `gallery` feature, reading the component and
+   state enumeration, before the component set is written. It is the instrument for the
+   next step, not a report on it. Commit.
+- [ ] 6. Write `qml/style/` and `qml/components/`, one commit per component, each citing
+   its reference, each appearing in the gallery as it lands, and each rendered and looked
+   at before it is committed. Add the interaction-state and gallery-completeness tests as
+   components land. Commit per component.
+- [ ] 7. Write `tools/token_gate.py` with its deliberate-violation fixture, wire it into
    `make check`, and extend `qml-lint` to every file in the module. Expect it to fail
    loudly at this point; that is the migration's worklist. Commit.
-- [ ] 7. Migrate the 18 existing files, one commit per file, running the Q-047 and Q-048
+- [ ] 8. Migrate the 18 existing files, one commit per file, running the Q-047 and Q-048
    suites after each. Finish when the gate is clean. Commit per file.
-- [ ] 8. Run `BENCH_EXECUTION_ROWS=10000 make bench-frames` and compare against the Q-047
+- [ ] 9. Run `BENCH_EXECUTION_ROWS=10000 make bench-frames` and compare against the Q-047
    figure (p50 8.58 ms, p95 11.56 ms, p99 11.56 ms). Commit the recorded numbers.
-- [ ] 9. Update `README.md` and `BOUNDARY.md` (the design system and where its rules are
-   enforced), and complete `docs/design/components.md`. Commit.
-- [ ] 10. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run, commit.
-- [ ] 11. **Human:** human-verifiable criteria 1, 2 and 3.
+- [ ] 10. Update `README.md` and `BOUNDARY.md` (the design system, the gallery feature and
+   where its rules are enforced), and complete `docs/design/components.md`. Commit.
+- [ ] 11. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run, commit.
+- [ ] 12. **Human:** human-verifiable criteria 1–4.
 
 ## Validation
 
 - **Unit:** token resolution; semantic role exhaustiveness; font and tabular-figure
   measurement; the gate's own fixture.
-- **Integration (headless):** each component in each interaction state; the full Q-047 and
-  Q-048 suites unchanged; the Q-035 to Q-038 chart suites; the degraded-state suite.
+- **Integration (headless):** each component in each interaction state; gallery
+  completeness and its presence/absence by build; the full Q-047 and Q-048 suites
+  unchanged; the Q-035 to Q-038 chart suites; the degraded-state suite.
 - **Performance:** `bench-frames` with 10 000 rows, compared against the Q-047 baseline.
 - **Static:** `qmllint` over every module file; `tools/token_gate.py`; `make contracts-check`
   (unchanged — this task touches no contract).
-- **Manual:** side-by-side reference comparison at both resolutions; keyboard-only
-  traversal; live-mode distinctness.
+- **Manual:** gallery review against the register; side-by-side reference comparison at
+  both resolutions; keyboard-only traversal; live-mode distinctness.
 
 ```bash
 cd /home/gui/projects/q/q_terminal
 env -u WAYLAND_DISPLAY -u DISPLAY make check
 python3 tools/token_gate.py --check qml/
 BENCH_EXECUTION_ROWS=10000 make bench-frames
+cargo run --features gallery -- --gallery
 
-# human (step 11)
+# human (step 12)
 make run
 ```
 
@@ -160,5 +179,5 @@ dimensions, conditional-colour sites. List every component with the register ent
 adapts and what was deliberately changed. Give the frame benchmark's p50, p95 and p99
 against the Q-047 baseline. State the result of the Figma-to-Qt round trip on
 `StatusBadge` and whether later screens should be designed in Figma first. From the human
-steps, give the four screenshots, the keyboard-traversal result, and anything the
+steps, give the gallery review result, the four screenshots, the keyboard-traversal result, and anything the
 reference comparison flagged as unresolved.
