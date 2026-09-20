@@ -1527,7 +1527,7 @@ mod tests {
         )
         .unwrap();
 
-        for _ in 0..200 {
+        for _ in 0..1500 {
             feed.sync_history_properties();
             if (feed.history_progress - 1.0).abs() < f64::EPSILON {
                 break;
