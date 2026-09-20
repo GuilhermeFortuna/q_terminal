@@ -13,10 +13,12 @@ use crate::stream::sink::BarSink;
 
 /// Context holding the loaded slice resources.
 pub struct SliceContext {
-    pub engine: cxx::UniquePtr<cxx_qt_lib::QQmlApplicationEngine>,
-    pub feed_ptr: *mut chart_bridge::BarFeed,
+    // Fields drop in declaration order. The stream client goes first: its listeners post to
+    // the feed and the models, which the engine owns and destroys.
     pub stream_client: Option<StreamClient>,
     pub targeter: Option<std::sync::Arc<ChartTargeter>>,
+    pub engine: cxx::UniquePtr<cxx_qt_lib::QQmlApplicationEngine>,
+    pub feed_ptr: *mut chart_bridge::BarFeed,
 }
 
 /// Binds the execution store to the window's models and makes the chart follow the
