@@ -16,18 +16,29 @@ void copyPoint2D(QSGGeometry* geometry, const BarVertex* vertices, int count) {
 } // namespace
 
 BucketGeometryNode::BucketGeometryNode() {
+    auto* geom = new QSGGeometry(QSGGeometry::defaultAttributes_Point2D(), 0);
+    geom->setDrawingMode(QSGGeometry::DrawTriangles);
+    setGeometry(geom);
     setMaterial(new QSGFlatColorMaterial());
     setFlag(QSGNode::OwnedByParent, true);
+}
+
+BucketGeometryNode::~BucketGeometryNode() {
+    delete geometry();
 }
 
 void BucketGeometryNode::syncVertices(const BarVertex* vertices, int count,
                                       const QColor& color) {
     if (count <= 0) {
-        if (geometry() != nullptr) {
+        if (geometry() == nullptr || geometry()->vertexCount() != 0) {
             delete geometry();
-            setGeometry(nullptr);
+            auto* geom =
+                new QSGGeometry(QSGGeometry::defaultAttributes_Point2D(), 0);
+            geom->setDrawingMode(QSGGeometry::DrawTriangles);
+            setGeometry(geom);
         }
-        markDirty(QSGNode::DirtyGeometry);
+        static_cast<QSGFlatColorMaterial*>(material())->setColor(color);
+        markDirty(QSGNode::DirtyGeometry | QSGNode::DirtyMaterial);
         return;
     }
 

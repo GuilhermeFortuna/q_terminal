@@ -12,6 +12,7 @@
 class BucketGeometryNode : public QSGGeometryNode {
 public:
     BucketGeometryNode();
+    ~BucketGeometryNode() override;
 
     void syncVertices(const BarVertex* vertices, int count, const QColor& color);
     int allocationCount() const { return m_allocationCount; }
