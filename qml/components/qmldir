@@ -1,0 +1,20 @@
+module Q.Terminal.Components
+singleton ControlState 1.0 ControlState.qml
+Panel 1.0 Panel.qml
+SectionHeader 1.0 SectionHeader.qml
+Toolbar 1.0 Toolbar.qml
+AppButton 1.0 AppButton.qml
+IconButton 1.0 IconButton.qml
+StatusBadge 1.0 StatusBadge.qml
+ConnectionIndicator 1.0 ConnectionIndicator.qml
+Metric 1.0 Metric.qml
+DataTable 1.0 DataTable.qml
+DataTableHeader 1.0 DataTableHeader.qml
+DataTableRow 1.0 DataTableRow.qml
+DataTableCell 1.0 DataTableCell.qml
+TabBar 1.0 TabBar.qml
+SplitPane 1.0 SplitPane.qml
+EmptyState 1.0 EmptyState.qml
+AppDialog 1.0 AppDialog.qml
+AppTextField 1.0 AppTextField.qml
+AppComboBox 1.0 AppComboBox.qml

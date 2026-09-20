@@ -9,6 +9,9 @@ pub mod config;
 pub mod execution;
 pub mod history;
 pub mod ops_session;
+pub mod semantic;
+#[cfg(feature = "gallery")]
+pub mod gallery;
 pub mod startup;
 pub mod stream;
 

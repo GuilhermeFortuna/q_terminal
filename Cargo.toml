@@ -8,6 +8,10 @@ authors = ["Guilherme Fortuna <guilhermefortuna.dev@gmail.com>"]
 [lib]
 crate-type = ["staticlib", "rlib"]
 
+[features]
+default = []
+gallery = []
+
 [dependencies]
 cxx = "1.0.142"
 cxx-qt = "0.10.0"

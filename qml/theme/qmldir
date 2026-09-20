@@ -1,0 +1,7 @@
+module Q.Terminal.Theme
+singleton Palette 1.0 Palette.qml
+singleton Typography 1.0 Typography.qml
+singleton Spacing 1.0 Spacing.qml
+singleton Icons 1.0 Icons.qml
+singleton Semantic 1.0 Semantic.qml
+singleton Theme 1.0 Theme.qml

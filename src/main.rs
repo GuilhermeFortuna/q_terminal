@@ -14,6 +14,24 @@ fn main() {
         }
         std::process::exit(headless_report());
     }
+    if args.iter().any(|arg| arg == "--gallery") {
+        #[cfg(feature = "gallery")]
+        std::process::exit(q_terminal::gallery::run());
+        #[cfg(not(feature = "gallery"))]
+        {
+            eprintln!("--gallery requires the gallery feature");
+            std::process::exit(2);
+        }
+    }
+    if args.iter().any(|arg| arg == "--gallery-shot") {
+        #[cfg(feature = "gallery")]
+        std::process::exit(q_terminal::gallery::capture(std::path::Path::new("gallery-shots")));
+        #[cfg(not(feature = "gallery"))]
+        {
+            eprintln!("--gallery-shot requires the gallery feature");
+            std::process::exit(2);
+        }
+    }
     if args.iter().any(|arg| arg == "--bench-frames") {
         let visible_buckets = read_arg_i32(&args, "--buckets", 2000);
         let bar_count = read_arg_i32(&args, "--bars", 500_000);

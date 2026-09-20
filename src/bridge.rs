@@ -21,6 +21,13 @@ pub mod ffi {
         include!("render_backend.h");
         fn setup_window(engine: Pin<&mut QQmlApplicationEngine>);
         fn query_graphics_api(engine: Pin<&mut QQmlApplicationEngine>) -> QString;
+        fn capture_window(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            output_path: &QString,
+            width: i32,
+            height: i32,
+        ) -> bool;
+        fn verify_design_fonts() -> bool;
 
         include!("frame_bench.h");
         fn run_frame_bench(

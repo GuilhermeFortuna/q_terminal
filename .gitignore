@@ -1,5 +1,6 @@
 /target
 /target/
+/gallery-shots/
 /cpp/q-qt
 **/*.rs.bk
 *.swp
