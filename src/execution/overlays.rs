@@ -191,8 +191,8 @@ pub fn marker_layers(
         };
         let x = view.bar_x(m.bar_index);
         let (li, cy) = match m.kind {
-            MarkerKind::Buy => (0, view.price_y(low) + s * 1.5),
-            MarkerKind::Sell => (1, view.price_y(high) - s * 1.5),
+            MarkerKind::Buy => (0, s.mul_add(1.5, view.price_y(low))),
+            MarkerKind::Sell => (1, s.mul_add(-1.5, view.price_y(high))),
             MarkerKind::Close => (2, view.price_y(m.price.unwrap_or(close))),
             MarkerKind::Fill => (3, view.price_y(m.price.unwrap_or(close))),
         };
@@ -241,8 +241,8 @@ pub fn line_layers(series: &[OverlaySeries], bar_opens_ms: &[i64], view: View) -
     let osc_top = view.height * (1.0 - OSCILLATOR_SHARE);
     let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
     for s in series.iter().filter(|s| s.pane == Pane::Oscillator) {
-        for i in view.first..last {
-            if let Some(v) = value_at(s, bar_opens_ms[i]) {
+        for &open in &bar_opens_ms[view.first..last] {
+            if let Some(v) = value_at(s, open) {
                 lo = lo.min(v);
                 hi = hi.max(v);
             }
@@ -257,7 +257,7 @@ pub fn line_layers(series: &[OverlaySeries], bar_opens_ms: &[i64], view: View) -
     let osc_y = |v: f64| -> f32 {
         let range = hi - lo;
         let norm = if range > 0.0 { (hi - v) / range } else { 0.5 };
-        osc_top + 4.0 + (norm as f32) * (view.height - osc_top - 8.0)
+        (norm as f32).mul_add(view.height - osc_top - 8.0, osc_top + 4.0)
     };
 
     for s in series {
@@ -268,8 +268,8 @@ pub fn line_layers(series: &[OverlaySeries], bar_opens_ms: &[i64], view: View) -
             }
             run.xy.clear();
         };
-        for i in view.first..last {
-            match value_at(s, bar_opens_ms[i]) {
+        for (i, &open) in bar_opens_ms.iter().enumerate().take(last).skip(view.first) {
+            match value_at(s, open) {
                 Some(v) => {
                     let y = match s.pane {
                         Pane::Price => view.price_y(v),

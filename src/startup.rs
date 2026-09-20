@@ -41,7 +41,7 @@ fn wire_execution(
         rust.on_target = Some(std::sync::Arc::new(move |dep| {
             targeter.select(dep);
         }));
-        rust.on_rows = Some(std::sync::Arc::new(move |dec, fills| unsafe {
+        rust.on_rows = Some(std::sync::Arc::new(move |dec, fills| {
             chart_bridge::feed_set_execution_rows(
                 feed_addr as *mut chart_bridge::BarFeed,
                 &dec,

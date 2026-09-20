@@ -86,6 +86,9 @@ pub mod ffi {
     impl cxx_qt::Threading for ExecutionModels {}
 }
 
+/// A deployment's id, symbol and timeframe.
+pub type SelectedTarget = (String, String, String);
+
 pub struct ExecutionModelsRust {
     pub revision: i64,
     pub redraw_count: i64,
@@ -103,8 +106,8 @@ pub struct ExecutionModelsRust {
     pub handle: Option<ExecutionHandle>,
     /// Called with the selected deployment's symbol and timeframe, or `None`, whenever
     /// they change (Q-049). Runs on the Qt thread.
-    pub on_target: Option<Arc<dyn Fn(Option<(String, String, String)>) + Send + Sync>>,
-    last_target: Option<Option<(String, String, String)>>,
+    pub on_target: Option<Arc<dyn Fn(Option<SelectedTarget>) + Send + Sync>>,
+    last_target: Option<Option<SelectedTarget>>,
     /// Called on every store change with the selected deployment's decisions and fills as
     /// JSON arrays, oldest first.
     pub on_rows: Option<Arc<dyn Fn(String, String) + Send + Sync>>,

@@ -561,7 +561,11 @@ impl BarFeedRust {
         self.bar_times = (0..bars as i64)
             .map(|i| (t0 + i * 60_000) * 1_000)
             .collect();
-        let close = |i: usize| 100.0 + ((i * 7) % 13) as f64 + (i as f64 * 0.01).sin() * 5.0;
+        let close = |i: usize| {
+            (i as f64 * 0.01)
+                .sin()
+                .mul_add(5.0, 100.0 + ((i * 7) % 13) as f64)
+        };
         self.bar_hlc = (0..bars)
             .map(|i| (close(i) + 1.0, close(i) - 1.0, close(i)))
             .collect();
@@ -573,8 +577,10 @@ impl BarFeedRust {
         ];
         self.markers = (0..markers)
             .map(|n| {
-                let i =
-                    if markers > 0 { n * bars / markers } else { 0 }.min(bars.saturating_sub(1));
+                let i = (n * bars)
+                    .checked_div(markers)
+                    .unwrap_or(0)
+                    .min(bars.saturating_sub(1));
                 Marker {
                     id: format!("bench-{n}"),
                     bar_index: i,
@@ -1118,7 +1124,7 @@ impl ffi::BarFeed {
             .rust()
             .hits()
             .iter()
-            .map(|h| ((h.x - x).powi(2) + (h.y - y).powi(2), h))
+            .map(|h| ((h.y - y).mul_add(h.y - y, (h.x - x).powi(2)), h))
             .filter(|(d, _)| *d <= radius * radius)
             .min_by(|a, b| a.0.total_cmp(&b.0));
         QString::from(best.map_or("", |(_, h)| h.detail.as_str()))
