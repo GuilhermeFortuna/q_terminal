@@ -30,6 +30,8 @@ parquet = { version = "60.0.0", default-features = false, features = ["arrow", "
 cxx-qt-build = { version = "0.10.0", features = ["link_qt_object_files"] }
 qt-build-utils = { version = "0.10.0", features = ["qt_minimal"] }
 qt-version = { version = "0.1.5", features = ["qt_version_at_least_6_5"] }
+q-qt = { git = "https://github.com/GuilhermeFortuna/q_core.git", tag = "v2026.09.16", package = "q-qt" }
+
 
 [lints.clippy]
 float_cmp = "deny"

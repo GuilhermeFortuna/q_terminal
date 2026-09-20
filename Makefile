@@ -1,4 +1,5 @@
 .PHONY: check check-suite fmt fmt-check lint test build run qml-lint contracts contracts-check bench-stream bench-history-load bench-frames
+.NOTPARALLEL:
 
 CONTRACTS_REPO ?= https://github.com/GuilhermeFortuna/q_contracts.git
 QMLLINT ?= $(shell find $(HOME)/.local/share/qt_minimal_download -name "qmllint" -type f 2>/dev/null | head -n 1 || command -v qmllint 2>/dev/null)

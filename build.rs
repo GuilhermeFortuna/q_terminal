@@ -3,35 +3,36 @@ use std::path::{Path, PathBuf};
 use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn find_q_qt_include_dir(build_dir: &std::path::Path) -> Option<PathBuf> {
-    for entry in std::fs::read_dir(build_dir).expect("read target build directory") {
-        let path = entry.expect("read build directory entry").path();
-        let name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
-        if name.starts_with("q-qt-") {
-            let include = path.join("out").join("cxxqtbuild").join("include");
-            if include.is_dir() {
-                return Some(include);
+    let mut candidates: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(build_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            if name.starts_with("q-qt-") {
+                let include = path.join("out").join("cxxqtbuild").join("include");
+                if include.is_dir() {
+                    let mtime = entry
+                        .metadata()
+                        .and_then(|m| m.modified())
+                        .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                    candidates.push((mtime, include));
+                }
             }
         }
     }
-    None
+    candidates.sort_by_key(|a| std::cmp::Reverse(a.0));
+    candidates.into_iter().map(|(_, p)| p).next()
 }
 
 fn q_qt_include_dir(build_dir: &Path) -> PathBuf {
-    if let Some(include) = find_q_qt_include_dir(build_dir) {
-        return include;
-    }
-
-    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
-    let status = std::process::Command::new(cargo)
-        .args(["build", "--package", "q-qt"])
-        .status()
-        .expect("failed to pre-build q-qt for include headers");
-    assert!(status.success(), "q-qt pre-build failed");
-
-    find_q_qt_include_dir(build_dir).expect("q-qt cxxqtbuild include directory not found")
+    find_q_qt_include_dir(build_dir).unwrap_or_else(|| {
+        panic!(
+            "q-qt cxxqtbuild include directory not found in target build directory ({build_dir:?}); ensure q-qt is listed in [build-dependencies]"
+        );
+    })
 }
 
 fn link_q_qt_headers(build_dir: &Path) {
@@ -61,6 +62,14 @@ fn link_q_qt_headers(build_dir: &Path) {
 }
 
 fn main() {
+    if let Ok(out_dir) = std::env::var("OUT_DIR") {
+        if let Ok(canonical) = std::fs::canonicalize(&out_dir) {
+            std::env::set_var("OUT_DIR", canonical);
+        }
+    }
+
+    let manifest_dir =
+        PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
     let build_dir = out_dir.ancestors().nth(2).expect("target build directory");
     link_q_qt_headers(build_dir);
@@ -109,15 +118,15 @@ fn main() {
     .file("src/ops_status.rs")
     .cpp_file("src/render_backend.cpp")
     .cpp_file("cpp/bar_chart_node.cpp")
-    .cpp_file("cpp/bar_chart_item.h")
+    .cpp_file(manifest_dir.join("cpp/bar_chart_item.h"))
     .cpp_file("cpp/bar_chart_item.cpp")
-    .cpp_file("cpp/overlay_chart_item.h")
+    .cpp_file(manifest_dir.join("cpp/overlay_chart_item.h"))
     .cpp_file("cpp/overlay_chart_item.cpp")
     .cpp_file("cpp/bar_chart_probe.cpp")
     .cpp_file("cpp/chart_cxx.cpp")
     .cpp_file("cpp/execution_models_cxx.cpp")
     .cpp_file("cpp/frame_bench.cpp")
-    .cpp_file("cpp/table_model.h")
+    .cpp_file(manifest_dir.join("cpp/table_model.h"))
     .cpp_file("cpp/table_model.cpp")
     .cpp_file("cpp/table_bridge.cpp")
     .build();
