@@ -8,6 +8,8 @@ pub mod contracts_stream;
 pub mod bridge;
 #[path = "../src/chart_bridge.rs"]
 pub mod chart_bridge;
+#[path = "../src/chart_target.rs"]
+pub mod chart_target;
 #[path = "../src/config.rs"]
 pub mod config;
 #[path = "../src/execution/mod.rs"]

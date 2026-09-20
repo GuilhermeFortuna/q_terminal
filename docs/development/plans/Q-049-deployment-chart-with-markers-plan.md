@@ -99,7 +99,7 @@ src/main.rs                   --bench-frames gains --markers N --overlays N
 - [x] 2. Port the placement rules into `tests/markers.rs` as vectors, including
    close-time and open-time conventions, a fill inside a bar, a fill before the
    first bar, and holds. Implement `markers.rs`. Confirm they pass. Commit.
-- [ ] 3. Implement `ChartTarget` and `retarget`, and write `tests/chart_target.rs`
+- [x] 3. Implement `ChartTarget` and `retarget`, and write `tests/chart_target.rs`
    (criterion 1, including a switch during a slow fake history load and during
    a burst of stream frames). Wire the selection to retarget. Commit.
 - [ ] 4. Write `marker_node` and `marker_chart_item`, feed them from the store's

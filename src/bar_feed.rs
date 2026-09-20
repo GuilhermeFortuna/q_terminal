@@ -114,6 +114,45 @@ pub mod ffi {
         );
 
         #[qinvokable]
+        fn ingest_completed_bar_gen(
+            self: Pin<&mut BarFeed>,
+            generation: i64,
+            time: i64,
+            open: f64,
+            high: f64,
+            low: f64,
+            close: f64,
+        );
+
+        #[qinvokable]
+        fn ingest_forming_bar_gen(
+            self: Pin<&mut BarFeed>,
+            generation: i64,
+            time: i64,
+            open: f64,
+            high: f64,
+            low: f64,
+            close: f64,
+        );
+
+        /// Points the feed at another symbol and timeframe: drops the previous target's
+        /// bars, history load and pending deliveries, and loads the new target's history.
+        /// Anything stamped with an older generation is dropped from then on.
+        #[qinvokable]
+        fn retarget(
+            self: Pin<&mut BarFeed>,
+            symbol: QString,
+            timeframe: QString,
+            generation: i64,
+        ) -> bool;
+
+        #[qinvokable]
+        fn target_generation(self: &BarFeed) -> i64;
+
+        #[qinvokable]
+        fn stale_dropped(self: &BarFeed) -> i64;
+
+        #[qinvokable]
         fn set_viewport(
             self: Pin<&mut BarFeed>,
             first_bar: i64,
@@ -224,6 +263,38 @@ pub struct BarFeedRust {
     config: Option<Config>,
     history_bar_count: usize,
     pending_deliveries: Vec<BarDelivery>,
+    /// Chart target generation. Bars and history results stamped with another one belong
+    /// to a previous target and are dropped.
+    pub generation: u64,
+    /// Deliveries and history results dropped for carrying an older generation.
+    pub stale_dropped: u64,
+}
+
+/// The properties QML reads, captured so a change can be announced (Q-049).
+#[derive(Clone, PartialEq)]
+struct PropSnapshot {
+    symbol: QString,
+    timeframe: QString,
+    timeframe_ms: i64,
+    bar_count: i64,
+    revision: i64,
+    last_price: f64,
+    first_time: i64,
+    last_time: i64,
+    low: f64,
+    high: f64,
+    applied: i64,
+    data_age_ms: i64,
+    stale: bool,
+    live_only: bool,
+    history_loading: bool,
+    history_progress: f64,
+    history_source: QString,
+    history_dataset_id: QString,
+    history_published_at: QString,
+    history_error: QString,
+    history_bars: i64,
+    history_shortfall: i64,
 }
 
 impl BarFeedRust {
@@ -276,7 +347,111 @@ impl BarFeedRust {
             config,
             history_bar_count: DEFAULT_HISTORY_BARS,
             pending_deliveries: Vec::new(),
+            generation: 0,
+            stale_dropped: 0,
         }
+    }
+
+    fn snapshot_props(&self) -> PropSnapshot {
+        PropSnapshot {
+            symbol: self.symbol.clone(),
+            timeframe: self.timeframe.clone(),
+            timeframe_ms: self.timeframe_ms,
+            bar_count: self.bar_count,
+            revision: self.revision,
+            last_price: self.last_price,
+            first_time: self.first_time,
+            last_time: self.last_time,
+            low: self.low,
+            high: self.high,
+            applied: self.applied,
+            data_age_ms: self.data_age_ms,
+            stale: self.stale,
+            live_only: self.live_only,
+            history_loading: self.history_loading,
+            history_progress: self.history_progress,
+            history_source: self.history_source.clone(),
+            history_dataset_id: self.history_dataset_id.clone(),
+            history_published_at: self.history_published_at.clone(),
+            history_error: self.history_error.clone(),
+            history_bars: self.history_bars,
+            history_shortfall: self.history_shortfall,
+        }
+    }
+
+    fn restore_props(&mut self, p: PropSnapshot) {
+        self.symbol = p.symbol;
+        self.timeframe = p.timeframe;
+        self.timeframe_ms = p.timeframe_ms;
+        self.bar_count = p.bar_count;
+        self.revision = p.revision;
+        self.last_price = p.last_price;
+        self.first_time = p.first_time;
+        self.last_time = p.last_time;
+        self.low = p.low;
+        self.high = p.high;
+        self.applied = p.applied;
+        self.data_age_ms = p.data_age_ms;
+        self.stale = p.stale;
+        self.live_only = p.live_only;
+        self.history_loading = p.history_loading;
+        self.history_progress = p.history_progress;
+        self.history_source = p.history_source;
+        self.history_dataset_id = p.history_dataset_id;
+        self.history_published_at = p.history_published_at;
+        self.history_error = p.history_error;
+        self.history_bars = p.history_bars;
+        self.history_shortfall = p.history_shortfall;
+    }
+
+    /// Switches the feed to a new symbol and timeframe (Q-049). Everything of the previous
+    /// target goes: its bars, its history controller (a load still running finishes into
+    /// the old one and is dropped by generation), and deliveries waiting for the gate.
+    pub fn reset_for_target(&mut self, symbol: &str, timeframe: &str, generation: u64) {
+        self.generation = generation;
+        self.series = q_qt::BarSeriesRust::new(symbol, timeframe, 500_000);
+        self.series_label = TimeLabel::Utc;
+        self.series_vols = VolumeSet {
+            tick_volume: false,
+            spread: false,
+            real_volume: false,
+        };
+        self.bar_times.clear();
+        self.pending_deliveries.clear();
+        self.history = Arc::new(HistoryController::new());
+        self.applied = 0;
+        self.last_applied_instant = None;
+        self.data_age_ms = -1;
+        self.stale = false;
+        self.timeframe_ms = parse_timeframe_ms(timeframe);
+        if let Some(cfg) = self.config.as_mut() {
+            cfg.symbol = symbol.to_string();
+            cfg.timeframe = timeframe.to_string();
+        }
+        self.sync_series_properties();
+        self.sync_history_properties();
+    }
+
+    /// Applies a delivery stamped with the generation it was produced for. Returns false,
+    /// and counts it, when it belongs to a previous target.
+    pub fn apply_stamped(&mut self, generation: u64, delivery: BarDelivery) -> bool {
+        if generation != self.generation {
+            self.stale_dropped += 1;
+            return false;
+        }
+        self.apply_delivery(delivery);
+        true
+    }
+
+    /// Completes a history load requested for `generation`. A result for a previous target
+    /// is dropped and counted.
+    pub fn complete_history_load_for(&mut self, generation: u64, loaded: Loaded) -> bool {
+        if generation != self.generation {
+            self.stale_dropped += 1;
+            return false;
+        }
+        self.complete_history_load(loaded);
+        true
     }
 
     pub fn history_controller(&self) -> &Arc<HistoryController> {
@@ -524,6 +699,100 @@ impl BarFeedRust {
 }
 
 impl ffi::BarFeed {
+    /// Announces what changed since `before`. Rust-side updates assign the fields directly,
+    /// which raises no signal, so the fields are put back and set through the property
+    /// setters, which do.
+    fn notify_props(mut self: std::pin::Pin<&mut Self>, before: PropSnapshot) {
+        let after = self.as_ref().rust().snapshot_props();
+        if after == before {
+            return;
+        }
+        self.as_mut().rust_mut().restore_props(before);
+        self.as_mut().set_symbol(after.symbol);
+        self.as_mut().set_timeframe(after.timeframe);
+        self.as_mut().set_timeframe_ms(after.timeframe_ms);
+        self.as_mut().set_bar_count(after.bar_count);
+        self.as_mut().set_last_price(after.last_price);
+        self.as_mut().set_first_time(after.first_time);
+        self.as_mut().set_last_time(after.last_time);
+        self.as_mut().set_low(after.low);
+        self.as_mut().set_high(after.high);
+        self.as_mut().set_applied(after.applied);
+        self.as_mut().set_data_age_ms(after.data_age_ms);
+        self.as_mut().set_stale(after.stale);
+        self.as_mut().set_live_only(after.live_only);
+        self.as_mut().set_history_loading(after.history_loading);
+        self.as_mut().set_history_progress(after.history_progress);
+        self.as_mut().set_history_source(after.history_source);
+        self.as_mut()
+            .set_history_dataset_id(after.history_dataset_id);
+        self.as_mut()
+            .set_history_published_at(after.history_published_at);
+        self.as_mut().set_history_error(after.history_error);
+        self.as_mut().set_history_bars(after.history_bars);
+        self.as_mut().set_history_shortfall(after.history_shortfall);
+        // Last, so the chart items repaint once the rest is consistent.
+        self.as_mut().set_revision(after.revision);
+    }
+
+    pub fn ingest_completed_bar_gen(
+        mut self: std::pin::Pin<&mut Self>,
+        generation: i64,
+        time: i64,
+        open: f64,
+        high: f64,
+        low: f64,
+        close: f64,
+    ) {
+        let before = self.as_ref().rust().snapshot_props();
+        let col = make_bar_columns(time, open, high, low, close);
+        self.as_mut()
+            .rust_mut()
+            .apply_stamped(generation as u64, BarDelivery::Completed(col));
+        self.notify_props(before);
+    }
+
+    pub fn ingest_forming_bar_gen(
+        mut self: std::pin::Pin<&mut Self>,
+        generation: i64,
+        time: i64,
+        open: f64,
+        high: f64,
+        low: f64,
+        close: f64,
+    ) {
+        let before = self.as_ref().rust().snapshot_props();
+        let col = make_bar_columns(time, open, high, low, close);
+        self.as_mut()
+            .rust_mut()
+            .apply_stamped(generation as u64, BarDelivery::Forming(col));
+        self.notify_props(before);
+    }
+
+    pub fn retarget(
+        mut self: std::pin::Pin<&mut Self>,
+        symbol: QString,
+        timeframe: QString,
+        generation: i64,
+    ) -> bool {
+        let before = self.as_ref().rust().snapshot_props();
+        self.as_mut().rust_mut().reset_for_target(
+            &symbol.to_string(),
+            &timeframe.to_string(),
+            generation as u64,
+        );
+        self.as_mut().notify_props(before);
+        self.load_history()
+    }
+
+    pub fn target_generation(&self) -> i64 {
+        self.rust().generation as i64
+    }
+
+    pub fn stale_dropped(&self) -> i64 {
+        self.rust().stale_dropped as i64
+    }
+
     pub fn load_history(mut self: std::pin::Pin<&mut Self>) -> bool {
         let qt_thread = self.qt_thread();
         let config = match self.as_ref().rust().config.clone() {
@@ -546,6 +815,7 @@ impl ffi::BarFeed {
         let controller = Arc::clone(&self.as_ref().rust().history);
         let progress_controller = Arc::clone(&self.as_ref().rust().history);
         let bars = self.as_ref().rust().history_bar_count;
+        let generation = self.as_ref().rust().generation;
         let qt_for_loaded = qt_thread.clone();
         controller.spawn_load(
             config,
@@ -553,7 +823,11 @@ impl ffi::BarFeed {
             move |loaded| {
                 qt_for_loaded
                     .queue(move |mut feed| {
-                        feed.as_mut().rust_mut().complete_history_load(loaded);
+                        let before = feed.as_ref().rust().snapshot_props();
+                        feed.as_mut()
+                            .rust_mut()
+                            .complete_history_load_for(generation, loaded);
+                        feed.notify_props(before);
                     })
                     .ok();
             },
@@ -561,7 +835,12 @@ impl ffi::BarFeed {
                 progress_controller.set_progress(progress);
                 qt_thread
                     .queue(move |mut feed| {
+                        if feed.as_ref().rust().generation != generation {
+                            return;
+                        }
+                        let before = feed.as_ref().rust().snapshot_props();
                         feed.as_mut().rust_mut().sync_history_properties();
+                        feed.notify_props(before);
                     })
                     .ok();
             },

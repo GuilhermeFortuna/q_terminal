@@ -5,6 +5,7 @@
 #include "bar_chart_probe.h"
 #include "q-qt/src/bar_series.cxxqt.h"
 #include "q_terminal/src/bar_feed.cxxqt.h"
+#include "q_terminal/src/execution_models.cxxqt.h"
 
 #include <mutex>
 
@@ -565,6 +566,7 @@ void post_feed_stream_state(
 
 void post_feed_completed_bar(
     BarFeed* feed,
+    std::int64_t generation,
     std::int64_t time,
     double open,
     double high,
@@ -572,13 +574,14 @@ void post_feed_completed_bar(
     double close
 ) {
     if (!feed) return;
-    QMetaObject::invokeMethod(feed, [feed, time, open, high, low, close]() {
-        feed->ingest_completed_bar(time, open, high, low, close);
+    QMetaObject::invokeMethod(feed, [feed, generation, time, open, high, low, close]() {
+        feed->ingest_completed_bar_gen(generation, time, open, high, low, close);
     }, Qt::QueuedConnection);
 }
 
 void post_feed_forming_bar(
     BarFeed* feed,
+    std::int64_t generation,
     std::int64_t time,
     double open,
     double high,
@@ -586,8 +589,8 @@ void post_feed_forming_bar(
     double close
 ) {
     if (!feed) return;
-    QMetaObject::invokeMethod(feed, [feed, time, open, high, low, close]() {
-        feed->ingest_forming_bar(time, open, high, low, close);
+    QMetaObject::invokeMethod(feed, [feed, generation, time, open, high, low, close]() {
+        feed->ingest_forming_bar_gen(generation, time, open, high, low, close);
     }, Qt::QueuedConnection);
 }
 
@@ -642,4 +645,38 @@ std::int64_t feed_bar_count(BarFeed* feed) {
 std::int64_t feed_rest_calls(BarFeed* feed) {
     if (!feed) return 0;
     return feed->getRest_calls();
+}
+
+bool feed_retarget(BarFeed* feed, rust::Str symbol, rust::Str timeframe, std::int64_t generation) {
+    if (!feed) return false;
+    return feed->retarget(
+        QString::fromUtf8(symbol.data(), static_cast<int>(symbol.size())),
+        QString::fromUtf8(timeframe.data(), static_cast<int>(timeframe.size())),
+        generation);
+}
+
+std::int64_t feed_target_generation(BarFeed* feed) {
+    return feed ? feed->target_generation() : -1;
+}
+
+std::int64_t feed_stale_dropped(BarFeed* feed) {
+    return feed ? feed->stale_dropped() : -1;
+}
+
+rust::String feed_symbol(BarFeed* feed) {
+    return feed ? rust::String(feed->getSymbol().toStdString()) : rust::String();
+}
+
+ExecutionModels* find_window_execution_models(QQmlApplicationEngine& engine) {
+    for (QObject* root : engine.rootObjects()) {
+        if (auto* models = root->findChild<ExecutionModels*>("executionModels")) {
+            return models;
+        }
+    }
+    return nullptr;
+}
+
+void post_execution_models_sync(ExecutionModels* models) {
+    if (!models) return;
+    QMetaObject::invokeMethod(models, [models]() { models->sync(); }, Qt::QueuedConnection);
 }

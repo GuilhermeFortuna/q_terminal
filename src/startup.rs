@@ -5,8 +5,10 @@ use cxx_qt_lib::{QQmlApplicationEngine, QString, QUrl};
 use crate::bridge;
 use crate::bridge::bar_feed::parse_timeframe_ms;
 use crate::chart_bridge;
+use crate::chart_target::ChartTargeter;
 use crate::config::{Config, ConfigError};
-use crate::stream::client::{ConnectionState, StreamClient};
+use crate::execution::store::ExecutionHandle;
+use crate::stream::client::{ConnectionState, Sinks, StreamClient};
 use crate::stream::sink::BarSink;
 
 /// Context holding the loaded slice resources.
@@ -14,6 +16,38 @@ pub struct SliceContext {
     pub engine: cxx::UniquePtr<cxx_qt_lib::QQmlApplicationEngine>,
     pub feed_ptr: *mut chart_bridge::BarFeed,
     pub stream_client: Option<StreamClient>,
+    pub targeter: Option<std::sync::Arc<ChartTargeter>>,
+}
+
+/// Binds the execution store to the window's models and makes the chart follow the
+/// selected deployment.
+fn wire_execution(
+    engine: std::pin::Pin<&mut QQmlApplicationEngine>,
+    handle: ExecutionHandle,
+    targeter: std::sync::Arc<ChartTargeter>,
+) {
+    let models = unsafe { chart_bridge::find_window_execution_models(engine) };
+    if models.is_null() {
+        return;
+    }
+    use cxx_qt::CxxQtType;
+    let ffi_models = models as *mut crate::bridge::execution_models::ffi::ExecutionModels;
+    let dirty = unsafe {
+        let mut pin = std::pin::Pin::new_unchecked(&mut *ffi_models);
+        let mut rust = pin.as_mut().rust_mut();
+        rust.bind_handle(handle.clone());
+        rust.on_target = Some(std::sync::Arc::new(move |dep| {
+            targeter.select(dep);
+        }));
+        rust.dirty.clone()
+    };
+    let addr = models as usize;
+    handle.set_listener(std::sync::Arc::new(move || {
+        dirty.store(true, std::sync::atomic::Ordering::Release);
+        unsafe {
+            chart_bridge::post_execution_models_sync(addr as *mut chart_bridge::ExecutionModels)
+        };
+    }));
 }
 
 /// Sets up the window and slice context for the given config.
@@ -36,6 +70,7 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
 
     let feed_ptr = unsafe { chart_bridge::find_window_feed(engine.as_mut().unwrap()) };
     let mut stream_client: Option<StreamClient> = None;
+    let mut chart_targeter: Option<std::sync::Arc<ChartTargeter>> = None;
 
     if !feed_ptr.is_null() {
         match config {
@@ -55,49 +90,23 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
                 }
 
                 let sink = BarSink::new();
-                let client = StreamClient::start(cfg.clone(), sink.clone());
+                let exec_handle = ExecutionHandle::new();
+                let client = StreamClient::start_with(
+                    cfg.clone(),
+                    Sinks {
+                        bars: sink.clone(),
+                        execution: Some(exec_handle.clone()),
+                    },
+                );
+                let targeter = ChartTargeter::new(
+                    feed_ptr,
+                    (cfg.symbol.clone(), cfg.timeframe.clone()),
+                    client.retargeter(),
+                );
+                wire_execution(engine.as_mut().unwrap(), exec_handle, targeter.clone());
+                chart_targeter = Some(targeter);
 
-                // Set up reactive delivery drainer into feed
-                let sink_drainer = {
-                    let sink = sink.clone();
-                    let feed_addr = feed_ptr as usize;
-                    Arc::new(move || {
-                        let feed = feed_addr as *mut chart_bridge::BarFeed;
-                        for delivery in sink.drain() {
-                            match delivery {
-                                crate::stream::sink::BarDelivery::Completed(cols) => {
-                                    for i in 0..cols.time.len() {
-                                        unsafe {
-                                            chart_bridge::post_feed_completed_bar(
-                                                feed,
-                                                cols.time[i],
-                                                cols.open[i],
-                                                cols.high[i],
-                                                cols.low[i],
-                                                cols.close[i],
-                                            );
-                                        }
-                                    }
-                                }
-                                crate::stream::sink::BarDelivery::Forming(cols) => {
-                                    if let Some(&t) = cols.time.first() {
-                                        unsafe {
-                                            chart_bridge::post_feed_forming_bar(
-                                                feed,
-                                                t,
-                                                cols.open[0],
-                                                cols.high[0],
-                                                cols.low[0],
-                                                cols.close[0],
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    })
-                };
-                sink.set_listener(sink_drainer);
+                crate::chart_target::install_bar_drainer(&sink, feed_ptr);
 
                 // Set up reactive client state listener without timer polling
                 let client_listener = {
@@ -149,6 +158,7 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
         engine,
         feed_ptr,
         stream_client,
+        targeter: chart_targeter,
     }
 }
 

@@ -450,10 +450,19 @@ impl FakeServer {
                                     let snap_guard = snap_arc.read().await;
                                     let cur_ep = ep_arc.read().await.clone();
 
+                                    let key_param = path_and_query
+                                        .split(['?', '&'])
+                                        .find_map(|kv| kv.strip_prefix("key="))
+                                        .map(|v| v.replace("%3A", ":"));
+                                    let keyed = key_param
+                                        .as_ref()
+                                        .and_then(|k| snap_guard.get(&format!("{topic}#{k}")));
                                     let mut entries = serde_json::Map::new();
-                                    if let Some(snap) = snap_guard.get(topic) {
+                                    if let Some(snap) = keyed.or_else(|| snap_guard.get(topic)) {
                                         let arrow_bytes = encode_arrow_bars(&snap.bars).unwrap();
                                         let b64 = b64_encode(&arrow_bytes);
+                                        let entry_key = key_param.clone().unwrap_or_else(|| "PETR4:1m".to_string());
+                                        let (sym, tf) = entry_key.split_once(':').unwrap_or(("PETR4", "1m"));
 
                                         let entry_val = json!({
                                             "topic": topic,
@@ -464,10 +473,10 @@ impl FakeServer {
                                             "origin_ts": "2026-09-17T00:00:00Z",
                                             "payload_kind": "arrow_ipc",
                                             "payload_schema": "schema/api/arrow/bars.schema.json",
-                                            "key": { "symbol": "PETR4", "timeframe": "1m" },
+                                            "key": { "symbol": sym, "timeframe": tf },
                                             "payload": b64
                                         });
-                                        entries.insert("PETR4:1m".to_string(), entry_val);
+                                        entries.insert(entry_key, entry_val);
                                     }
 
                                     let resp_body = json!({
@@ -713,6 +722,8 @@ impl FakeServer {
         bars: BarColumns,
     ) {
         self.set_snapshot(topic, seq, bars.clone()).await;
+        self.set_snapshot(&format!("{topic}#{symbol}:{timeframe}"), seq, bars.clone())
+            .await;
         let cur_ep = self.epoch.read().await.clone();
         let header = EnvelopeHeader {
             topic: topic.to_string(),

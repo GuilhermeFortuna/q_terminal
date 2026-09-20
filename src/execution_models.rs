@@ -101,6 +101,10 @@ pub struct ExecutionModelsRust {
     pub api_base: QString,
 
     pub handle: Option<ExecutionHandle>,
+    /// Called with the selected deployment's symbol and timeframe, or `None`, whenever
+    /// they change (Q-049). Runs on the Qt thread.
+    pub on_target: Option<Arc<dyn Fn(Option<(String, String)>) + Send + Sync>>,
+    last_target: Option<Option<(String, String)>>,
     pub dirty: Arc<AtomicBool>,
 
     pub m_deployments: RawTableModel,
@@ -177,6 +181,8 @@ impl Default for ExecutionModelsRust {
                 accounts: ffi::table_model_to_variant(m_accounts.0),
                 api_base: QString::default(),
                 handle: None,
+                on_target: None,
+                last_target: None,
                 dirty: Arc::new(AtomicBool::new(false)),
                 m_deployments,
                 m_orders,
@@ -218,6 +224,24 @@ impl ExecutionModelsRust {
         }));
         self.handle = Some(handle);
         self.dirty.store(true, Ordering::Release);
+    }
+
+    /// Tells `on_target` the selected deployment's symbol and timeframe when they changed.
+    pub fn notify_target(&mut self) {
+        let (Some(handle), Some(hook)) = (self.handle.clone(), self.on_target.clone()) else {
+            return;
+        };
+        let id = self.selected_deployment_id.to_string();
+        let target = handle.read(|s| {
+            s.data()
+                .deployments
+                .get(&id)
+                .map(|d| (d.symbol.clone(), d.timeframe.clone()))
+        });
+        if self.last_target.as_ref() != Some(&target) {
+            self.last_target = Some(target.clone());
+            hook(target);
+        }
     }
 
     pub fn rebuild_all(&mut self) {
@@ -680,6 +704,7 @@ impl ffi::ExecutionModels {
     pub fn sync(mut self: Pin<&mut Self>) {
         if self.rust().dirty.swap(false, Ordering::AcqRel) {
             self.as_mut().rust_mut().rebuild_all();
+            self.as_mut().rust_mut().notify_target();
             let rev = self.rust().revision + 1;
             let redraws = self.rust().redraw_count + 1;
             self.as_mut().set_revision(rev);
@@ -690,6 +715,7 @@ impl ffi::ExecutionModels {
     pub fn select_deployment(mut self: Pin<&mut Self>, deployment_id: QString) {
         self.as_mut().set_selected_deployment_id(deployment_id);
         self.as_mut().rust_mut().refresh_deployment_detail();
+        self.as_mut().rust_mut().notify_target();
     }
 
     pub fn select_account(mut self: Pin<&mut Self>, account_id: QString) {

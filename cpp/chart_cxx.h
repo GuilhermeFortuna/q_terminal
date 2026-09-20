@@ -117,6 +117,7 @@ void post_feed_stream_state(
 
 void post_feed_completed_bar(
     BarFeed* feed,
+    std::int64_t generation,
     std::int64_t time,
     double open,
     double high,
@@ -126,6 +127,7 @@ void post_feed_completed_bar(
 
 void post_feed_forming_bar(
     BarFeed* feed,
+    std::int64_t generation,
     std::int64_t time,
     double open,
     double high,
@@ -186,7 +188,16 @@ bool feed_history_loading(BarFeed* feed);
 std::int64_t feed_bar_count(BarFeed* feed);
 std::int64_t feed_rest_calls(BarFeed* feed);
 
+bool feed_retarget(BarFeed* feed, rust::Str symbol, rust::Str timeframe, std::int64_t generation);
+std::int64_t feed_target_generation(BarFeed* feed);
+std::int64_t feed_stale_dropped(BarFeed* feed);
+rust::String feed_symbol(BarFeed* feed);
+
 #include "cpp/execution_models_cxx.h"
+
+class ExecutionModels;
+ExecutionModels* find_window_execution_models(QQmlApplicationEngine& engine);
+void post_execution_models_sync(ExecutionModels* models);
 
 #endif // Q_TERMINAL_CHART_CXX_H
 
