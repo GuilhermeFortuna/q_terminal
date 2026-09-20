@@ -8,3 +8,5 @@
 .DS_Store
 .qmlls.ini
 *.ini
+__pycache__/
+*.pyc
