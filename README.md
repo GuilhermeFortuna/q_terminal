@@ -33,7 +33,7 @@ The operations workspace (Q-047) is the terminal's read-only execution surface. 
 - **Status Header (`OpsHeader.qml`)**: Stream connection (with age when disconnected), API status, worker status and heartbeat age, MT5 edge reachability and terminal build, kill switch, live-trading lock, unknown-order count, and §8.1 degraded banners (Postgres down, worker offline/stale, reconciliation required).
 - **Deployments List (`DeploymentList.qml`)**: Name, symbol, timeframe, broker mode (live visually distinct), lifecycle, pending action, net position with entry price, last evaluated bar, and per-deployment unknown-order count.
 - **Deployment Detail (`DeploymentDetail.qml`)**: Tabbed tables for orders, fills, decisions, risk events, and account ledger (newest first). Position marks and unrealized P&L come from `GET /api/v1/execution/positions` — never computed in the terminal. Account summary shows cash balance, equity, and session P&L from store strings.
-- **Chart Pane (`ChartPane.qml`)**: The existing candlestick chart for the configured symbol (unchanged until Q-049).
+- **Chart Pane (`ChartPane.qml`)**: The candlestick chart follows the selected deployment (Q-049): selecting one retargets history, live bars and the stream's bar filters to its symbol and timeframe (with none selected, the configured symbol). It draws the deployment's indicator overlays, a marker on the bar of every buy, sell and close decision (holds have none) and a marker at every fill, with the decision reason or fill details on hover. Markers come from the execution store, so a new decision or fill appears without a request. Overlays are the backend chart route's values (`GET /api/v1/execution/deployments/{id}/chart`), fetched once when the deployment is selected and once per completed bar; the terminal computes no indicator. Oscillators share a band below the bars.
 - **Paging**: "Load older" on each table issues one paged REST request and appends rows below the streamed snapshot window.
 
 ### Health and Marks Cadence
@@ -129,6 +129,7 @@ q_terminal/
 ├── cpp/                # C++ scene-graph render nodes and QML probes (buffer movement only)
 │   ├── bar_chart_item.h / .cpp   # QQuickItem hosting BarChartNode
 │   ├── bar_chart_node.h / .cpp   # QSGRenderNode moving vertices to GPU
+│   ├── overlay_chart_item.h / .cpp # Marker glyph and overlay line layers (buffer movement only)
 │   ├── bar_chart_probe.cpp       # Headless vertex and scene graph inspection
 │   └── chart_cxx.h / .cpp        # CXX-Qt bridge helper functions and event pump
 ├── qml/                # Declarative QML scenes
@@ -138,7 +139,7 @@ q_terminal/
 │   ├── DeploymentList.qml / DeploymentDetail.qml / *Table.qml
 │   ├── Format.js       # Decimal-string and time formatting (no money arithmetic)
 │   ├── Viewport.qml    # Viewport tracking newest bar and sticky price bounds
-│   ├── ChartPane.qml   # Chart pane with gridlines, price/time axes, and BarChartItem
+│   ├── ChartPane.qml   # Chart pane with gridlines, axes, BarChartItem, OverlayChartItem, marker tooltip
 │   ├── StatusStrip.qml # Live connection, freshness, history source, and error status
 │   ├── EmptyState.qml  # Placeholder before initial bars arrive
 │   └── qmldir          # QML module definition
@@ -149,7 +150,8 @@ q_terminal/
 │   ├── bar_feed.rs     # CXX-Qt BarFeed model binding live and historical bars to QML
 │   ├── bridge.rs       # CXX-Qt AppInfo projection over q_core::CoreInfo
 │   ├── chart_bridge.rs # CXX-Qt chart probe bindings for headless testing
-│   ├── execution/      # Execution store, models, health poller, and ops status bridge
+│   ├── chart_target.rs # Follows the selected deployment: retarget by generation, overlay fetcher
+│   ├── execution/      # Execution store, markers, overlays, health poller, and ops status bridge
 │   ├── history/        # Catalog-driven parquet load, seam stitching, and verification
 │   └── stream/         # WebSocket client, envelope framing, and sequence gap recovery
 └── tests/              # End-to-end and headless integration tests
@@ -158,6 +160,7 @@ q_terminal/
     ├── test_chart_bridge.rs   # Viewport, geometry, and probe unit tests
     ├── execution_store.rs     # Execution protocol against the fake stream server
     ├── execution_convergence.rs # Seeded fault interleavings converge to the snapshot
+    ├── markers.rs / chart_target.rs / overlays.rs / chart_alignment.rs # Q-049 chart tests
     ├── test_execution_report.rs # --headless-report --execution
     └── test_headless_report.rs# CLI headless report verification
 ```
@@ -280,3 +283,13 @@ env -u WAYLAND_DISPLAY -u DISPLAY make test
 cargo test --test slice_end_to_end
 ```
 
+
+---
+
+## Deployment chart benchmark
+
+```bash
+make bench-frames BENCH_MARKERS=2000 BENCH_OVERLAYS=2   # or: cargo run --release -- --bench-frames --markers 2000 --overlays 2 --bars 500000
+```
+
+The marker and overlay buffers are rebuilt and uploaded every frame (worst case) on top of the bar chart. `QT_QPA_PLATFORM=offscreen` runs it without a display.

@@ -27,6 +27,8 @@ pub mod ffi {
             bar_count: i32,
             duration_ms: i32,
             execution_rows: i32,
+            markers: i32,
+            overlays: i32,
         );
     }
 

@@ -1,6 +1,8 @@
 #include "frame_bench.h"
 
 #include "bar_chart_item.h"
+#include "overlay_chart_item.h"
+#include "q_terminal/src/bar_feed.cxxqt.h"
 
 #include <algorithm>
 #include <iostream>
@@ -41,7 +43,7 @@ const char* graphics_api_name(QSGRendererInterface::GraphicsApi api) {
 } // namespace
 
 void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar_count,
-                     int duration_ms, int execution_rows) {
+                     int duration_ms, int execution_rows, int markers, int overlays) {
     QQuickWindow* window = nullptr;
     for (QObject* root : engine.rootObjects()) {
         window = qobject_cast<QQuickWindow*>(root);
@@ -122,12 +124,33 @@ void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar
         }
     }
 
+    BarFeed* overlayFeed = nullptr;
+    if (markers > 0 || overlays > 0) {
+        // Markers and overlays sit on their own feed and item, over the bar chart.
+        overlayFeed = new BarFeed(window);
+        overlayFeed->bench_populate(visible_buckets, markers, overlays);
+        auto* item = new OverlayChartItem(chart->parentItem());
+        item->setParentItem(chart->parentItem());
+        item->setSize(chart->size());
+        QObject::connect(chart, &QQuickItem::widthChanged, item, [chart, item]() { item->setWidth(chart->width()); });
+        QObject::connect(chart, &QQuickItem::heightChanged, item, [chart, item]() { item->setHeight(chart->height()); });
+        item->setSeries(overlayFeed);
+        item->setFirstBar(0);
+        item->setLastBar(visible_buckets);
+        item->setLowPrice(overlayFeed->getLow() - 1.0);
+        item->setHighPrice(overlayFeed->getHigh() + 1.0);
+    }
+
     auto* frame_ms = new std::vector<double>();
     auto* uploads_per_frame = new std::vector<int>();
     auto* timer = new QElapsedTimer();
     timer->start();
 
-    QObject::connect(window, &QQuickWindow::beforeRendering, window, [series]() {
+    QObject::connect(window, &QQuickWindow::beforeRendering, window, [series, overlayFeed]() {
+        if (overlayFeed != nullptr) {
+            // Worst case: the overlay buffers are rebuilt and uploaded every frame.
+            overlayFeed->setOverlay_revision(overlayFeed->getOverlay_revision() + 1);
+        }
         series->ingest_forming_bar(series->getLast_time() + 60, series->getLast_price(),
                                    series->getLast_price() + 1.0, series->getLast_price() - 1.0,
                                    series->getLast_price() + 0.5, 1.0);
@@ -144,7 +167,7 @@ void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar
     QTimer* stopTimer = new QTimer(window);
     stopTimer->setSingleShot(true);
     QObject::connect(stopTimer, &QTimer::timeout, window,
-                     [window, frame_ms, uploads_per_frame, visible_buckets, execution_rows]() {
+                     [window, frame_ms, uploads_per_frame, visible_buckets, execution_rows, markers, overlays]() {
                          if (frame_ms->empty()) {
                              std::cout << "frame_bench buckets=" << visible_buckets
                                        << " execution_rows=" << execution_rows
@@ -178,6 +201,8 @@ void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar
 
                          std::cout << "frame_bench buckets=" << visible_buckets
                                    << " execution_rows=" << execution_rows
+                                   << " markers=" << markers
+                                   << " overlays=" << overlays
                                    << " frames=" << sorted.size()
                                    << " p50_ms=" << p50
                                    << " p95_ms=" << p95

@@ -75,6 +75,8 @@ pub fn run_bench_frames(
     bar_count: i32,
     duration_ms: i32,
     execution_rows: i32,
+    markers: i32,
+    overlays: i32,
 ) -> i32 {
     let _ = (visible_buckets, bar_count);
     startup::run_slice_opts(
@@ -82,6 +84,8 @@ pub fn run_bench_frames(
         true,
         duration_ms as u64,
         execution_rows,
+        markers,
+        overlays,
     )
 }
 
@@ -104,11 +108,15 @@ fn main() {
         let bar_count = read_arg_i32(&args, "--bars", 500_000);
         let duration_ms = read_arg_i32(&args, "--duration-ms", 300_000);
         let execution_rows = read_arg_i32(&args, "--execution-rows", 0);
+        let markers = read_arg_i32(&args, "--markers", 0);
+        let overlays = read_arg_i32(&args, "--overlays", 0);
         std::process::exit(run_bench_frames(
             visible_buckets,
             bar_count,
             duration_ms,
             execution_rows,
+            markers,
+            overlays,
         ));
     }
     let auto_close_ms = read_arg_i32(&args, "--auto-close-ms", 0);
@@ -116,6 +124,8 @@ fn main() {
         config::Config::load(),
         false,
         auto_close_ms as u64,
+        0,
+        0,
         0,
     ));
 }

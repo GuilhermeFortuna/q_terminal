@@ -190,7 +190,7 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
 /// Opens the window whatever the API's state: configuration failures are shown
 /// in the scene, not printed to a terminal the user is not reading.
 pub fn run_slice(config: Result<Config, ConfigError>) -> i32 {
-    run_slice_opts(config, false, 0, 0)
+    run_slice_opts(config, false, 0, 0, 0, 0)
 }
 
 pub fn run_slice_opts(
@@ -198,6 +198,8 @@ pub fn run_slice_opts(
     bench: bool,
     auto_close_ms: u64,
     execution_rows: i32,
+    markers: i32,
+    overlays: i32,
 ) -> i32 {
     let mut ctx = setup_slice(&config);
     if bench {
@@ -207,6 +209,8 @@ pub fn run_slice_opts(
             500_000,
             auto_close_ms as i32,
             execution_rows,
+            markers,
+            overlays,
         );
     } else if auto_close_ms > 0 {
         chart_bridge::setup_window_auto_close(ctx.engine.as_mut().unwrap(), auto_close_ms as i32);

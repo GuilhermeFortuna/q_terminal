@@ -48,7 +48,7 @@ run:
 	cargo run
 
 bench-frames:
-	cargo run -- --bench-frames --buckets $${BENCH_BUCKETS:-2000} --bars $${BENCH_BARS:-500000} --duration-ms $${BENCH_DURATION_MS:-300000} --execution-rows $${BENCH_EXECUTION_ROWS:-0}
+	cargo run -- --bench-frames --buckets $${BENCH_BUCKETS:-2000} --bars $${BENCH_BARS:-500000} --duration-ms $${BENCH_DURATION_MS:-300000} --execution-rows $${BENCH_EXECUTION_ROWS:-0} --markers $${BENCH_MARKERS:-0} --overlays $${BENCH_OVERLAYS:-0}
 
 contracts:
 	contracts_tmp="$$(mktemp -d)"; \

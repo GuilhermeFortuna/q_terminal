@@ -75,6 +75,11 @@ This document establishes the 1:1 mapping between each visual field, signal, pan
 | [x] Unrealized P&L | Backend `/positions` poller | `qml/DeploymentDetail.qml` Position card | Mapped (from poller, never computed locally) |
 | [x] Mark Price | Backend `/positions` poller | `qml/DeploymentDetail.qml` Position card | Mapped (from poller) |
 | [x] Live Candlestick Chart | `ExecutionLiveChartPanel` | `qml/OpsWorkspace.qml` (`ChartPane.qml`) | Mapped (integrated into workspace) |
+| [x] Chart follows the selected deployment | `ExecutionLiveChartPanel` symbol/timeframe from deployment | `src/chart_target.rs` (`ChartTargeter`), `BarFeed.retarget` | Mapped (generation-stamped; no bar of the previous symbol drawn) |
+| [x] Indicator overlays (price and oscillator panes) | `deployment chart` route `indicators` | `src/execution/overlays.rs`, `cpp/overlay_chart_item.*` | Mapped (values from the chart route, refreshed once per completed bar; oscillators share a band below the bars) |
+| [x] Decision markers (buy, sell, close; hold none) | `liveChartMarkers.ts` `buildChartMarkers` | `src/execution/markers.rs`, `tests/markers.rs` vectors | Mapped |
+| [x] Fill markers at fill price | `liveChartMarkers.ts` | `src/execution/markers.rs` | Mapped |
+| [x] Marker hover detail | `ChartMarker.detail` | `ChartPane.qml` tooltip via `BarFeed.marker_detail_at` | Mapped |
 
 ---
 

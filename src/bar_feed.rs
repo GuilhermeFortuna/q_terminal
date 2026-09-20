@@ -197,6 +197,10 @@ pub mod ffi {
         #[qinvokable]
         fn marker_detail_at(self: &BarFeed, x: f32, y: f32, radius: f32) -> QString;
 
+        /// Fills the feed with synthetic bars, markers and overlays for the frame benchmark.
+        #[qinvokable]
+        fn bench_populate(self: Pin<&mut BarFeed>, bars: i64, markers: i64, overlays: i64);
+
         #[qinvokable]
         fn target_generation(self: &BarFeed) -> i64;
 
@@ -549,6 +553,65 @@ impl BarFeedRust {
         layers.extend(marker_layers);
         self.layers = layers;
         self.hits = hits;
+    }
+
+    /// Synthetic bars, `markers` markers spread over them and `overlays` overlay lines.
+    pub fn populate_bench(&mut self, bars: usize, markers: usize, overlays: usize) {
+        let t0 = 1_789_725_600_000i64;
+        self.bar_times = (0..bars as i64)
+            .map(|i| (t0 + i * 60_000) * 1_000)
+            .collect();
+        let close = |i: usize| 100.0 + ((i * 7) % 13) as f64 + (i as f64 * 0.01).sin() * 5.0;
+        self.bar_hlc = (0..bars)
+            .map(|i| (close(i) + 1.0, close(i) - 1.0, close(i)))
+            .collect();
+        let kinds = [
+            markers::MarkerKind::Buy,
+            markers::MarkerKind::Sell,
+            markers::MarkerKind::Close,
+            markers::MarkerKind::Fill,
+        ];
+        self.markers = (0..markers)
+            .map(|n| {
+                let i =
+                    if markers > 0 { n * bars / markers } else { 0 }.min(bars.saturating_sub(1));
+                Marker {
+                    id: format!("bench-{n}"),
+                    bar_index: i,
+                    bar_open_ms: t0 + i as i64 * 60_000,
+                    price: Some(close(i)),
+                    kind: kinds[n % 4],
+                    label: String::new(),
+                    detail: format!("bench marker {n}"),
+                }
+            })
+            .collect();
+        self.markers_key = Some((
+            self.bar_times.len(),
+            self.bar_times.first().copied().unwrap_or(0),
+            self.rows_rev,
+        ));
+        self.overlay_series = (0..overlays)
+            .map(|k| OverlaySeries {
+                key: format!("bench-{k}"),
+                label: format!("bench {k}"),
+                pane: if k % 2 == 0 {
+                    overlays::Pane::Price
+                } else {
+                    overlays::Pane::Oscillator
+                },
+                rgba: 0x2962ffff,
+                points: (0..bars)
+                    .map(|i| (t0 + i as i64 * 60_000, Some(close(i) + k as f64)))
+                    .collect(),
+            })
+            .collect();
+        let lo = self.bar_hlc.iter().map(|h| h.1).fold(f64::MAX, f64::min);
+        let hi = self.bar_hlc.iter().map(|h| h.0).fold(f64::MIN, f64::max);
+        self.low = lo;
+        self.high = hi;
+        self.bar_count = bars as i64;
+        self.overlay_revision += 1;
     }
 
     pub fn layers(&self) -> &[Layer] {
@@ -1059,6 +1122,21 @@ impl ffi::BarFeed {
             .filter(|(d, _)| *d <= radius * radius)
             .min_by(|a, b| a.0.total_cmp(&b.0));
         QString::from(best.map_or("", |(_, h)| h.detail.as_str()))
+    }
+
+    pub fn bench_populate(
+        mut self: std::pin::Pin<&mut Self>,
+        bars: i64,
+        markers: i64,
+        overlays: i64,
+    ) {
+        let before = self.as_ref().rust().snapshot_props();
+        self.as_mut().rust_mut().populate_bench(
+            bars.max(0) as usize,
+            markers.max(0) as usize,
+            overlays.max(0) as usize,
+        );
+        self.as_mut().notify_props(before);
     }
 
     pub fn target_generation(&self) -> i64 {

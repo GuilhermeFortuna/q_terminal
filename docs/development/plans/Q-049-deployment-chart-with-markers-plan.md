@@ -108,11 +108,11 @@ src/main.rs                   --bench-frames gains --markers N --overlays N
 - [x] 5. Write `OverlayFetcher`, `line_series_node` and `overlay_chart_item`, add
    the oscillator pane to `ChartPane.qml`, and write `tests/overlays.rs`.
    Commit.
-- [ ] 6. Write `tests/chart_alignment.rs` with the probe across a pan and two zoom
+- [x] 6. Write `tests/chart_alignment.rs` with the probe across a pan and two zoom
    levels. Commit.
-- [ ] 7. Add hover tooltips (decision reason; fill side, quantity, price, time).
+- [x] 7. Add hover tooltips (decision reason; fill side, quantity, price, time).
    Keep `qmllint` clean. Commit.
-- [ ] 8. Extend `--bench-frames` with markers and overlays, and record p95.
+- [x] 8. Extend `--bench-frames` with markers and overlays, and record p95.
    Commit.
 - [ ] 9. Tick the chart rows of `docs/ops-parity.md`, and update `README.md`.
    Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run, commit.
