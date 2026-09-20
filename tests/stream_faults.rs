@@ -41,6 +41,7 @@ async fn test_expired_history_range_resnapshots() {
         api_base: server.api_base(),
         symbol: "PETR4".to_string(),
         timeframe: "1m".to_string(),
+        operator: "operator".to_string(),
     };
 
     let sink = BarSink::new();
@@ -90,6 +91,7 @@ async fn test_epoch_changed_resnapshots_topic() {
         api_base: server.api_base(),
         symbol: "PETR4".to_string(),
         timeframe: "1m".to_string(),
+        operator: "operator".to_string(),
     };
 
     let sink = BarSink::new();
@@ -136,6 +138,7 @@ async fn test_lagging_and_cursor_expired_resnapshots() {
         api_base: server.api_base(),
         symbol: "PETR4".to_string(),
         timeframe: "1m".to_string(),
+        operator: "operator".to_string(),
     };
 
     let sink = BarSink::new();
@@ -182,6 +185,7 @@ async fn test_connect_503_reports_unavailable_and_retries() {
         api_base: server.api_base(),
         symbol: "PETR4".to_string(),
         timeframe: "1m".to_string(),
+        operator: "operator".to_string(),
     };
 
     let sink = BarSink::new();
@@ -223,6 +227,7 @@ async fn test_mid_stream_close_reconnects_and_recovers() {
         api_base: server.api_base(),
         symbol: "PETR4".to_string(),
         timeframe: "1m".to_string(),
+        operator: "operator".to_string(),
     };
 
     let sink = BarSink::new();

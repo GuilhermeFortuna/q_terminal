@@ -124,6 +124,7 @@ async fn test_api_down_at_startup_retries_without_crash() {
         api_base: "http://127.0.0.1:39123".to_string(),
         symbol: "PETR4".to_string(),
         timeframe: "1m".to_string(),
+        operator: "operator".to_string(),
     };
 
     let sink = BarSink::new();

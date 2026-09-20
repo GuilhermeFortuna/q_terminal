@@ -1220,6 +1220,7 @@ impl ffi::BarFeed {
             api_base: api_base.to_string(),
             symbol: symbol.to_string(),
             timeframe: tf_str,
+            operator: "operator".to_string(),
         };
         let mut rust = self.as_mut().rust_mut();
         rust.config = Some(cfg);
@@ -1361,6 +1362,7 @@ mod tests {
             api_base: api_base.to_string(),
             symbol: "PETR4".to_string(),
             timeframe: "1m".to_string(),
+            operator: "operator".to_string(),
         }
     }
 

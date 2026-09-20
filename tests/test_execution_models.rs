@@ -16,6 +16,9 @@ pub use bridge::execution_models;
 #[path = "../src/history/mod.rs"]
 pub mod history;
 pub use bridge::ops_status;
+#[path = "../src/ops_session.rs"]
+pub mod ops_session;
+pub use bridge::execution_controls;
 #[path = "../src/startup.rs"]
 pub mod startup;
 #[path = "../src/stream/mod.rs"]

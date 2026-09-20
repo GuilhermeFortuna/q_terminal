@@ -30,6 +30,7 @@ pub async fn start_on(server: FakeServer) -> Harness {
         api_base: server.api_base(),
         symbol: "PETR4".to_string(),
         timeframe: "1m".to_string(),
+        operator: "operator".to_string(),
     };
     let client = StreamClient::start_with(
         config,

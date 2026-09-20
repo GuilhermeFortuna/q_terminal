@@ -7,6 +7,8 @@ pub mod chart_bridge;
 pub mod chart_target;
 pub mod config;
 pub mod execution;
+pub mod ops_session;
+pub use bridge::execution_controls;
 pub use bridge::execution_models;
 pub mod history;
 pub use bridge::ops_status;

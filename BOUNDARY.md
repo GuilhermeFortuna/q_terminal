@@ -20,7 +20,21 @@ The terminal's read-only operations workspace (`qml/OpsWorkspace.qml` and its co
 - **Accounts and ledger** — paper-account balances and ledger entries with paged "load older" (`DeploymentDetail.qml`, `LedgerTable.qml`).
 - **Health and marks** — stream/API/worker/edge/kill-switch/live-lock status plus backend-computed unrealized P&L and mark prices, polled every two seconds (`OpsHeader.qml`, `OpsStatus`, `HealthPoller`).
 
-These surfaces are **read-only** in Q-047; command controls arrive in Q-048.
+### Execution commands (Q-048)
+
+The operations workspace now issues REST commands (each with an `Idempotency-Key`)
+and shows effects only when the execution stream delivers them:
+
+- **Create paper account** — `POST /api/v1/execution/accounts`
+- **Create deployment** — `POST /api/v1/execution/deployments` (saved-run picker only; no result browser)
+- **Lifecycle** — `POST /api/v1/execution/deployments/{id}/actions` (`start`, `pause`, `stop`)
+- **Flatten** — same actions route with `action: flatten` (confirmed)
+- **Kill switch** — `PUT /api/v1/execution/kill-switch` (engage and release, both confirmed)
+- **Resolve unknown order** — `POST /api/v1/execution/orders/{id}/resolve` (no default outcome; filled requires price, quantity, and time)
+
+Enablement follows architecture §8.1 via `ExecutionControls` + `enablement.rs`.
+Confirmations name the consequence; `mt5_live` deployments show a distinct live banner.
+The configured operator name (`operator` / `Q_TERMINAL_OPERATOR`) is sent as the actor on lifecycle and resolve commands.
 
 ---
 

@@ -18,6 +18,12 @@ pub mod config;
 pub mod execution;
 #[path = "../src/history/mod.rs"]
 pub mod history;
+#[path = "../src/ops_session.rs"]
+pub mod ops_session;
+#[allow(unused_imports)]
+pub use bridge::execution_controls;
+#[allow(unused_imports)]
+pub use bridge::execution_models;
 #[path = "../src/startup.rs"]
 pub mod startup;
 #[path = "../src/stream/mod.rs"]
@@ -120,6 +126,7 @@ async fn a_completed_bar_triggers_exactly_one_chart_request() {
         api_base: server.api_base(),
         symbol: "PETR4".into(),
         timeframe: "1m".into(),
+        operator: "operator".into(),
     };
     let ctx = startup::setup_slice(&Ok(config));
     let feed = ctx.feed_ptr;

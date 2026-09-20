@@ -19,6 +19,12 @@ pub mod config;
 pub mod execution;
 #[path = "../src/history/mod.rs"]
 pub mod history;
+#[path = "../src/ops_session.rs"]
+pub mod ops_session;
+#[allow(unused_imports)]
+pub use bridge::execution_controls;
+#[allow(unused_imports)]
+pub use bridge::execution_models;
 #[path = "../src/startup.rs"]
 pub mod startup;
 #[path = "../src/stream/mod.rs"]
@@ -120,6 +126,7 @@ async fn switch_shows_only_the_new_symbol_even_mid_burst() {
         api_base: server.api_base(),
         symbol: "PETR4".to_string(),
         timeframe: "1m".to_string(),
+        operator: "operator".to_string(),
     };
     let ctx = startup::setup_slice(&Ok(config));
     let feed = ctx.feed_ptr;

@@ -197,11 +197,36 @@ void feed_set_execution_rows(BarFeed* feed, rust::Str decisions, rust::Str fills
 std::int64_t feed_marker_count(BarFeed* feed);
 std::int64_t feed_rebuild_overlays(BarFeed* feed, int first_bar, int last_bar, double low, double high, float width, float height);
 
+#include <cstdint>
+
 #include "cpp/execution_models_cxx.h"
 
 class ExecutionModels;
+class OpsStatus;
+class ExecutionControls;
+
 ExecutionModels* find_window_execution_models(QQmlApplicationEngine& engine);
 void post_execution_models_sync(ExecutionModels* models);
+std::uintptr_t find_window_ops_status(QQmlApplicationEngine& engine);
+std::uintptr_t find_window_execution_controls(QQmlApplicationEngine& engine);
+void execution_models_setup(ExecutionModels* models, rust::Str api_base);
+void execution_models_bind_handle(ExecutionModels* models);
+void ops_status_mark_api_offline(std::uintptr_t status);
+void ops_status_mark_postgres_down(std::uintptr_t status);
+void ops_status_apply_health(std::uintptr_t status, rust::Str health_json);
+void ops_status_apply_positions(std::uintptr_t status, rust::Str positions_json);
+void ops_status_set_stream(std::uintptr_t status, rust::Str state, double age_s);
+void execution_controls_setup(std::uintptr_t controls, rust::Str api_base, rust::Str operator_name);
+void execution_controls_bind_handle(std::uintptr_t controls);
+void execution_controls_update_health(
+    std::uintptr_t controls,
+    bool api_offline,
+    bool postgres_available,
+    rust::Str worker_status,
+    double worker_heartbeat_age_s,
+    bool edge_reachable,
+    bool edge_mt5_connected);
+std::uintptr_t make_test_execution_controls();
 
 #endif // Q_TERMINAL_CHART_CXX_H
 

@@ -667,9 +667,16 @@ rust::String feed_symbol(BarFeed* feed) {
     return feed ? rust::String(feed->getSymbol().toStdString()) : rust::String();
 }
 
+#include "q_terminal/src/execution_controls.cxxqt.h"
+#include "q_terminal/src/execution_models.cxxqt.h"
+#include "q_terminal/src/ops_status.cxxqt.h"
+
 ExecutionModels* find_window_execution_models(QQmlApplicationEngine& engine) {
     for (QObject* root : engine.rootObjects()) {
         if (auto* models = root->findChild<ExecutionModels*>("executionModels")) {
+            return models;
+        }
+        if (auto* models = root->findChild<ExecutionModels*>()) {
             return models;
         }
     }
@@ -705,4 +712,121 @@ std::int64_t feed_rebuild_overlays(BarFeed* feed, int first_bar, int last_bar, d
     if (!feed) return 0;
     feed->rebuild_overlays(first_bar, last_bar, low, high, width, height);
     return feed->overlay_layer_count();
+}
+
+std::uintptr_t find_window_ops_status(QQmlApplicationEngine& engine) {
+    for (QObject* root : engine.rootObjects()) {
+        if (auto* status = root->findChild<OpsStatus*>("opsStatus")) {
+            return reinterpret_cast<std::uintptr_t>(status);
+        }
+        if (auto* status = root->findChild<OpsStatus*>()) {
+            return reinterpret_cast<std::uintptr_t>(status);
+        }
+    }
+    return 0;
+}
+
+std::uintptr_t find_window_execution_controls(QQmlApplicationEngine& engine) {
+    for (QObject* root : engine.rootObjects()) {
+        if (auto* controls = root->findChild<ExecutionControls*>("executionControls")) {
+            return reinterpret_cast<std::uintptr_t>(controls);
+        }
+        if (auto* controls = root->findChild<ExecutionControls*>()) {
+            return reinterpret_cast<std::uintptr_t>(controls);
+        }
+    }
+    return 0;
+}
+
+void execution_models_setup(ExecutionModels* models, rust::Str api_base) {
+    if (!models) {
+        return;
+    }
+    models->setup(QString::fromUtf8(api_base.data(), static_cast<int>(api_base.size())));
+}
+
+void execution_models_bind_handle(ExecutionModels* models) {
+    if (!models) {
+        return;
+    }
+    models->bind_store();
+}
+
+void ops_status_mark_api_offline(std::uintptr_t status) {
+    if (!status) {
+        return;
+    }
+    reinterpret_cast<OpsStatus*>(status)->mark_api_offline();
+}
+
+void ops_status_mark_postgres_down(std::uintptr_t status) {
+    if (!status) {
+        return;
+    }
+    reinterpret_cast<OpsStatus*>(status)->mark_postgres_down();
+}
+
+void ops_status_apply_health(std::uintptr_t status, rust::Str health_json) {
+    if (!status) {
+        return;
+    }
+    reinterpret_cast<OpsStatus*>(status)->apply_health_json(
+        QString::fromUtf8(health_json.data(), static_cast<int>(health_json.size())));
+}
+
+void ops_status_apply_positions(std::uintptr_t status, rust::Str positions_json) {
+    if (!status) {
+        return;
+    }
+    reinterpret_cast<OpsStatus*>(status)->apply_positions_json(
+        QString::fromUtf8(positions_json.data(), static_cast<int>(positions_json.size())));
+}
+
+void ops_status_set_stream(std::uintptr_t status, rust::Str state, double age_s) {
+    if (!status) {
+        return;
+    }
+    reinterpret_cast<OpsStatus*>(status)->set_stream_info(
+        QString::fromUtf8(state.data(), static_cast<int>(state.size())), age_s);
+}
+
+void execution_controls_setup(std::uintptr_t controls, rust::Str api_base, rust::Str operator_name) {
+    if (!controls) {
+        return;
+    }
+    reinterpret_cast<ExecutionControls*>(controls)->setup(
+        QString::fromUtf8(api_base.data(), static_cast<int>(api_base.size())),
+        QString::fromUtf8(operator_name.data(), static_cast<int>(operator_name.size())));
+}
+
+void execution_controls_bind_handle(std::uintptr_t controls) {
+    if (!controls) {
+        return;
+    }
+    reinterpret_cast<ExecutionControls*>(controls)->bind_store();
+}
+
+void execution_controls_update_health(
+    std::uintptr_t controls,
+    bool api_offline,
+    bool postgres_available,
+    rust::Str worker_status,
+    double worker_heartbeat_age_s,
+    bool edge_reachable,
+    bool edge_mt5_connected) {
+    if (!controls) {
+        return;
+    }
+    reinterpret_cast<ExecutionControls*>(controls)->update_health(
+        api_offline,
+        postgres_available,
+        QString::fromUtf8(worker_status.data(), static_cast<int>(worker_status.size())),
+        worker_heartbeat_age_s,
+        edge_reachable,
+        edge_mt5_connected);
+}
+
+std::uintptr_t make_test_execution_controls() {
+    ensure_test_app();
+    return reinterpret_cast<std::uintptr_t>(new ExecutionControls());
 }

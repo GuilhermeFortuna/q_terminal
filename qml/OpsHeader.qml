@@ -10,6 +10,30 @@ Rectangle {
     color: "#1e222d"
 
     required property OpsStatus opsStatus
+    required property ExecutionControls executionControls
+    required property ExecutionModels executionModels
+
+    property string killSwitchActionId: ""
+
+    ConfirmDialog {
+        id: killEngageDialog
+        actionTitle: "Engage kill switch"
+        consequenceText: "Halts new risk across all deployments until released."
+        onConfirmed: {
+            var id = root.executionControls.request("kill_switch_set", JSON.stringify({ reason: "Operator engaged kill switch" }));
+            root.killSwitchActionId = id;
+        }
+    }
+
+    ConfirmDialog {
+        id: killReleaseDialog
+        actionTitle: "Release kill switch"
+        consequenceText: "Allows trading to resume when other gates permit."
+        onConfirmed: {
+            var id = root.executionControls.request("kill_switch_clear", "{}");
+            root.killSwitchActionId = id;
+        }
+    }
 
     ColumnLayout {
         id: bannerColumn
@@ -237,22 +261,77 @@ Rectangle {
                     }
                 }
 
-                // Kill Switch Badge
-                Rectangle {
-                    height: 24
-                    implicitWidth: killText.implicitWidth + 16
-                    radius: 4
-                    color: root.opsStatus.kill_switch_enabled ? "#7f1d1d" : "#1e293b"
-                    border.color: root.opsStatus.kill_switch_enabled ? "#ef4444" : "#475569"
+                // Kill Switch Badge + control
+                RowLayout {
+                    spacing: 6
                     Layout.alignment: Qt.AlignVCenter
 
-                    Text {
-                        id: killText
-                        anchors.centerIn: parent
-                        text: "Kill Switch: " + (root.opsStatus.kill_switch_enabled ? "ENGAGED" : "OFF")
-                        color: root.opsStatus.kill_switch_enabled ? "#fca5a5" : "#94a3b8"
-                        font.pixelSize: 11
-                        font.bold: true
+                    Rectangle {
+                        height: 24
+                        implicitWidth: killText.implicitWidth + 16
+                        radius: 4
+                        color: root.opsStatus.kill_switch_enabled ? "#7f1d1d" : "#1e293b"
+                        border.color: root.opsStatus.kill_switch_enabled ? "#ef4444" : "#475569"
+
+                        Text {
+                            id: killText
+                            anchors.centerIn: parent
+                            text: "Kill Switch: " + (root.opsStatus.kill_switch_enabled ? "ENGAGED" : "OFF")
+                            color: root.opsStatus.kill_switch_enabled ? "#fca5a5" : "#94a3b8"
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+                    }
+
+                    Rectangle {
+                        height: 24
+                        implicitWidth: killBtnText.implicitWidth + 16
+                        radius: 4
+                        visible: !root.opsStatus.kill_switch_enabled
+                        color: root.executionControls.is_command_enabled("kill_switch_set") && !killEngageMouse.pressed ? "#7f1d1d" : "#450a0a"
+                        border.color: "#ef4444"
+                        opacity: root.executionControls.is_command_enabled("kill_switch_set") ? 1.0 : 0.4
+
+                        Text {
+                            id: killBtnText
+                            anchors.centerIn: parent
+                            text: "Engage"
+                            color: "#fca5a5"
+                            font.pixelSize: 10
+                            font.bold: true
+                        }
+
+                        MouseArea {
+                            id: killEngageMouse
+                            anchors.fill: parent
+                            enabled: root.executionControls.is_command_enabled("kill_switch_set")
+                            onClicked: killEngageDialog.open()
+                        }
+                    }
+
+                    Rectangle {
+                        height: 24
+                        implicitWidth: releaseBtnText.implicitWidth + 16
+                        radius: 4
+                        visible: root.opsStatus.kill_switch_enabled
+                        color: root.executionControls.is_command_enabled("kill_switch_clear") ? "#1e293b" : "#0f172a"
+                        border.color: "#64748b"
+                        opacity: root.executionControls.is_command_enabled("kill_switch_clear") ? 1.0 : 0.4
+
+                        Text {
+                            id: releaseBtnText
+                            anchors.centerIn: parent
+                            text: "Release"
+                            color: "#cbd5e1"
+                            font.pixelSize: 10
+                            font.bold: true
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: root.executionControls.is_command_enabled("kill_switch_clear")
+                            onClicked: killReleaseDialog.open()
+                        }
                     }
                 }
 

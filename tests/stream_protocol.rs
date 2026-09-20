@@ -38,6 +38,7 @@ async fn test_connect_snapshot_live_happy_path() {
         api_base: server.api_base(),
         symbol: "PETR4".to_string(),
         timeframe: "1m".to_string(),
+        operator: "operator".to_string(),
     };
 
     let sink = BarSink::new();
@@ -98,6 +99,7 @@ async fn test_completed_gap_closed_from_history() {
         api_base: server.api_base(),
         symbol: "PETR4".to_string(),
         timeframe: "1m".to_string(),
+        operator: "operator".to_string(),
     };
 
     let sink = BarSink::new();
@@ -152,6 +154,7 @@ async fn test_rejected_topic_leaves_other_working() {
         api_base: server.api_base(),
         symbol: "PETR4".to_string(),
         timeframe: "1m".to_string(),
+        operator: "operator".to_string(),
     };
 
     let sink = BarSink::new();

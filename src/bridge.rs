@@ -1,6 +1,8 @@
 #[path = "bar_feed.rs"]
 #[allow(clippy::float_cmp)]
 pub mod bar_feed;
+#[path = "execution_controls.rs"]
+pub mod execution_controls;
 #[path = "execution_models.rs"]
 pub mod execution_models;
 #[path = "ops_status.rs"]

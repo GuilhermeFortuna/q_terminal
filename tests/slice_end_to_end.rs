@@ -16,6 +16,10 @@ pub mod config;
 pub mod execution;
 #[path = "../src/history/mod.rs"]
 pub mod history;
+#[path = "../src/ops_session.rs"]
+pub mod ops_session;
+pub use bridge::execution_controls;
+pub use bridge::execution_models;
 #[path = "../src/startup.rs"]
 pub mod startup;
 #[path = "../src/stream/mod.rs"]
@@ -127,6 +131,7 @@ async fn test_slice_end_to_end_lake_to_live_vertices_and_no_polling() {
         api_base: server.api_base(),
         symbol: "PETR4".to_string(),
         timeframe: "1m".to_string(),
+        operator: "operator".to_string(),
     };
 
     // 3. Start slice

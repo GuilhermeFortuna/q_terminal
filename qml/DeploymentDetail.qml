@@ -12,6 +12,43 @@ Rectangle {
 
     required property ExecutionModels executionModels
     required property OpsStatus opsStatus
+    required property ExecutionControls executionControls
+
+    property string lastActionId: ""
+
+    function deploymentField(field) {
+        return root.executionModels.field_for_selected_deployment(field);
+    }
+
+    function requestLifecycle(action, confirm) {
+        var depId = root.executionModels.selected_deployment_id;
+        if (depId === "") return;
+        var payload = { deployment_id: depId };
+        var id = root.executionControls.request(action, JSON.stringify(payload));
+        root.lastActionId = id;
+    }
+
+    ConfirmDialog {
+        id: flattenDialog
+        actionTitle: "Flatten position"
+        consequenceText: {
+            var sym = root.deploymentField("symbol");
+            var tf = root.deploymentField("timeframe");
+            var name = root.deploymentField("name");
+            var qty = root.deploymentField("pos_quantity");
+            return "Flatten " + sym + " " + tf + " · " + name + " — sends a market order through the edge to close " + (qty || "0") + " contracts";
+        }
+        liveWarning: root.deploymentField("broker_mode") === "mt5_live"
+        onConfirmed: requestLifecycle("flatten", true)
+    }
+
+    ConfirmDialog {
+        id: stopDialog
+        actionTitle: "Stop deployment"
+        consequenceText: "Stops the deployment; open positions remain until flattened."
+        liveWarning: root.deploymentField("broker_mode") === "mt5_live"
+        onConfirmed: requestLifecycle("stop", true)
+    }
 
     property int currentTabIndex: 0
     readonly property var tabNames: ["orders", "fills", "decisions", "risk", "ledger"]
@@ -123,6 +160,57 @@ Rectangle {
                         color: "#64748b"
                         font.pixelSize: 10
                         visible: root.executionModels.selected_deployment_id === ""
+                    }
+                }
+
+                // Lifecycle action bar
+                RowLayout {
+                    visible: root.executionModels.selected_deployment_id !== ""
+                    spacing: 6
+                    Layout.alignment: Qt.AlignVCenter
+
+                    Repeater {
+                        model: [
+                            { label: "Start", kind: "start", confirm: false },
+                            { label: "Pause", kind: "pause", confirm: false },
+                            { label: "Stop", kind: "stop", confirm: true },
+                            { label: "Flatten", kind: "flatten", confirm: true }
+                        ]
+
+                        delegate: Rectangle {
+                            required property var modelData
+                            height: 24
+                            implicitWidth: actText.implicitWidth + 16
+                            radius: 4
+                            opacity: root.executionControls.is_command_enabled(modelData.kind) ? 1.0 : 0.4
+                            color: actMouse.containsMouse ? "#2563eb" : "#1d4ed8"
+                            border.color: "#38bdf8"
+
+                            Text {
+                                id: actText
+                                anchors.centerIn: parent
+                                text: modelData.label
+                                color: "#ffffff"
+                                font.pixelSize: 10
+                                font.bold: true
+                            }
+
+                            MouseArea {
+                                id: actMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                enabled: root.executionControls.is_command_enabled(modelData.kind)
+                                onClicked: {
+                                    if (modelData.kind === "flatten") {
+                                        flattenDialog.open();
+                                    } else if (modelData.kind === "stop") {
+                                        stopDialog.open();
+                                    } else {
+                                        requestLifecycle(modelData.kind, false);
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
