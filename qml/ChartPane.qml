@@ -15,6 +15,14 @@ Item {
     readonly property string topPriceLabel: viewport.empty ? "" : viewport.highPrice.toFixed(2)
     readonly property string bottomPriceLabel: viewport.empty ? "" : viewport.lowPrice.toFixed(2)
 
+    function updateTip() {
+        if (!root.feed || !hover.hovered) {
+            tipText.text = "";
+            return;
+        }
+        tipText.text = root.feed.marker_detail_at(hover.point.position.x, hover.point.position.y, 10);
+    }
+
     function pad2(n) {
         return (n < 10 ? "0" : "") + n;
     }
@@ -121,6 +129,44 @@ Item {
                 lastBar: viewport.lastBar
                 lowPrice: viewport.lowPrice
                 highPrice: viewport.highPrice
+            }
+
+            // Decision and fill markers and indicator overlays share the bar item's
+            // viewport, so they pan and zoom with the bars.
+            OverlayChartItem {
+                id: overlay
+                objectName: "overlayChart"
+                width: chartContainer.width
+                height: chartContainer.height
+                series: root.feed
+                firstBar: viewport.firstBar
+                lastBar: viewport.lastBar
+                lowPrice: viewport.lowPrice
+                highPrice: viewport.highPrice
+            }
+
+            HoverHandler {
+                id: hover
+                onPointChanged: root.updateTip()
+            }
+
+            Rectangle {
+                id: tip
+                objectName: "markerTooltip"
+                visible: tipText.text !== ""
+                x: Math.min(hover.point.position.x + 12, chartContainer.width - width)
+                y: Math.min(hover.point.position.y + 12, chartContainer.height - height)
+                width: tipText.implicitWidth + 12
+                height: tipText.implicitHeight + 8
+                color: "#1e222d"
+                border.color: "#363a45"
+
+                Text {
+                    id: tipText
+                    anchors.centerIn: parent
+                    color: "#d1d4dc"
+                    font.pixelSize: 11
+                }
             }
         }
 

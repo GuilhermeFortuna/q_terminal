@@ -119,6 +119,7 @@ pub mod chart {
 
         unsafe fn post_feed_completed_bar(
             feed: *mut BarFeed,
+            generation: i64,
             time: i64,
             open: f64,
             high: f64,
@@ -128,6 +129,7 @@ pub mod chart {
 
         unsafe fn post_feed_forming_bar(
             feed: *mut BarFeed,
+            generation: i64,
             time: i64,
             open: f64,
             high: f64,
@@ -216,6 +218,30 @@ pub mod chart {
         fn ensure_test_app();
         fn reset_chart_probe_state();
 
+        unsafe fn post_execution_models_sync(models: *mut ExecutionModels);
+
+        unsafe fn feed_retarget(
+            feed: *mut BarFeed,
+            symbol: &str,
+            timeframe: &str,
+            generation: i64,
+        ) -> bool;
+        unsafe fn feed_target_generation(feed: *mut BarFeed) -> i64;
+        unsafe fn feed_stale_dropped(feed: *mut BarFeed) -> i64;
+        unsafe fn feed_symbol(feed: *mut BarFeed) -> String;
+        unsafe fn post_feed_overlays(feed: *mut BarFeed, generation: i64, json: &str);
+        unsafe fn feed_set_execution_rows(feed: *mut BarFeed, decisions: &str, fills: &str);
+        unsafe fn feed_marker_count(feed: *mut BarFeed) -> i64;
+        unsafe fn feed_rebuild_overlays(
+            feed: *mut BarFeed,
+            first_bar: i32,
+            last_bar: i32,
+            low: f64,
+            high: f64,
+            width: f32,
+            height: f32,
+        ) -> i64;
+
         unsafe fn feed_bar_times_len(feed: *mut BarFeed) -> i32;
         unsafe fn feed_bar_time_at(feed: *mut BarFeed, index: i32) -> i64;
         unsafe fn feed_vertex_len(feed: *mut BarFeed) -> i32;
@@ -280,18 +306,20 @@ pub use chart::{
     execution_models_revision, execution_models_select_account, execution_models_select_deployment,
     execution_models_setup, execution_models_sync, feed_bar_count, feed_bar_time_at,
     feed_bar_times_len, feed_history_error, feed_history_loading, feed_history_source,
-    feed_rebuild_geometry, feed_rest_calls, feed_set_bar_count, feed_set_connection_state,
-    feed_set_data_age_ms, feed_set_history, feed_set_last_error, feed_set_live_only,
-    feed_set_stale, feed_set_symbol, feed_set_timeframe, feed_setup_and_load, feed_vertex_at,
-    feed_vertex_len, find_window_execution_controls, find_window_execution_models,
-    find_window_feed, find_window_ops_status, make_chart_pane_probe, make_empty_state_probe,
-    make_status_strip_probe, make_test_execution_controls, make_test_execution_models,
-    make_test_feed, make_viewport_probe, ops_status_apply_health, ops_status_apply_positions,
-    ops_status_mark_api_offline, ops_status_mark_postgres_down, ops_status_set_stream,
-    post_feed_completed_bar, post_feed_forming_bar, post_feed_stream_state, process_events,
-    setup_window_auto_close, setup_window_feed, BarFeed, ChartPaneProbe, ChartPaneProbeResult,
-    EmptyStateProbe, EmptyStateProbeResult, ExecutionModels, ProbeResult, ProbeVertex,
-    StatusStripProbe, StatusStripProbeResult, ViewportProbe, ViewportProbeResult,
+    feed_marker_count, feed_rebuild_geometry, feed_rebuild_overlays, feed_rest_calls,
+    feed_retarget, feed_set_bar_count, feed_set_connection_state, feed_set_data_age_ms,
+    feed_set_execution_rows, feed_set_history, feed_set_last_error, feed_set_live_only,
+    feed_set_stale, feed_set_symbol, feed_set_timeframe, feed_setup_and_load, feed_stale_dropped,
+    feed_symbol, feed_target_generation, feed_vertex_at, feed_vertex_len,
+    find_window_execution_controls, find_window_execution_models, find_window_feed,
+    find_window_ops_status, make_chart_pane_probe, make_empty_state_probe, make_status_strip_probe,
+    make_test_execution_controls, make_test_execution_models, make_test_feed, make_viewport_probe,
+    ops_status_apply_health, ops_status_apply_positions, ops_status_mark_api_offline,
+    ops_status_mark_postgres_down, ops_status_set_stream, post_execution_models_sync,
+    post_feed_completed_bar, post_feed_forming_bar, post_feed_overlays, post_feed_stream_state,
+    process_events, setup_window_auto_close, setup_window_feed, BarFeed, ChartPaneProbe,
+    ChartPaneProbeResult, EmptyStateProbe, EmptyStateProbeResult, ExecutionModels, ProbeResult,
+    ProbeVertex, StatusStripProbe, StatusStripProbeResult, ViewportProbe, ViewportProbeResult,
 };
 
 pub fn register_chart_types() {

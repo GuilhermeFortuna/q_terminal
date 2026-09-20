@@ -6,6 +6,8 @@ pub mod contracts_stream;
 pub mod bridge;
 #[path = "../src/chart_bridge.rs"]
 pub mod chart_bridge;
+#[path = "../src/chart_target.rs"]
+pub mod chart_target;
 #[path = "../src/config.rs"]
 pub mod config;
 #[path = "../src/execution/mod.rs"]
@@ -29,6 +31,9 @@ use startup::setup_slice;
 
 #[test]
 fn test_startup_config_error_opens_window_showing_error() {
+    let _guard = chart_bridge::QT_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let err = ConfigError::MissingField("api_base".into());
     let ctx = setup_slice(&Err(err));
     assert!(!ctx.feed_ptr.is_null());
@@ -43,6 +48,9 @@ fn test_startup_config_error_opens_window_showing_error() {
 
 #[test]
 fn test_startup_unreachable_api_opens_window_retrying() {
+    let _guard = chart_bridge::QT_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let config = Config {
         api_base: "http://127.0.0.1:39999".into(),
         symbol: "PETR4".into(),

@@ -11,7 +11,20 @@ pub enum BarDelivery {
 struct BarSinkInner {
     completed: VecDeque<BarColumns>,
     forming: Option<BarColumns>,
+    generation: u64,
     listener: Option<Arc<dyn Fn() + Send + Sync + 'static>>,
+}
+
+fn drain_locked(inner: &mut BarSinkInner) -> Vec<BarDelivery> {
+    let mut result =
+        Vec::with_capacity(inner.completed.len() + if inner.forming.is_some() { 1 } else { 0 });
+    while let Some(c) = inner.completed.pop_front() {
+        result.push(BarDelivery::Completed(c));
+    }
+    if let Some(f) = inner.forming.take() {
+        result.push(BarDelivery::Forming(f));
+    }
+    result
 }
 
 #[derive(Clone)]
@@ -31,6 +44,7 @@ impl BarSink {
             inner: Arc::new(Mutex::new(BarSinkInner {
                 completed: VecDeque::new(),
                 forming: None,
+                generation: 0,
                 listener: None,
             })),
         }
@@ -39,6 +53,20 @@ impl BarSink {
     pub fn set_listener(&self, listener: Arc<dyn Fn() + Send + Sync + 'static>) {
         let mut inner = self.inner.lock().unwrap();
         inner.listener = Some(listener);
+    }
+
+    /// The chart target generation deliveries are currently stamped with (Q-049).
+    pub fn generation(&self) -> u64 {
+        self.inner.lock().unwrap().generation
+    }
+
+    /// Drops everything queued for the previous chart target and stamps later deliveries
+    /// with `generation`. Called by the stream client when it switches its bar filters.
+    pub fn reset(&self, generation: u64) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.completed.clear();
+        inner.forming = None;
+        inner.generation = generation;
     }
 
     pub fn deliver_completed(&self, bars: BarColumns) {
@@ -64,16 +92,15 @@ impl BarSink {
     }
 
     pub fn drain(&self) -> Vec<BarDelivery> {
+        drain_locked(&mut self.inner.lock().unwrap())
+    }
+
+    /// Like `drain`, with the generation the returned deliveries belong to. The queue never
+    /// holds two generations: `reset` clears it as it changes the stamp.
+    pub fn drain_stamped(&self) -> (u64, Vec<BarDelivery>) {
         let mut inner = self.inner.lock().unwrap();
-        let mut result =
-            Vec::with_capacity(inner.completed.len() + if inner.forming.is_some() { 1 } else { 0 });
-        while let Some(c) = inner.completed.pop_front() {
-            result.push(BarDelivery::Completed(c));
-        }
-        if let Some(f) = inner.forming.take() {
-            result.push(BarDelivery::Forming(f));
-        }
-        result
+        let generation = inner.generation;
+        (generation, drain_locked(&mut inner))
     }
 
     pub fn drain_into(&self, feed: &mut crate::bridge::bar_feed::BarFeedRust) {

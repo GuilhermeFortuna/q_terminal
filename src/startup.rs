@@ -5,17 +5,22 @@ use cxx_qt_lib::{QQmlApplicationEngine, QString, QUrl};
 use crate::bridge;
 use crate::bridge::bar_feed::parse_timeframe_ms;
 use crate::chart_bridge;
+use crate::chart_target::{ChartTargeter, OverlayFetcher};
 use crate::config::{Config, ConfigError};
+use crate::execution::store::ExecutionHandle;
 use crate::ops_session;
 use crate::stream::client::{ConnectionState, StreamClient};
 use crate::stream::sink::BarSink;
 
 /// Context holding the loaded slice resources.
 pub struct SliceContext {
-    pub engine: cxx::UniquePtr<cxx_qt_lib::QQmlApplicationEngine>,
-    pub feed_ptr: *mut chart_bridge::BarFeed,
+    // Fields drop in declaration order. The stream client goes first: its listeners post to
+    // the feed and the models, which the engine owns and destroys.
     pub stream_client: Option<StreamClient>,
     pub health_poller: Option<std::sync::Arc<crate::execution::health::HealthPoller>>,
+    pub targeter: Option<std::sync::Arc<ChartTargeter>>,
+    pub engine: cxx::UniquePtr<cxx_qt_lib::QQmlApplicationEngine>,
+    pub feed_ptr: *mut chart_bridge::BarFeed,
 }
 
 impl Drop for SliceContext {
@@ -25,6 +30,46 @@ impl Drop for SliceContext {
         }
         let _ = self.stream_client.take();
     }
+}
+
+/// Binds the execution store to the window's models and makes the chart follow the
+/// selected deployment.
+fn wire_execution(
+    engine: std::pin::Pin<&mut QQmlApplicationEngine>,
+    handle: ExecutionHandle,
+    targeter: std::sync::Arc<ChartTargeter>,
+    feed_ptr: *mut chart_bridge::BarFeed,
+) {
+    let feed_addr = feed_ptr as usize;
+    let models = chart_bridge::find_window_execution_models(engine);
+    if models.is_null() {
+        return;
+    }
+    use cxx_qt::CxxQtType;
+    let ffi_models = models as *mut crate::bridge::execution_models::ffi::ExecutionModels;
+    let dirty = unsafe {
+        let mut pin = std::pin::Pin::new_unchecked(&mut *ffi_models);
+        let mut rust = pin.as_mut().rust_mut();
+        rust.bind_handle(handle.clone());
+        rust.on_target = Some(std::sync::Arc::new(move |dep| {
+            targeter.select(dep);
+        }));
+        rust.on_rows = Some(std::sync::Arc::new(move |dec, fills| {
+            chart_bridge::feed_set_execution_rows(
+                feed_addr as *mut chart_bridge::BarFeed,
+                &dec,
+                &fills,
+            )
+        }));
+        rust.dirty.clone()
+    };
+    let addr = models as usize;
+    handle.set_listener(std::sync::Arc::new(move || {
+        dirty.store(true, std::sync::atomic::Ordering::Release);
+        unsafe {
+            chart_bridge::post_execution_models_sync(addr as *mut chart_bridge::ExecutionModels)
+        };
+    }));
 }
 
 /// Sets up the window and slice context for the given config.
@@ -47,6 +92,7 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
 
     let feed_ptr = unsafe { chart_bridge::find_window_feed(engine.as_mut().unwrap()) };
     let mut stream_client: Option<StreamClient> = None;
+    let mut chart_targeter: Option<std::sync::Arc<ChartTargeter>> = None;
     let mut health_poller: Option<std::sync::Arc<crate::execution::health::HealthPoller>> = None;
 
     if !feed_ptr.is_null() {
@@ -67,50 +113,36 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
                 }
 
                 let sink = BarSink::new();
-                let (_exec_handle, client_opt, poller) =
+                let (exec_handle, client_opt, poller) =
                     ops_session::wire_ops_session(&mut engine, cfg, sink.clone());
                 let client = client_opt.expect("execution stream client");
+                health_poller = Some(poller);
 
-                let sink_drainer = {
-                    let sink = sink.clone();
-                    let feed_addr = feed_ptr as usize;
-                    Arc::new(move || {
-                        let feed = feed_addr as *mut chart_bridge::BarFeed;
-                        for delivery in sink.drain() {
-                            match delivery {
-                                crate::stream::sink::BarDelivery::Completed(cols) => {
-                                    for i in 0..cols.time.len() {
-                                        unsafe {
-                                            chart_bridge::post_feed_completed_bar(
-                                                feed,
-                                                cols.time[i],
-                                                cols.open[i],
-                                                cols.high[i],
-                                                cols.low[i],
-                                                cols.close[i],
-                                            );
-                                        }
-                                    }
-                                }
-                                crate::stream::sink::BarDelivery::Forming(cols) => {
-                                    if let Some(&t) = cols.time.first() {
-                                        unsafe {
-                                            chart_bridge::post_feed_forming_bar(
-                                                feed,
-                                                t,
-                                                cols.open[0],
-                                                cols.high[0],
-                                                cols.low[0],
-                                                cols.close[0],
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    })
-                };
-                sink.set_listener(sink_drainer);
+                let fetcher = OverlayFetcher::new(&cfg.api_base, feed_ptr);
+                let targeter = ChartTargeter::new(
+                    feed_ptr,
+                    (cfg.symbol.clone(), cfg.timeframe.clone()),
+                    client.retargeter(),
+                    fetcher.clone(),
+                );
+                unsafe {
+                    use cxx_qt::CxxQtType;
+                    let ffi_feed = feed_ptr as *mut crate::bridge::bar_feed::ffi::BarFeed;
+                    let mut pin = std::pin::Pin::new_unchecked(&mut *ffi_feed);
+                    pin.as_mut().rust_mut().on_completed =
+                        Some(std::sync::Arc::new(move |generation| {
+                            fetcher.request(generation)
+                        }));
+                }
+                wire_execution(
+                    engine.as_mut().unwrap(),
+                    exec_handle,
+                    targeter.clone(),
+                    feed_ptr,
+                );
+                chart_targeter = Some(targeter);
+
+                crate::chart_target::install_bar_drainer(&sink, feed_ptr);
 
                 let shared = client.shared();
                 let feed_addr = feed_ptr as usize;
@@ -167,23 +199,23 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
                 }
 
                 stream_client = Some(client);
-                health_poller = Some(poller);
             }
         }
     }
 
     SliceContext {
-        engine,
-        feed_ptr,
         stream_client,
         health_poller,
+        targeter: chart_targeter,
+        engine,
+        feed_ptr,
     }
 }
 
 /// Opens the window whatever the API's state: configuration failures are shown
 /// in the scene, not printed to a terminal the user is not reading.
 pub fn run_slice(config: Result<Config, ConfigError>) -> i32 {
-    run_slice_opts(config, false, 0, 0)
+    run_slice_opts(config, false, 0, 0, 0, 0)
 }
 
 pub fn run_slice_opts(
@@ -191,6 +223,8 @@ pub fn run_slice_opts(
     bench: bool,
     auto_close_ms: u64,
     execution_rows: i32,
+    markers: i32,
+    overlays: i32,
 ) -> i32 {
     let mut ctx = setup_slice(&config);
     if bench {
@@ -200,6 +234,8 @@ pub fn run_slice_opts(
             500_000,
             auto_close_ms as i32,
             execution_rows,
+            markers,
+            overlays,
         );
     } else if auto_close_ms > 0 {
         chart_bridge::setup_window_auto_close(ctx.engine.as_mut().unwrap(), auto_close_ms as i32);

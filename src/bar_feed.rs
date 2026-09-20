@@ -6,6 +6,9 @@ use cxx_qt_lib::QString;
 use q_buffers::frame::{BarColumns, TimeLabel, VolumeSet};
 
 use crate::config::Config;
+use crate::contracts_stream::{ExecutionDecisionState, ExecutionFillEvent};
+use crate::execution::markers::{self, Marker};
+use crate::execution::overlays::{self, Hit, Layer, OverlaySeries, View};
 use crate::history::{HistoryController, Loaded, DEFAULT_HISTORY_BARS};
 
 #[derive(Debug, Clone)]
@@ -80,6 +83,7 @@ pub mod ffi {
         #[qproperty(i64, last_time)]
         #[qproperty(f64, low)]
         #[qproperty(f64, high)]
+        #[qproperty(i64, overlay_revision)]
         type BarFeed = super::BarFeedRust;
 
         #[qinvokable]
@@ -112,6 +116,96 @@ pub mod ffi {
             low: f64,
             close: f64,
         );
+
+        #[qinvokable]
+        fn ingest_completed_bar_gen(
+            self: Pin<&mut BarFeed>,
+            generation: i64,
+            time: i64,
+            open: f64,
+            high: f64,
+            low: f64,
+            close: f64,
+        );
+
+        #[qinvokable]
+        fn ingest_forming_bar_gen(
+            self: Pin<&mut BarFeed>,
+            generation: i64,
+            time: i64,
+            open: f64,
+            high: f64,
+            low: f64,
+            close: f64,
+        );
+
+        /// Points the feed at another symbol and timeframe: drops the previous target's
+        /// bars, history load and pending deliveries, and loads the new target's history.
+        /// Anything stamped with an older generation is dropped from then on.
+        #[qinvokable]
+        fn retarget(
+            self: Pin<&mut BarFeed>,
+            symbol: QString,
+            timeframe: QString,
+            generation: i64,
+        ) -> bool;
+
+        /// Replaces the selected deployment's decisions and fills (JSON arrays of the stream
+        /// contract's states). Markers are placed on the bars at the next rebuild.
+        #[qinvokable]
+        fn set_execution_rows(
+            self: Pin<&mut BarFeed>,
+            decisions_json: QString,
+            fills_json: QString,
+        );
+
+        /// Sets the overlays from a deployment chart response, unless it was requested for
+        /// an older target.
+        #[qinvokable]
+        fn set_overlays_json(self: Pin<&mut BarFeed>, generation: i64, json: QString) -> bool;
+
+        #[qinvokable]
+        fn rebuild_overlays(
+            self: Pin<&mut BarFeed>,
+            first_bar: i64,
+            last_bar: i64,
+            low: f64,
+            high: f64,
+            width_px: f32,
+            height_px: f32,
+        );
+
+        #[qinvokable]
+        fn overlay_layer_count(self: &BarFeed) -> i32;
+
+        #[qinvokable]
+        fn overlay_layer_ptr(self: &BarFeed, layer: i32) -> i64;
+
+        #[qinvokable]
+        fn overlay_layer_len(self: &BarFeed, layer: i32) -> i64;
+
+        #[qinvokable]
+        fn overlay_layer_mode(self: &BarFeed, layer: i32) -> i32;
+
+        #[qinvokable]
+        fn overlay_layer_color(self: &BarFeed, layer: i32) -> i64;
+
+        #[qinvokable]
+        fn marker_count(self: &BarFeed) -> i32;
+
+        /// Detail text of the marker drawn within `radius` px of (x, y), or empty.
+        #[qinvokable]
+        fn marker_detail_at(self: &BarFeed, x: f32, y: f32, radius: f32) -> QString;
+
+        /// Fills the feed with synthetic bars, markers and overlays for the frame benchmark.
+        #[qinvokable]
+        fn bench_populate(self: Pin<&mut BarFeed>, bars: i64, markers: i64, overlays: i64);
+
+        #[qinvokable]
+        fn target_generation(self: &BarFeed) -> i64;
+
+        #[qinvokable]
+        fn stale_dropped(self: &BarFeed) -> i64;
 
         #[qinvokable]
         fn set_viewport(
@@ -214,6 +308,7 @@ pub struct BarFeedRust {
     pub last_time: i64,
     pub low: f64,
     pub high: f64,
+    pub overlay_revision: i64,
 
     pub bar_times: Vec<i64>,
     pub series: q_qt::BarSeriesRust,
@@ -224,6 +319,52 @@ pub struct BarFeedRust {
     config: Option<Config>,
     history_bar_count: usize,
     pending_deliveries: Vec<BarDelivery>,
+    /// Chart target generation. Bars and history results stamped with another one belong
+    /// to a previous target and are dropped.
+    /// High, low and close of each completed bar, indexed like `bar_times`.
+    pub bar_hlc: Vec<(f64, f64, f64)>,
+    decisions: Vec<ExecutionDecisionState>,
+    fills: Vec<ExecutionFillEvent>,
+    overlay_series: Vec<OverlaySeries>,
+    markers: Vec<Marker>,
+    /// What the cached markers were placed against: bar count, first bar time, rows revision.
+    markers_key: Option<(usize, i64, u64)>,
+    rows_rev: u64,
+    layers: Vec<Layer>,
+    hits: Vec<Hit>,
+    /// Called on the Qt thread with the target generation after each completed bar is
+    /// applied to the chart. The overlay fetcher hangs off it.
+    pub on_completed: Option<Arc<dyn Fn(u64) + Send + Sync>>,
+    pub generation: u64,
+    /// Deliveries and history results dropped for carrying an older generation.
+    pub stale_dropped: u64,
+}
+
+/// The properties QML reads, captured so a change can be announced (Q-049).
+#[derive(Clone, PartialEq)]
+struct PropSnapshot {
+    symbol: QString,
+    timeframe: QString,
+    timeframe_ms: i64,
+    bar_count: i64,
+    revision: i64,
+    last_price: f64,
+    first_time: i64,
+    last_time: i64,
+    low: f64,
+    high: f64,
+    applied: i64,
+    data_age_ms: i64,
+    stale: bool,
+    live_only: bool,
+    history_loading: bool,
+    history_progress: f64,
+    history_source: QString,
+    history_dataset_id: QString,
+    history_published_at: QString,
+    history_error: QString,
+    history_bars: i64,
+    history_shortfall: i64,
 }
 
 impl BarFeedRust {
@@ -276,7 +417,267 @@ impl BarFeedRust {
             config,
             history_bar_count: DEFAULT_HISTORY_BARS,
             pending_deliveries: Vec::new(),
+            generation: 0,
+            stale_dropped: 0,
+            overlay_revision: 0,
+            bar_hlc: Vec::new(),
+            decisions: Vec::new(),
+            fills: Vec::new(),
+            overlay_series: Vec::new(),
+            markers: Vec::new(),
+            markers_key: None,
+            rows_rev: 0,
+            layers: Vec::new(),
+            hits: Vec::new(),
+            on_completed: None,
         }
+    }
+
+    fn snapshot_props(&self) -> PropSnapshot {
+        PropSnapshot {
+            symbol: self.symbol.clone(),
+            timeframe: self.timeframe.clone(),
+            timeframe_ms: self.timeframe_ms,
+            bar_count: self.bar_count,
+            revision: self.revision,
+            last_price: self.last_price,
+            first_time: self.first_time,
+            last_time: self.last_time,
+            low: self.low,
+            high: self.high,
+            applied: self.applied,
+            data_age_ms: self.data_age_ms,
+            stale: self.stale,
+            live_only: self.live_only,
+            history_loading: self.history_loading,
+            history_progress: self.history_progress,
+            history_source: self.history_source.clone(),
+            history_dataset_id: self.history_dataset_id.clone(),
+            history_published_at: self.history_published_at.clone(),
+            history_error: self.history_error.clone(),
+            history_bars: self.history_bars,
+            history_shortfall: self.history_shortfall,
+        }
+    }
+
+    fn restore_props(&mut self, p: PropSnapshot) {
+        self.symbol = p.symbol;
+        self.timeframe = p.timeframe;
+        self.timeframe_ms = p.timeframe_ms;
+        self.bar_count = p.bar_count;
+        self.revision = p.revision;
+        self.last_price = p.last_price;
+        self.first_time = p.first_time;
+        self.last_time = p.last_time;
+        self.low = p.low;
+        self.high = p.high;
+        self.applied = p.applied;
+        self.data_age_ms = p.data_age_ms;
+        self.stale = p.stale;
+        self.live_only = p.live_only;
+        self.history_loading = p.history_loading;
+        self.history_progress = p.history_progress;
+        self.history_source = p.history_source;
+        self.history_dataset_id = p.history_dataset_id;
+        self.history_published_at = p.history_published_at;
+        self.history_error = p.history_error;
+        self.history_bars = p.history_bars;
+        self.history_shortfall = p.history_shortfall;
+    }
+
+    /// Switches the feed to a new symbol and timeframe (Q-049). Everything of the previous
+    /// target goes: its bars, its history controller (a load still running finishes into
+    /// the old one and is dropped by generation), and deliveries waiting for the gate.
+    pub fn reset_for_target(&mut self, symbol: &str, timeframe: &str, generation: u64) {
+        self.generation = generation;
+        self.series = q_qt::BarSeriesRust::new(symbol, timeframe, 500_000);
+        self.series_label = TimeLabel::Utc;
+        self.series_vols = VolumeSet {
+            tick_volume: false,
+            spread: false,
+            real_volume: false,
+        };
+        self.bar_times.clear();
+        self.bar_hlc.clear();
+        self.overlay_series.clear();
+        self.markers.clear();
+        self.markers_key = None;
+        self.layers.clear();
+        self.hits.clear();
+        self.pending_deliveries.clear();
+        self.history = Arc::new(HistoryController::new());
+        self.applied = 0;
+        self.last_applied_instant = None;
+        self.data_age_ms = -1;
+        self.stale = false;
+        self.timeframe_ms = parse_timeframe_ms(timeframe);
+        if let Some(cfg) = self.config.as_mut() {
+            cfg.symbol = symbol.to_string();
+            cfg.timeframe = timeframe.to_string();
+        }
+        self.sync_series_properties();
+        self.sync_history_properties();
+    }
+
+    /// Bar opens in milliseconds, ascending, whatever unit the feed's times use.
+    fn bar_opens_ms(&self) -> Vec<i64> {
+        self.bar_times
+            .iter()
+            .map(|t| markers::normalize_ms(*t))
+            .collect()
+    }
+
+    fn refresh_markers(&mut self) {
+        let key = (
+            self.bar_times.len(),
+            self.bar_times.first().copied().unwrap_or(0),
+            self.rows_rev,
+        );
+        if self.markers_key == Some(key) {
+            return;
+        }
+        let opens = self.bar_opens_ms();
+        let tf = self.timeframe_ms;
+        let mut m = markers::decision_markers(&self.decisions, &opens, tf);
+        m.extend(markers::fill_markers(&self.fills, &opens));
+        self.markers = m;
+        self.markers_key = Some(key);
+    }
+
+    /// Packs markers and overlay lines for the view into `layers` and `hits`.
+    pub fn build_overlays(&mut self, view: View) {
+        self.refresh_markers();
+        let opens = self.bar_opens_ms();
+        let mut layers = overlays::line_layers(&self.overlay_series, &opens, view);
+        let (marker_layers, hits) = overlays::marker_layers(&self.markers, &self.bar_hlc, view);
+        layers.extend(marker_layers);
+        self.layers = layers;
+        self.hits = hits;
+    }
+
+    /// Synthetic bars, `markers` markers spread over them and `overlays` overlay lines.
+    pub fn populate_bench(&mut self, bars: usize, markers: usize, overlays: usize) {
+        let t0 = 1_789_725_600_000i64;
+        self.bar_times = (0..bars as i64)
+            .map(|i| (t0 + i * 60_000) * 1_000)
+            .collect();
+        let close = |i: usize| {
+            (i as f64 * 0.01)
+                .sin()
+                .mul_add(5.0, 100.0 + ((i * 7) % 13) as f64)
+        };
+        self.bar_hlc = (0..bars)
+            .map(|i| (close(i) + 1.0, close(i) - 1.0, close(i)))
+            .collect();
+        let kinds = [
+            markers::MarkerKind::Buy,
+            markers::MarkerKind::Sell,
+            markers::MarkerKind::Close,
+            markers::MarkerKind::Fill,
+        ];
+        self.markers = (0..markers)
+            .map(|n| {
+                let i = (n * bars)
+                    .checked_div(markers)
+                    .unwrap_or(0)
+                    .min(bars.saturating_sub(1));
+                Marker {
+                    id: format!("bench-{n}"),
+                    bar_index: i,
+                    bar_open_ms: t0 + i as i64 * 60_000,
+                    price: Some(close(i)),
+                    kind: kinds[n % 4],
+                    label: String::new(),
+                    detail: format!("bench marker {n}"),
+                }
+            })
+            .collect();
+        self.markers_key = Some((
+            self.bar_times.len(),
+            self.bar_times.first().copied().unwrap_or(0),
+            self.rows_rev,
+        ));
+        self.overlay_series = (0..overlays)
+            .map(|k| OverlaySeries {
+                key: format!("bench-{k}"),
+                label: format!("bench {k}"),
+                pane: if k % 2 == 0 {
+                    overlays::Pane::Price
+                } else {
+                    overlays::Pane::Oscillator
+                },
+                rgba: 0x2962ffff,
+                points: (0..bars)
+                    .map(|i| (t0 + i as i64 * 60_000, Some(close(i) + k as f64)))
+                    .collect(),
+            })
+            .collect();
+        let lo = self.bar_hlc.iter().map(|h| h.1).fold(f64::MAX, f64::min);
+        let hi = self.bar_hlc.iter().map(|h| h.0).fold(f64::MIN, f64::max);
+        self.low = lo;
+        self.high = hi;
+        self.bar_count = bars as i64;
+        self.overlay_revision += 1;
+    }
+
+    pub fn layers(&self) -> &[Layer] {
+        &self.layers
+    }
+
+    pub fn hits(&self) -> &[Hit] {
+        &self.hits
+    }
+
+    pub fn markers(&self) -> &[Marker] {
+        &self.markers
+    }
+
+    pub fn set_rows(
+        &mut self,
+        decisions: Vec<ExecutionDecisionState>,
+        fills: Vec<ExecutionFillEvent>,
+    ) {
+        self.decisions = decisions;
+        self.fills = fills;
+        self.rows_rev += 1;
+        self.overlay_revision += 1;
+    }
+
+    /// Sets the overlays unless they were requested for a previous target.
+    pub fn set_overlays(&mut self, generation: u64, series: Vec<OverlaySeries>) -> bool {
+        if generation != self.generation {
+            self.stale_dropped += 1;
+            return false;
+        }
+        self.overlay_series = series;
+        self.overlay_revision += 1;
+        true
+    }
+
+    pub fn overlay_series(&self) -> &[OverlaySeries] {
+        &self.overlay_series
+    }
+
+    /// Applies a delivery stamped with the generation it was produced for. Returns false,
+    /// and counts it, when it belongs to a previous target.
+    pub fn apply_stamped(&mut self, generation: u64, delivery: BarDelivery) -> bool {
+        if generation != self.generation {
+            self.stale_dropped += 1;
+            return false;
+        }
+        self.apply_delivery(delivery);
+        true
+    }
+
+    /// Completes a history load requested for `generation`. A result for a previous target
+    /// is dropped and counted.
+    pub fn complete_history_load_for(&mut self, generation: u64, loaded: Loaded) -> bool {
+        if generation != self.generation {
+            self.stale_dropped += 1;
+            return false;
+        }
+        self.complete_history_load(loaded);
+        true
     }
 
     pub fn history_controller(&self) -> &Arc<HistoryController> {
@@ -413,6 +814,8 @@ impl BarFeedRust {
             self.series_label = bars.label;
             self.series_vols = VolumeSet::from_bars(&bars);
             self.bar_times.extend_from_slice(&bars.time);
+            self.bar_hlc
+                .extend((0..bar_count).map(|i| (bars.high[i], bars.low[i], bars.close[i])));
             let _ = self.series.load_history(bars);
         }
         self.history.finish_load(
@@ -473,7 +876,13 @@ impl BarFeedRust {
             self.pending_deliveries.push(delivery);
             return;
         }
+        let completed = matches!(delivery, BarDelivery::Completed(_));
         self.apply_delivery_now(delivery);
+        if completed {
+            if let Some(hook) = &self.on_completed {
+                hook(self.generation);
+            }
+        }
     }
 
     fn apply_delivery_now(&mut self, delivery: BarDelivery) {
@@ -482,16 +891,28 @@ impl BarFeedRust {
                 let count = bars.time.len() as i64;
                 let adapted = self.adapt_bars(bars);
                 let times = adapted.time.clone();
+                let (highs, lows, closes) = (
+                    adapted.high.clone(),
+                    adapted.low.clone(),
+                    adapted.close.clone(),
+                );
                 if self.series.ingest_completed(adapted).is_ok() {
-                    for t in times {
-                        if let Some(&last) = self.bar_times.last() {
-                            if t > last {
+                    for (i, t) in times.into_iter().enumerate() {
+                        let hlc = (highs[i], lows[i], closes[i]);
+                        match self.bar_times.last().copied() {
+                            Some(last) if t > last => {
                                 self.bar_times.push(t);
-                            } else if t == last {
-                                *self.bar_times.last_mut().unwrap() = t;
+                                self.bar_hlc.push(hlc);
                             }
-                        } else {
-                            self.bar_times.push(t);
+                            Some(last) if t == last => {
+                                *self.bar_times.last_mut().unwrap() = t;
+                                *self.bar_hlc.last_mut().unwrap() = hlc;
+                            }
+                            Some(_) => {}
+                            None => {
+                                self.bar_times.push(t);
+                                self.bar_hlc.push(hlc);
+                            }
                         }
                     }
                     self.applied += count;
@@ -524,6 +945,214 @@ impl BarFeedRust {
 }
 
 impl ffi::BarFeed {
+    /// Announces what changed since `before`. Rust-side updates assign the fields directly,
+    /// which raises no signal, so the fields are put back and set through the property
+    /// setters, which do.
+    fn notify_props(mut self: std::pin::Pin<&mut Self>, before: PropSnapshot) {
+        let after = self.as_ref().rust().snapshot_props();
+        if after == before {
+            return;
+        }
+        self.as_mut().rust_mut().restore_props(before);
+        self.as_mut().set_symbol(after.symbol);
+        self.as_mut().set_timeframe(after.timeframe);
+        self.as_mut().set_timeframe_ms(after.timeframe_ms);
+        self.as_mut().set_bar_count(after.bar_count);
+        self.as_mut().set_last_price(after.last_price);
+        self.as_mut().set_first_time(after.first_time);
+        self.as_mut().set_last_time(after.last_time);
+        self.as_mut().set_low(after.low);
+        self.as_mut().set_high(after.high);
+        self.as_mut().set_applied(after.applied);
+        self.as_mut().set_data_age_ms(after.data_age_ms);
+        self.as_mut().set_stale(after.stale);
+        self.as_mut().set_live_only(after.live_only);
+        self.as_mut().set_history_loading(after.history_loading);
+        self.as_mut().set_history_progress(after.history_progress);
+        self.as_mut().set_history_source(after.history_source);
+        self.as_mut()
+            .set_history_dataset_id(after.history_dataset_id);
+        self.as_mut()
+            .set_history_published_at(after.history_published_at);
+        self.as_mut().set_history_error(after.history_error);
+        self.as_mut().set_history_bars(after.history_bars);
+        self.as_mut().set_history_shortfall(after.history_shortfall);
+        // Last, so the chart items repaint once the rest is consistent.
+        self.as_mut().set_revision(after.revision);
+    }
+
+    pub fn ingest_completed_bar_gen(
+        mut self: std::pin::Pin<&mut Self>,
+        generation: i64,
+        time: i64,
+        open: f64,
+        high: f64,
+        low: f64,
+        close: f64,
+    ) {
+        let before = self.as_ref().rust().snapshot_props();
+        let col = make_bar_columns(time, open, high, low, close);
+        self.as_mut()
+            .rust_mut()
+            .apply_stamped(generation as u64, BarDelivery::Completed(col));
+        self.notify_props(before);
+    }
+
+    pub fn ingest_forming_bar_gen(
+        mut self: std::pin::Pin<&mut Self>,
+        generation: i64,
+        time: i64,
+        open: f64,
+        high: f64,
+        low: f64,
+        close: f64,
+    ) {
+        let before = self.as_ref().rust().snapshot_props();
+        let col = make_bar_columns(time, open, high, low, close);
+        self.as_mut()
+            .rust_mut()
+            .apply_stamped(generation as u64, BarDelivery::Forming(col));
+        self.notify_props(before);
+    }
+
+    pub fn retarget(
+        mut self: std::pin::Pin<&mut Self>,
+        symbol: QString,
+        timeframe: QString,
+        generation: i64,
+    ) -> bool {
+        let before = self.as_ref().rust().snapshot_props();
+        self.as_mut().rust_mut().reset_for_target(
+            &symbol.to_string(),
+            &timeframe.to_string(),
+            generation as u64,
+        );
+        self.as_mut().notify_props(before);
+        self.load_history()
+    }
+
+    pub fn set_execution_rows(
+        mut self: std::pin::Pin<&mut Self>,
+        decisions_json: QString,
+        fills_json: QString,
+    ) {
+        let decisions = serde_json::from_str(&decisions_json.to_string()).unwrap_or_default();
+        let fills = serde_json::from_str(&fills_json.to_string()).unwrap_or_default();
+        self.as_mut().rust_mut().set_rows(decisions, fills);
+        let rev = self.rust().overlay_revision;
+        self.as_mut().rust_mut().overlay_revision = rev - 1;
+        self.as_mut().set_overlay_revision(rev);
+    }
+
+    pub fn set_overlays_json(
+        mut self: std::pin::Pin<&mut Self>,
+        generation: i64,
+        json: QString,
+    ) -> bool {
+        let Ok(series) = overlays::parse_chart(&json.to_string()) else {
+            return false;
+        };
+        let ok = self
+            .as_mut()
+            .rust_mut()
+            .set_overlays(generation as u64, series);
+        if ok {
+            let rev = self.rust().overlay_revision;
+            self.as_mut().rust_mut().overlay_revision = rev - 1;
+            self.as_mut().set_overlay_revision(rev);
+        }
+        ok
+    }
+
+    pub fn rebuild_overlays(
+        mut self: std::pin::Pin<&mut Self>,
+        first_bar: i64,
+        last_bar: i64,
+        low: f64,
+        high: f64,
+        width_px: f32,
+        height_px: f32,
+    ) {
+        self.as_mut().rust_mut().build_overlays(View {
+            first: first_bar.max(0) as usize,
+            last: last_bar.max(0) as usize,
+            low,
+            high,
+            width: width_px,
+            height: height_px,
+        });
+    }
+
+    pub fn overlay_layer_count(&self) -> i32 {
+        self.rust().layers().len() as i32
+    }
+
+    pub fn overlay_layer_ptr(&self, layer: i32) -> i64 {
+        self.rust()
+            .layers()
+            .get(layer as usize)
+            .map_or(0, |l| l.xy.as_ptr() as usize as i64)
+    }
+
+    pub fn overlay_layer_len(&self, layer: i32) -> i64 {
+        self.rust()
+            .layers()
+            .get(layer as usize)
+            .map_or(0, |l| (l.xy.len() / 2) as i64)
+    }
+
+    pub fn overlay_layer_mode(&self, layer: i32) -> i32 {
+        self.rust()
+            .layers()
+            .get(layer as usize)
+            .map_or(0, |l| i32::from(l.mode))
+    }
+
+    pub fn overlay_layer_color(&self, layer: i32) -> i64 {
+        self.rust()
+            .layers()
+            .get(layer as usize)
+            .map_or(0, |l| i64::from(l.rgba))
+    }
+
+    pub fn marker_count(&self) -> i32 {
+        self.rust().markers().len() as i32
+    }
+
+    pub fn marker_detail_at(&self, x: f32, y: f32, radius: f32) -> QString {
+        let best = self
+            .rust()
+            .hits()
+            .iter()
+            .map(|h| ((h.y - y).mul_add(h.y - y, (h.x - x).powi(2)), h))
+            .filter(|(d, _)| *d <= radius * radius)
+            .min_by(|a, b| a.0.total_cmp(&b.0));
+        QString::from(best.map_or("", |(_, h)| h.detail.as_str()))
+    }
+
+    pub fn bench_populate(
+        mut self: std::pin::Pin<&mut Self>,
+        bars: i64,
+        markers: i64,
+        overlays: i64,
+    ) {
+        let before = self.as_ref().rust().snapshot_props();
+        self.as_mut().rust_mut().populate_bench(
+            bars.max(0) as usize,
+            markers.max(0) as usize,
+            overlays.max(0) as usize,
+        );
+        self.as_mut().notify_props(before);
+    }
+
+    pub fn target_generation(&self) -> i64 {
+        self.rust().generation as i64
+    }
+
+    pub fn stale_dropped(&self) -> i64 {
+        self.rust().stale_dropped as i64
+    }
+
     pub fn load_history(mut self: std::pin::Pin<&mut Self>) -> bool {
         let qt_thread = self.qt_thread();
         let config = match self.as_ref().rust().config.clone() {
@@ -546,6 +1175,7 @@ impl ffi::BarFeed {
         let controller = Arc::clone(&self.as_ref().rust().history);
         let progress_controller = Arc::clone(&self.as_ref().rust().history);
         let bars = self.as_ref().rust().history_bar_count;
+        let generation = self.as_ref().rust().generation;
         let qt_for_loaded = qt_thread.clone();
         controller.spawn_load(
             config,
@@ -553,7 +1183,11 @@ impl ffi::BarFeed {
             move |loaded| {
                 qt_for_loaded
                     .queue(move |mut feed| {
-                        feed.as_mut().rust_mut().complete_history_load(loaded);
+                        let before = feed.as_ref().rust().snapshot_props();
+                        feed.as_mut()
+                            .rust_mut()
+                            .complete_history_load_for(generation, loaded);
+                        feed.notify_props(before);
                     })
                     .ok();
             },
@@ -561,7 +1195,12 @@ impl ffi::BarFeed {
                 progress_controller.set_progress(progress);
                 qt_thread
                     .queue(move |mut feed| {
+                        if feed.as_ref().rust().generation != generation {
+                            return;
+                        }
+                        let before = feed.as_ref().rust().snapshot_props();
                         feed.as_mut().rust_mut().sync_history_properties();
+                        feed.notify_props(before);
                     })
                     .ok();
             },
@@ -890,7 +1529,7 @@ mod tests {
         )
         .unwrap();
 
-        for _ in 0..200 {
+        for _ in 0..1500 {
             feed.sync_history_properties();
             if (feed.history_progress - 1.0).abs() < f64::EPSILON {
                 break;

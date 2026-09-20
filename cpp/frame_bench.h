@@ -12,4 +12,4 @@ struct FrameBenchReport {
 };
 
 void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar_count,
-                     int duration_ms, int execution_rows);
+                     int duration_ms, int execution_rows, int markers, int overlays);

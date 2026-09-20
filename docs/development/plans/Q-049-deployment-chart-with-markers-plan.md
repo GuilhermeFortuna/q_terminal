@@ -94,27 +94,27 @@ src/main.rs                   --bench-frames gains --markers N --overlays N
 
 ## Ordered implementation
 
-- [ ] 1. Work on the branch `Q-049-deployment-chart-with-markers` in `q_terminal`,
+- [x] 1. Work on the branch `Q-049-deployment-chart-with-markers` in `q_terminal`,
    created from `development` by `./work start`. Confirm Q-047 is merged.
-- [ ] 2. Port the placement rules into `tests/markers.rs` as vectors, including
+- [x] 2. Port the placement rules into `tests/markers.rs` as vectors, including
    close-time and open-time conventions, a fill inside a bar, a fill before the
    first bar, and holds. Implement `markers.rs`. Confirm they pass. Commit.
-- [ ] 3. Implement `ChartTarget` and `retarget`, and write `tests/chart_target.rs`
+- [x] 3. Implement `ChartTarget` and `retarget`, and write `tests/chart_target.rs`
    (criterion 1, including a switch during a slow fake history load and during
    a burst of stream frames). Wire the selection to retarget. Commit.
-- [ ] 4. Write `marker_node` and `marker_chart_item`, feed them from the store's
+- [x] 4. Write `marker_node` and `marker_chart_item`, feed them from the store's
    revision for the selected deployment, and test criterion 3 headlessly.
    Commit.
-- [ ] 5. Write `OverlayFetcher`, `line_series_node` and `overlay_chart_item`, add
+- [x] 5. Write `OverlayFetcher`, `line_series_node` and `overlay_chart_item`, add
    the oscillator pane to `ChartPane.qml`, and write `tests/overlays.rs`.
    Commit.
-- [ ] 6. Write `tests/chart_alignment.rs` with the probe across a pan and two zoom
+- [x] 6. Write `tests/chart_alignment.rs` with the probe across a pan and two zoom
    levels. Commit.
-- [ ] 7. Add hover tooltips (decision reason; fill side, quantity, price, time).
+- [x] 7. Add hover tooltips (decision reason; fill side, quantity, price, time).
    Keep `qmllint` clean. Commit.
-- [ ] 8. Extend `--bench-frames` with markers and overlays, and record p95.
+- [x] 8. Extend `--bench-frames` with markers and overlays, and record p95.
    Commit.
-- [ ] 9. Tick the chart rows of `docs/ops-parity.md`, and update `README.md`.
+- [x] 9. Tick the chart rows of `docs/ops-parity.md`, and update `README.md`.
    Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run, commit.
 - [ ] 10. **Human:** human-verifiable criteria 1 and 2.
 

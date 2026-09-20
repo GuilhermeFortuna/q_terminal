@@ -47,6 +47,8 @@ pub struct FakeServer {
     health_json: Arc<RwLock<Option<String>>>,
     health_503: Arc<AtomicBool>,
     positions_json: Arc<RwLock<Option<String>>>,
+    chart_json: Arc<RwLock<Option<String>>>,
+    chart_calls: Arc<std::sync::atomic::AtomicUsize>,
     health_calls: Arc<std::sync::atomic::AtomicUsize>,
     positions_calls: Arc<std::sync::atomic::AtomicUsize>,
     paged_calls: Arc<std::sync::atomic::AtomicUsize>,
@@ -74,6 +76,8 @@ impl FakeServer {
         let health_json = Arc::new(RwLock::new(None::<String>));
         let health_503 = Arc::new(AtomicBool::new(false));
         let positions_json = Arc::new(RwLock::new(None::<String>));
+        let chart_json = Arc::new(RwLock::new(None::<String>));
+        let chart_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let health_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let positions_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let paged_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -124,6 +128,8 @@ impl FakeServer {
         let hjson_arc = health_json.clone();
         let h503_arc = health_503.clone();
         let pjson_arc = positions_json.clone();
+        let cjson_arc = chart_json.clone();
+        let ccalls_arc = chart_calls.clone();
         let hcalls_arc = health_calls.clone();
         let pcalls_arc = positions_calls.clone();
         let paged_calls_arc = paged_calls.clone();
@@ -152,6 +158,8 @@ impl FakeServer {
                             let hjson_arc = hjson_arc.clone();
                             let h503_arc = h503_arc.clone();
                             let pjson_arc = pjson_arc.clone();
+                            let cjson_arc = cjson_arc.clone();
+                            let ccalls_arc = ccalls_arc.clone();
                             let hcalls_arc = hcalls_arc.clone();
                             let pcalls_arc = pcalls_arc.clone();
                             let paged_calls_arc = paged_calls_arc.clone();
@@ -369,6 +377,24 @@ impl FakeServer {
                                     return;
                                 }
 
+                                if path.starts_with("/api/v1/execution/deployments/")
+                                    && path.ends_with("/chart")
+                                {
+                                    ccalls_arc.fetch_add(1, Ordering::SeqCst);
+                                    let body = cjson_arc.read().await.clone();
+                                    let resp = match body {
+                                        Some(body) => format!(
+                                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                            body.len(),
+                                            body
+                                        ),
+                                        None => "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}".to_string(),
+                                    };
+                                    let _ = socket.write_all(resp.as_bytes()).await;
+                                    let _ = socket.shutdown().await;
+                                    return;
+                                }
+
                                 if path.ends_with("/api/v1/execution/positions") {
                                     pcalls_arc.fetch_add(1, Ordering::SeqCst);
                                     let body = {
@@ -505,10 +531,19 @@ impl FakeServer {
                                     let snap_guard = snap_arc.read().await;
                                     let cur_ep = ep_arc.read().await.clone();
 
+                                    let key_param = path_and_query
+                                        .split(['?', '&'])
+                                        .find_map(|kv| kv.strip_prefix("key="))
+                                        .map(|v| v.replace("%3A", ":"));
+                                    let keyed = key_param
+                                        .as_ref()
+                                        .and_then(|k| snap_guard.get(&format!("{topic}#{k}")));
                                     let mut entries = serde_json::Map::new();
-                                    if let Some(snap) = snap_guard.get(topic) {
+                                    if let Some(snap) = keyed.or_else(|| snap_guard.get(topic)) {
                                         let arrow_bytes = encode_arrow_bars(&snap.bars).unwrap();
                                         let b64 = b64_encode(&arrow_bytes);
+                                        let entry_key = key_param.clone().unwrap_or_else(|| "PETR4:1m".to_string());
+                                        let (sym, tf) = entry_key.split_once(':').unwrap_or(("PETR4", "1m"));
 
                                         let entry_val = json!({
                                             "topic": topic,
@@ -519,10 +554,10 @@ impl FakeServer {
                                             "origin_ts": "2026-09-17T00:00:00Z",
                                             "payload_kind": "arrow_ipc",
                                             "payload_schema": "schema/api/arrow/bars.schema.json",
-                                            "key": { "symbol": "PETR4", "timeframe": "1m" },
+                                            "key": { "symbol": sym, "timeframe": tf },
                                             "payload": b64
                                         });
-                                        entries.insert("PETR4:1m".to_string(), entry_val);
+                                        entries.insert(entry_key, entry_val);
                                     }
 
                                     let resp_body = json!({
@@ -630,6 +665,8 @@ impl FakeServer {
             health_json,
             health_503,
             positions_json,
+            chart_json,
+            chart_calls,
             health_calls,
             positions_calls,
             paged_calls,
@@ -661,6 +698,15 @@ impl FakeServer {
     pub async fn set_positions_json(&self, positions_body: &str) {
         let mut guard = self.positions_json.write().await;
         *guard = Some(positions_body.to_string());
+    }
+
+    /// Body served for `GET /api/v1/execution/deployments/{id}/chart`.
+    pub async fn set_chart_json(&self, body: &str) {
+        *self.chart_json.write().await = Some(body.to_string());
+    }
+
+    pub fn chart_calls(&self) -> usize {
+        self.chart_calls.load(Ordering::SeqCst)
     }
 
     pub fn health_calls(&self) -> usize {
@@ -784,6 +830,8 @@ impl FakeServer {
         bars: BarColumns,
     ) {
         self.set_snapshot(topic, seq, bars.clone()).await;
+        self.set_snapshot(&format!("{topic}#{symbol}:{timeframe}"), seq, bars.clone())
+            .await;
         let cur_ep = self.epoch.read().await.clone();
         let header = EnvelopeHeader {
             topic: topic.to_string(),

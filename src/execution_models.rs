@@ -96,6 +96,9 @@ pub mod ffi {
     impl cxx_qt::Threading for ExecutionModels {}
 }
 
+/// A deployment's id, symbol and timeframe.
+pub type SelectedTarget = (String, String, String);
+
 pub struct ExecutionModelsRust {
     pub revision: i64,
     pub redraw_count: i64,
@@ -111,6 +114,13 @@ pub struct ExecutionModelsRust {
     pub api_base: QString,
 
     pub handle: Option<ExecutionHandle>,
+    /// Called with the selected deployment's symbol and timeframe, or `None`, whenever
+    /// they change (Q-049). Runs on the Qt thread.
+    pub on_target: Option<Arc<dyn Fn(Option<SelectedTarget>) + Send + Sync>>,
+    last_target: Option<Option<SelectedTarget>>,
+    /// Called on every store change with the selected deployment's decisions and fills as
+    /// JSON arrays, oldest first.
+    pub on_rows: Option<Arc<dyn Fn(String, String) + Send + Sync>>,
     pub dirty: Arc<AtomicBool>,
 
     pub m_deployments: RawTableModel,
@@ -187,6 +197,9 @@ impl Default for ExecutionModelsRust {
                 accounts: ffi::table_model_to_variant(m_accounts.0),
                 api_base: QString::default(),
                 handle: None,
+                on_target: None,
+                on_rows: None,
+                last_target: None,
                 dirty: Arc::new(AtomicBool::new(false)),
                 m_deployments,
                 m_orders,
@@ -228,6 +241,38 @@ impl ExecutionModelsRust {
         }));
         self.handle = Some(handle);
         self.dirty.store(true, Ordering::Release);
+    }
+
+    /// Tells `on_target` the selected deployment's symbol and timeframe when they changed.
+    pub fn notify_target(&mut self) {
+        let Some(handle) = self.handle.clone() else {
+            return;
+        };
+        let id = self.selected_deployment_id.to_string();
+        let target = handle.read(|s| {
+            s.data()
+                .deployments
+                .get(&id)
+                .map(|d| (d.id.clone(), d.symbol.clone(), d.timeframe.clone()))
+        });
+        if self.last_target.as_ref() != Some(&target) {
+            self.last_target = Some(target.clone());
+            if let Some(hook) = self.on_target.clone() {
+                hook(target);
+            }
+        }
+        if let Some(rows) = self.on_rows.clone() {
+            let (dec, fills) = handle.read(|s| {
+                let d = s.data();
+                let dec: Vec<_> = d.decisions.get(&id).into_iter().flatten().collect();
+                let fills: Vec<_> = d.fills.get(&id).into_iter().flatten().collect();
+                (
+                    serde_json::to_string(&dec).unwrap_or_else(|_| "[]".into()),
+                    serde_json::to_string(&fills).unwrap_or_else(|_| "[]".into()),
+                )
+            });
+            rows(dec, fills);
+        }
     }
 
     pub fn rebuild_all(&mut self) {
@@ -696,6 +741,7 @@ impl ffi::ExecutionModels {
     pub fn sync(mut self: Pin<&mut Self>) {
         if self.rust().dirty.swap(false, Ordering::AcqRel) {
             self.as_mut().rust_mut().rebuild_all();
+            self.as_mut().rust_mut().notify_target();
             let rev = self.rust().revision + 1;
             let redraws = self.rust().redraw_count + 1;
             self.as_mut().set_revision(rev);
@@ -706,6 +752,7 @@ impl ffi::ExecutionModels {
     pub fn select_deployment(mut self: Pin<&mut Self>, deployment_id: QString) {
         self.as_mut().set_selected_deployment_id(deployment_id);
         self.as_mut().rust_mut().refresh_deployment_detail();
+        self.as_mut().rust_mut().notify_target();
     }
 
     pub fn select_account(mut self: Pin<&mut Self>, account_id: QString) {

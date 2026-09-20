@@ -117,6 +117,7 @@ void post_feed_stream_state(
 
 void post_feed_completed_bar(
     BarFeed* feed,
+    std::int64_t generation,
     std::int64_t time,
     double open,
     double high,
@@ -126,6 +127,7 @@ void post_feed_completed_bar(
 
 void post_feed_forming_bar(
     BarFeed* feed,
+    std::int64_t generation,
     std::int64_t time,
     double open,
     double high,
@@ -186,6 +188,15 @@ bool feed_history_loading(BarFeed* feed);
 std::int64_t feed_bar_count(BarFeed* feed);
 std::int64_t feed_rest_calls(BarFeed* feed);
 
+bool feed_retarget(BarFeed* feed, rust::Str symbol, rust::Str timeframe, std::int64_t generation);
+std::int64_t feed_target_generation(BarFeed* feed);
+std::int64_t feed_stale_dropped(BarFeed* feed);
+rust::String feed_symbol(BarFeed* feed);
+void post_feed_overlays(BarFeed* feed, std::int64_t generation, rust::Str json);
+void feed_set_execution_rows(BarFeed* feed, rust::Str decisions, rust::Str fills);
+std::int64_t feed_marker_count(BarFeed* feed);
+std::int64_t feed_rebuild_overlays(BarFeed* feed, int first_bar, int last_bar, double low, double high, float width, float height);
+
 #include <cstdint>
 
 #include "cpp/execution_models_cxx.h"
@@ -195,6 +206,7 @@ class OpsStatus;
 class ExecutionControls;
 
 ExecutionModels* find_window_execution_models(QQmlApplicationEngine& engine);
+void post_execution_models_sync(ExecutionModels* models);
 std::uintptr_t find_window_ops_status(QQmlApplicationEngine& engine);
 std::uintptr_t find_window_execution_controls(QQmlApplicationEngine& engine);
 void execution_models_setup(ExecutionModels* models, rust::Str api_base);

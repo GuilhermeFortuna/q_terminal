@@ -5,6 +5,7 @@
 #include "bar_chart_probe.h"
 #include "q-qt/src/bar_series.cxxqt.h"
 #include "q_terminal/src/bar_feed.cxxqt.h"
+#include "q_terminal/src/execution_models.cxxqt.h"
 
 #include <mutex>
 
@@ -565,6 +566,7 @@ void post_feed_stream_state(
 
 void post_feed_completed_bar(
     BarFeed* feed,
+    std::int64_t generation,
     std::int64_t time,
     double open,
     double high,
@@ -572,13 +574,14 @@ void post_feed_completed_bar(
     double close
 ) {
     if (!feed) return;
-    QMetaObject::invokeMethod(feed, [feed, time, open, high, low, close]() {
-        feed->ingest_completed_bar(time, open, high, low, close);
+    QMetaObject::invokeMethod(feed, [feed, generation, time, open, high, low, close]() {
+        feed->ingest_completed_bar_gen(generation, time, open, high, low, close);
     }, Qt::QueuedConnection);
 }
 
 void post_feed_forming_bar(
     BarFeed* feed,
+    std::int64_t generation,
     std::int64_t time,
     double open,
     double high,
@@ -586,8 +589,8 @@ void post_feed_forming_bar(
     double close
 ) {
     if (!feed) return;
-    QMetaObject::invokeMethod(feed, [feed, time, open, high, low, close]() {
-        feed->ingest_forming_bar(time, open, high, low, close);
+    QMetaObject::invokeMethod(feed, [feed, generation, time, open, high, low, close]() {
+        feed->ingest_forming_bar_gen(generation, time, open, high, low, close);
     }, Qt::QueuedConnection);
 }
 
@@ -644,6 +647,26 @@ std::int64_t feed_rest_calls(BarFeed* feed) {
     return feed->getRest_calls();
 }
 
+bool feed_retarget(BarFeed* feed, rust::Str symbol, rust::Str timeframe, std::int64_t generation) {
+    if (!feed) return false;
+    return feed->retarget(
+        QString::fromUtf8(symbol.data(), static_cast<int>(symbol.size())),
+        QString::fromUtf8(timeframe.data(), static_cast<int>(timeframe.size())),
+        generation);
+}
+
+std::int64_t feed_target_generation(BarFeed* feed) {
+    return feed ? feed->target_generation() : -1;
+}
+
+std::int64_t feed_stale_dropped(BarFeed* feed) {
+    return feed ? feed->stale_dropped() : -1;
+}
+
+rust::String feed_symbol(BarFeed* feed) {
+    return feed ? rust::String(feed->getSymbol().toStdString()) : rust::String();
+}
+
 #include "q_terminal/src/execution_controls.cxxqt.h"
 #include "q_terminal/src/execution_models.cxxqt.h"
 #include "q_terminal/src/ops_status.cxxqt.h"
@@ -658,6 +681,37 @@ ExecutionModels* find_window_execution_models(QQmlApplicationEngine& engine) {
         }
     }
     return nullptr;
+}
+
+void post_execution_models_sync(ExecutionModels* models) {
+    if (!models) return;
+    QMetaObject::invokeMethod(models, [models]() { models->sync(); }, Qt::QueuedConnection);
+}
+
+void post_feed_overlays(BarFeed* feed, std::int64_t generation, rust::Str json) {
+    if (!feed) return;
+    QString text = QString::fromUtf8(json.data(), static_cast<int>(json.size()));
+    QMetaObject::invokeMethod(feed, [feed, generation, text]() {
+        feed->set_overlays_json(generation, text);
+    }, Qt::QueuedConnection);
+}
+
+void feed_set_execution_rows(BarFeed* feed, rust::Str decisions, rust::Str fills) {
+    if (!feed) return;
+    feed->set_execution_rows(
+        QString::fromUtf8(decisions.data(), static_cast<int>(decisions.size())),
+        QString::fromUtf8(fills.data(), static_cast<int>(fills.size())));
+}
+
+std::int64_t feed_marker_count(BarFeed* feed) {
+    return feed ? feed->marker_count() : 0;
+}
+
+std::int64_t feed_rebuild_overlays(BarFeed* feed, int first_bar, int last_bar, double low,
+                                   double high, float width, float height) {
+    if (!feed) return 0;
+    feed->rebuild_overlays(first_bar, last_bar, low, high, width, height);
+    return feed->overlay_layer_count();
 }
 
 std::uintptr_t find_window_ops_status(QQmlApplicationEngine& engine) {

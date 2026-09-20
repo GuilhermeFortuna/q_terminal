@@ -6,7 +6,7 @@ use crate::stream::exec_session::{ExecSession, Net};
 use crate::stream::frame::{classify_text, split_binary, ControlFrame, ServerFrame};
 use crate::stream::policy::EXECUTION_TOPICS;
 use crate::stream::sink::BarSink;
-use crate::stream::topic_state::{on_event, Action, Event, TopicState};
+use crate::stream::topic_state::{on_event, Action, Event, TopicFilter, TopicState};
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::json;
@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch};
 use tokio_tungstenite::tungstenite::Message;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +57,52 @@ pub struct StreamEntryPayload {
 }
 
 const BAR_TOPICS: [&str; 2] = ["bars.forming", "bars.completed"];
+
+/// The symbol and timeframe the bar topics are filtered to, and the chart target
+/// generation the bars delivered for it are stamped with (Q-049).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BarTarget {
+    pub symbol: String,
+    pub timeframe: String,
+    pub generation: u64,
+}
+
+#[derive(Clone)]
+pub struct Retargeter {
+    tx: Arc<watch::Sender<BarTarget>>,
+}
+
+impl Retargeter {
+    pub fn retarget(&self, symbol: &str, timeframe: &str, generation: u64) {
+        self.tx.send_replace(BarTarget {
+            symbol: symbol.to_string(),
+            timeframe: timeframe.to_string(),
+            generation,
+        });
+    }
+}
+
+fn bar_topic_state(topic: &str, target: &BarTarget) -> TopicState {
+    TopicState::new(
+        topic,
+        topic == "bars.forming",
+        &target.symbol,
+        &target.timeframe,
+    )
+}
+
+/// Percent-encodes a routing key for the `key` query parameter of `/latest`.
+fn encode_query(value: &str) -> String {
+    value
+        .bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            other => format!("%{other:02X}"),
+        })
+        .collect()
+}
 
 pub struct ClientShared {
     connection_state: RwLock<ConnectionState>,
@@ -174,6 +220,7 @@ pub struct StreamClient {
     shutdown_tx: Option<broadcast::Sender<()>>,
     runtime_thread: Option<std::thread::JoinHandle<()>>,
     is_shutdown: Arc<AtomicBool>,
+    target_tx: Arc<watch::Sender<BarTarget>>,
 }
 
 /// Where the client delivers what it learns. Without an execution handle the client
@@ -206,6 +253,11 @@ impl StreamClient {
         let shared_clone = shared.clone();
         let shutdown_rx = shutdown_tx.subscribe();
         let is_shutdown_clone = is_shutdown.clone();
+        let (target_tx, target_rx) = watch::channel(BarTarget {
+            symbol: config.symbol.clone(),
+            timeframe: config.timeframe.clone(),
+            generation: sinks.bars.generation(),
+        });
 
         let runtime_thread = std::thread::Builder::new()
             .name("stream-client".into())
@@ -219,8 +271,15 @@ impl StreamClient {
                     .expect("failed to build tokio runtime");
 
                 rt.block_on(async move {
-                    run_client_loop(config, sinks, shared_clone, shutdown_rx, is_shutdown_clone)
-                        .await;
+                    run_client_loop(
+                        config,
+                        sinks,
+                        shared_clone,
+                        shutdown_rx,
+                        is_shutdown_clone,
+                        target_rx,
+                    )
+                    .await;
                 });
             })
             .expect("spawn stream client thread");
@@ -230,6 +289,21 @@ impl StreamClient {
             shutdown_tx: Some(shutdown_tx),
             runtime_thread: Some(runtime_thread),
             is_shutdown,
+            target_tx: Arc::new(target_tx),
+        }
+    }
+
+    /// Switches the bar topics to `symbol` and `timeframe`. The client drops what it queued
+    /// for the previous target, stamps later bars with `generation`, and snapshots the new
+    /// key. The connection stays up.
+    pub fn retarget(&self, symbol: &str, timeframe: &str, generation: u64) {
+        self.retargeter().retarget(symbol, timeframe, generation);
+    }
+
+    /// A cloneable handle that can retarget without owning the client.
+    pub fn retargeter(&self) -> Retargeter {
+        Retargeter {
+            tx: self.target_tx.clone(),
         }
     }
 
@@ -296,7 +370,17 @@ async fn fetch_and_apply_snapshot(
     if is_shutdown.load(Ordering::SeqCst) {
         return;
     }
-    let url = format!("{api_base}/api/v1/stream/{topic}/latest");
+    let key = match &state.filter {
+        TopicFilter::Bars { symbol, timeframe } => Some(format!("{symbol}:{timeframe}")),
+        TopicFilter::None => None,
+    };
+    let url = match &key {
+        Some(k) => format!(
+            "{api_base}/api/v1/stream/{topic}/latest?key={}",
+            encode_query(k)
+        ),
+        None => format!("{api_base}/api/v1/stream/{topic}/latest"),
+    };
     shared.inc_rest_calls();
     let resp = match http.get(&url).send().await {
         Ok(r) => r,
@@ -305,9 +389,12 @@ async fn fetch_and_apply_snapshot(
     let prev_seq = state.last_applied_seq;
     if resp.status().is_success() {
         if let Ok(latest) = resp.json::<LatestResponse>().await {
-            for entry in latest.entries.values() {
+            for (entry_key, entry) in latest.entries.iter() {
                 if is_shutdown.load(Ordering::SeqCst) {
                     return;
+                }
+                if key.as_ref().is_some_and(|k| k != entry_key) {
+                    continue;
                 }
                 if Some(entry.seq) == prev_seq {
                     return;
@@ -469,6 +556,7 @@ async fn run_client_loop(
     shared: Arc<ClientShared>,
     mut shutdown_rx: broadcast::Receiver<()>,
     is_shutdown: Arc<AtomicBool>,
+    mut target_rx: watch::Receiver<BarTarget>,
 ) {
     let http = reqwest::Client::new();
     let mut attempt = 0u32;
@@ -528,14 +616,15 @@ async fn run_client_loop(
 
         attempt = 0;
         let mut states: HashMap<String, TopicState> = HashMap::new();
-        states.insert(
-            "bars.forming".to_string(),
-            TopicState::new("bars.forming", true, &config.symbol, &config.timeframe),
-        );
-        states.insert(
-            "bars.completed".to_string(),
-            TopicState::new("bars.completed", false, &config.symbol, &config.timeframe),
-        );
+        let target = target_rx.borrow_and_update().clone();
+        if sink.generation() != target.generation {
+            sink.reset(target.generation);
+        }
+        for topic in BAR_TOPICS {
+            states.insert(topic.to_string(), bar_topic_state(topic, &target));
+        }
+        // Epochs the server announced for the bar topics, kept to re-snapshot on retarget.
+        let mut bar_epochs: HashMap<String, String> = HashMap::new();
 
         let mut exec = sinks.execution.clone().map(ExecSession::new);
         let mut topics: Vec<&str> = BAR_TOPICS.to_vec();
@@ -570,6 +659,21 @@ async fn run_client_loop(
                         e.retry(&Net { http: &http, api_base: &config.api_base, shared: &shared, is_shutdown: &is_shutdown }).await;
                     }
                 }
+                changed = target_rx.changed() => {
+                    if changed.is_err() {
+                        return;
+                    }
+                    let target = target_rx.borrow_and_update().clone();
+                    sink.reset(target.generation);
+                    for topic in BAR_TOPICS {
+                        let mut state = bar_topic_state(topic, &target);
+                        if let Some(ep) = bar_epochs.get(topic) {
+                            on_event(&mut state, Event::Subscribed { epoch: ep.clone(), last_seq: 0 });
+                            fetch_and_apply_snapshot(topic, &mut state, &sink, &shared, &http, &config.api_base, &is_shutdown).await;
+                        }
+                        states.insert(topic.to_string(), state);
+                    }
+                }
                 msg_opt = ws_source.next() => {
                     let msg = match msg_opt {
                         Some(Ok(m)) => m,
@@ -590,6 +694,7 @@ async fn run_client_loop(
                                                     let Some(state) = states.get_mut(topic) else { continue };
                                                     let ep = t.get("epoch").and_then(|v| v.as_str()).unwrap_or("").to_string();
                                                     let l_seq = t.get("last_seq").and_then(|v| v.as_i64()).unwrap_or(0);
+                                                    bar_epochs.insert(topic.to_string(), ep.clone());
                                                     on_event(state, Event::Subscribed { epoch: ep, last_seq: l_seq });
                                                     fetch_and_apply_snapshot(topic, state, &sink, &shared, &http, &config.api_base, &is_shutdown).await;
                                                 }
