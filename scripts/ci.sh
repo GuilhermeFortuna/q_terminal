@@ -32,6 +32,9 @@ fi
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# Offscreen validation: Qt and CXX-Qt test suites must run headless.
+unset WAYLAND_DISPLAY DISPLAY
+
 echo "=================================================="
 echo "==> Running q_terminal CI Pipeline"
 echo "=================================================="

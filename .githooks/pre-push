@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "==> Running pre-push hook (full CI pipeline)..."
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# shellcheck source=.githooks/_common.sh
+source "$REPO_ROOT/.githooks/_common.sh"
+ensure_toolchain_on_path
+
+# Unset display variables so Qt and CXX-Qt suites run headless offscreen.
+unset WAYLAND_DISPLAY DISPLAY
+
+./scripts/ci.sh

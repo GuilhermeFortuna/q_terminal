@@ -1,4 +1,4 @@
-.PHONY: check check-suite ci-structure-check fmt fmt-check lint test build run qml-lint qml-lint-built contracts contracts-check bench-stream bench-history-load bench-frames
+.PHONY: check check-suite ci-structure-check fmt fmt-check lint test build run qml-lint qml-lint-built contracts contracts-check bench-stream bench-history-load bench-frames hooks
 .NOTPARALLEL:
 
 CONTRACTS_REPO ?= https://github.com/GuilhermeFortuna/q_contracts.git
@@ -79,3 +79,6 @@ contracts-check:
 			--language rust --out "$$generated_tmp"; \
 	fi; \
 	diff -ru contracts "$$generated_tmp/rust"
+
+hooks:
+	@./scripts/install-hooks.sh

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "==> Running pre-commit hook (fmt-check & clippy)..."
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# shellcheck source=.githooks/_common.sh
+source "$REPO_ROOT/.githooks/_common.sh"
+ensure_toolchain_on_path
+
+make --no-print-directory ci-structure-check
+make --no-print-directory fmt-check
+
+# Clippy compiles the crate and checks lints. Skip it when no Rust, C++,
+# or build inputs are staged (e.g. docs-only commits). The full suite runs in pre-push.
+if git diff --cached --name-only --diff-filter=ACMR | grep -qE '\.rs$|\.cpp$|\.h$|(^|/)Cargo\.(toml|lock)$|(^|/)build\.rs$|^rust-toolchain\.toml$'; then
+  make --no-print-directory lint
+else
+  echo "No Rust/C++/Cargo changes staged; skipping clippy."
+fi

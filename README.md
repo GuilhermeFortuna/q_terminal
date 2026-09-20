@@ -286,6 +286,16 @@ env -u WAYLAND_DISPLAY -u DISPLAY make test
 cargo test --test slice_end_to_end
 ```
 
+### Git hooks
+
+Install the Git hooks once per clone:
+
+```bash
+make hooks
+```
+
+- `pre-commit`: runs `ci-structure-check` and `fmt-check`, plus `lint` (clippy) when Rust, C++, or Cargo files are staged.
+- `pre-push`: runs the full CI pipeline (`./scripts/ci.sh`).
 
 ---
 
