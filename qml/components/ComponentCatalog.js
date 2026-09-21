@@ -19,5 +19,6 @@ var entries = [
     { name: "EmptyState", states: ["rest", "disabled", "degraded"] },
     { name: "AppDialog", states: ["rest", "focused", "disabled", "degraded"] },
     { name: "AppTextField", states: commonStates },
-    { name: "AppComboBox", states: commonStates }
+    { name: "AppComboBox", states: commonStates },
+    { name: "ChartIdentity", states: ["rest", "switching", "loading", "stale", "disconnected"] }
 ]

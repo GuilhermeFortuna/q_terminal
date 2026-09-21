@@ -4,10 +4,26 @@ import qml
 PanelFrame {
     id: root
     kind: "chart"
-    ChartPane {
-        id: chart
-        objectName: "chartPane"
+
+    Column {
         anchors.fill: parent
-        feed: root.shell.activeFeed
+        spacing: Spacing.none
+
+        ChartIdentity {
+            id: identity
+            objectName: "chartIdentity"
+            width: parent.width
+            context: root.shell.activeChartContext
+            feed: root.shell.activeFeed
+        }
+
+        ChartPane {
+            id: chart
+            objectName: "chartPane"
+            width: parent.width
+            height: parent.height - identity.height
+            context: root.shell.activeChartContext
+            feed: root.shell.activeFeed
+        }
     }
 }
