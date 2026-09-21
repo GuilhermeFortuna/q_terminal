@@ -116,7 +116,12 @@ async fn a_completed_bar_triggers_exactly_one_chart_request() {
     )
     .await;
     // Selecting the deployment (same symbol and timeframe) fetches its overlays once.
-    targeter.select(Some((DEP.into(), "PETR4".into(), "1m".into())));
+    targeter.select(Some((
+        DEP.into(),
+        "dep-name".into(),
+        "PETR4".into(),
+        "1m".into(),
+    )));
     until("overlay fetch", || server.chart_calls() == 1).await;
     tokio::time::sleep(Duration::from_millis(200)).await;
     assert_eq!(server.chart_calls(), 1, "selection costs one request");

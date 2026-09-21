@@ -5,6 +5,7 @@
 #include "bar_chart_probe.h"
 #include "q-qt/src/bar_series.cxxqt.h"
 #include "q_terminal/src/bar_feed.cxxqt.h"
+#include "q_terminal/src/chart_context.cxxqt.h"
 #include "q_terminal/src/execution_models.cxxqt.h"
 
 #include <mutex>
@@ -451,6 +452,108 @@ EmptyStateProbeResult EmptyStateProbe::result() const {
 
 std::unique_ptr<EmptyStateProbe> make_empty_state_probe() {
     return std::make_unique<EmptyStateProbe>();
+}
+
+struct ChartIdentityProbe::Impl {
+    QQmlEngine engine;
+    QObject* identity{nullptr};
+    ChartContext* context{nullptr};
+    BarFeed* feed{nullptr};
+};
+
+ChartIdentityProbe::ChartIdentityProbe() : m_impl(std::make_unique<Impl>()) {
+    ensure_test_app();
+    m_impl->engine.addImportPath(QStringLiteral("target/cxxqt/qml_modules"));
+
+    QQmlComponent component(&m_impl->engine);
+    QFileInfo fileInfo(QStringLiteral("qml/components/ChartIdentity.qml"));
+    if (fileInfo.exists()) {
+        component.loadUrl(QUrl::fromLocalFile(fileInfo.absoluteFilePath()));
+    } else {
+        component.loadUrl(QUrl(QStringLiteral("qrc:/qt/qml/qml/components/ChartIdentity.qml")));
+    }
+    m_impl->identity = component.create();
+}
+
+ChartIdentityProbe::~ChartIdentityProbe() {
+    if (m_impl->identity) {
+        delete m_impl->identity;
+    }
+}
+
+void ChartIdentityProbe::set_context(ChartContext* context) {
+    m_impl->context = context;
+    if (m_impl->identity) {
+        m_impl->identity->setProperty("context", QVariant::fromValue(static_cast<QObject*>(context)));
+    }
+}
+
+void ChartIdentityProbe::set_feed(BarFeed* feed) {
+    m_impl->feed = feed;
+    if (m_impl->identity) {
+        m_impl->identity->setProperty("feed", QVariant::fromValue(static_cast<QObject*>(feed)));
+    }
+    if (m_impl->context && feed) {
+        m_impl->context->sync();
+    }
+}
+
+ChartIdentityProbeResult ChartIdentityProbe::result() const {
+    ChartIdentityProbeResult out{};
+    if (m_impl->identity) {
+        auto* symbolObj = m_impl->identity->findChild<QObject*>("symbolLineText");
+        if (symbolObj) {
+            out.symbol_line = rust::String(symbolObj->property("text").toString().toStdString());
+        }
+        auto* sourceObj = m_impl->identity->findChild<QObject*>("sourceLabelText");
+        if (sourceObj) {
+            out.source_label = rust::String(sourceObj->property("text").toString().toStdString());
+        }
+        auto* conditionObj = m_impl->identity->findChild<QObject*>("conditionBadge");
+        if (conditionObj) {
+            out.condition_label = rust::String(conditionObj->property("text").toString().toStdString());
+        }
+        auto* lastBarObj = m_impl->identity->findChild<QObject*>("lastBarLabelText");
+        if (lastBarObj) {
+            auto text = lastBarObj->property("text").toString().toStdString();
+            const std::string prefix = "Last bar: ";
+            if (text.rfind(prefix, 0) == 0) {
+                text = text.substr(prefix.size());
+            }
+            out.last_bar_label = rust::String(text);
+        }
+        if (m_impl->context) {
+            out.is_switching = m_impl->context->getIs_switching();
+            out.source_label =
+                rust::String(m_impl->context->getSource_label().toStdString());
+            out.symbol_line = rust::String(m_impl->context->getSymbol_line().toStdString());
+            out.last_bar_label =
+                rust::String(m_impl->context->getLast_bar_label().toStdString());
+            out.condition_label =
+                rust::String(m_impl->context->getCondition_label().toStdString());
+        }
+    }
+    return out;
+}
+
+std::unique_ptr<ChartIdentityProbe> make_chart_identity_probe() {
+    return std::make_unique<ChartIdentityProbe>();
+}
+
+ChartContext* find_window_chart_context(QQmlApplicationEngine& engine) {
+    for (QObject* root : engine.rootObjects()) {
+        if (auto* context = root->findChild<ChartContext*>("chartContext")) {
+            return context;
+        }
+        if (auto* context = root->findChild<ChartContext*>()) {
+            return context;
+        }
+    }
+    return nullptr;
+}
+
+ChartContext* make_test_chart_context() {
+    return new ChartContext();
 }
 
 BarFeed* make_test_feed() {
