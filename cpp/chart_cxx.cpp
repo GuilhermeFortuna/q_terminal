@@ -505,18 +505,15 @@ void setup_window_feed(QQmlApplicationEngine& engine, BarFeed* feed) {
     }
 }
 
-void setup_window_auto_close(QQmlApplicationEngine& engine, int ms) {
+void setup_window_auto_close(QQmlApplicationEngine&, int ms) {
     if (ms <= 0) return;
-    for (QObject* root : engine.rootObjects()) {
-        if (auto* window = qobject_cast<QQuickWindow*>(root)) {
-            auto* timer = new QTimer(window);
-            timer->setSingleShot(true);
-            QObject::connect(timer, &QTimer::timeout, window, [window]() {
-                window->close();
-            });
-            timer->start(ms);
+    // Closing every window ends the application, as a user closing the last one would.
+    QTimer::singleShot(ms, qApp, []() {
+        const auto windows = QGuiApplication::topLevelWindows();
+        for (QWindow* window : windows) {
+            window->close();
         }
-    }
+    });
 }
 
 void feed_set_symbol(BarFeed* feed, rust::Str symbol) {
@@ -829,4 +826,61 @@ void execution_controls_update_health(
 std::uintptr_t make_test_execution_controls() {
     ensure_test_app();
     return reinterpret_cast<std::uintptr_t>(new ExecutionControls());
+}
+
+// ---- Shell test seams (Q-052) ----------------------------------------------------------
+
+#include <QtCore/QRegularExpression>
+#include <QtGui/QImage>
+#include <QtQml/QQmlContext>
+#include <QtQml/QQmlExpression>
+
+rust::String shell_eval(QQmlApplicationEngine& engine, rust::Str js) {
+    const auto roots = engine.rootObjects();
+    if (roots.isEmpty()) {
+        return rust::String("error: no root object");
+    }
+    QQmlExpression expression(engine.rootContext(), roots.first(),
+                              QString::fromUtf8(js.data(), static_cast<int>(js.size())));
+    bool is_undefined = false;
+    const QVariant value = expression.evaluate(&is_undefined);
+    if (expression.hasError()) {
+        return rust::String("error: " + expression.error().toString().toStdString());
+    }
+    return rust::String(value.toString().toStdString());
+}
+
+std::int32_t shell_visible_window_count() {
+    std::int32_t count = 0;
+    for (QWindow* window : QGuiApplication::topLevelWindows()) {
+        if (qobject_cast<QQuickWindow*>(window) && window->isVisible()) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+// Renders every visible window to `<dir>/<title>.png`; returns how many were written.
+std::int32_t shell_grab_windows(rust::Str dir) {
+    const QString base = QString::fromUtf8(dir.data(), static_cast<int>(dir.size()));
+    std::int32_t written = 0;
+    for (QWindow* w : QGuiApplication::topLevelWindows()) {
+        auto* window = qobject_cast<QQuickWindow*>(w);
+        if (!window || !window->isVisible()) continue;
+        for (int i = 0; i < 4; ++i) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+            window->update();
+        }
+        const QImage image = window->grabWindow();
+        QString name = window->title();
+        name.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9]+")), QStringLiteral("-"));
+        if (!image.isNull() && image.save(base + QStringLiteral("/") + name + QStringLiteral(".png"), "PNG")) {
+            ++written;
+        }
+    }
+    return written;
+}
+
+bool shell_quit_on_last_window_closed() {
+    return QGuiApplication::quitOnLastWindowClosed();
 }

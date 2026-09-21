@@ -105,6 +105,20 @@ pub mod ffi {
         fn is_command_enabled(self: Pin<&mut ExecutionControls>, kind: QString) -> bool;
 
         #[qinvokable]
+        fn shell_command_enabled(
+            self: Pin<&mut ExecutionControls>,
+            id: QString,
+            kill_switch: bool,
+        ) -> bool;
+
+        #[qinvokable]
+        fn shell_command_reason(
+            self: Pin<&mut ExecutionControls>,
+            id: QString,
+            kill_switch: bool,
+        ) -> QString;
+
+        #[qinvokable]
         fn command_disabled_reason(self: Pin<&mut ExecutionControls>, kind: QString) -> QString;
 
         #[qinvokable]
@@ -491,6 +505,22 @@ impl ffi::ExecutionControls {
         let kind = ExecutionControlsRust::parse_kind(&kind.to_string());
         kind.map(|k| enablement::enabled(k, &self.rust().current_health()).is_enabled())
             .unwrap_or(false)
+    }
+
+    /// Shell command enablement (Q-052), from the one health snapshot every window shares.
+    pub fn shell_command_enabled(self: Pin<&mut Self>, id: QString, kill_switch: bool) -> bool {
+        crate::shell::commands::CommandRegistry::shared()
+            .enablement(&id.to_string(), &self.rust().current_health(), kill_switch)
+            .is_enabled()
+    }
+
+    pub fn shell_command_reason(self: Pin<&mut Self>, id: QString, kill_switch: bool) -> QString {
+        let e = crate::shell::commands::CommandRegistry::shared().enablement(
+            &id.to_string(),
+            &self.rust().current_health(),
+            kill_switch,
+        );
+        QString::from(e.reason().unwrap_or(""))
     }
 
     pub fn command_disabled_reason(self: Pin<&mut Self>, kind: QString) -> QString {

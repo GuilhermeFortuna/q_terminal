@@ -12,7 +12,16 @@ DecisionsTable 1.0 DecisionsTable.qml
 RiskTable 1.0 RiskTable.qml
 LedgerTable 1.0 LedgerTable.qml
 DeploymentDetail 1.0 DeploymentDetail.qml
-OpsWorkspace 1.0 OpsWorkspace.qml
+PanelFrame 1.0 shell/PanelFrame.qml
+PanelHost 1.0 shell/PanelHost.qml
+CommandPalette 1.0 shell/CommandPalette.qml
+ShellWindow 1.0 shell/ShellWindow.qml
+StatusPanel 1.0 panels/StatusPanel.qml
+DeploymentsPanel 1.0 panels/DeploymentsPanel.qml
+DetailPanel 1.0 panels/DetailPanel.qml
+ChartPanel 1.0 panels/ChartPanel.qml
+InstrumentPanel 1.0 panels/InstrumentPanel.qml
+PlaceholderPanel 1.0 panels/PlaceholderPanel.qml
 ConfirmDialog 1.0 ConfirmDialog.qml
 AccountDialog 1.0 AccountDialog.qml
 DeployDialog 1.0 DeployDialog.qml

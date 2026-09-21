@@ -14,6 +14,23 @@ Rectangle {
     required property ExecutionControls executionControls
     required property OpsStatus opsStatus
 
+    // The selection this list shows. A window detached from the global selection binds its
+    // own here and, with routesSelection, hands a click to the shell instead of selecting
+    // in the shared models itself (Q-052).
+    property string selectedId: root.executionModels.selected_deployment_id
+    property bool routesSelection: false
+    signal selectRequested(string id)
+    // Scroll position; the panel keeps it when it moves between windows.
+    property alias scrollY: deploymentsView.contentY
+
+    function trigger(command) {
+        if (command === "account.create") {
+            accountDialog.open();
+        } else if (command === "deployment.create") {
+            deployDialog.open();
+        }
+    }
+
     AccountDialog {
         id: accountDialog
         onCreateRequested: function(name, balance, currency) {
@@ -164,7 +181,7 @@ Rectangle {
                 required property string pos_mark_price
                 required property string last_bar_close_time
 
-                readonly property bool isSelected: root.executionModels.selected_deployment_id === card.id
+                readonly property bool isSelected: root.selectedId === card.id
                 readonly property bool isLive: card.broker_mode.toLowerCase() === "live"
 
                 width: deploymentsView.width
@@ -187,7 +204,11 @@ Rectangle {
                     anchors.fill: parent
                     hoverEnabled: true
                     onClicked: {
-                        root.executionModels.select_deployment(card.id);
+                        if (root.routesSelection) {
+                            root.selectRequested(card.id);
+                        } else {
+                            root.executionModels.select_deployment(card.id);
+                        }
                     }
                 }
 

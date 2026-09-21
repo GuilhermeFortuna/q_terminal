@@ -15,6 +15,16 @@ Rectangle {
 
     property string killSwitchActionId: ""
 
+    // Shell command entry point (Q-052): the palette and shortcuts open the same
+    // confirmations the buttons do.
+    function trigger(command) {
+        if (command === "kill-switch.set") {
+            killEngageDialog.open();
+        } else if (command === "kill-switch.clear") {
+            killReleaseDialog.open();
+        }
+    }
+
     ConfirmDialog {
         id: killEngageDialog
         actionTitle: "Engage kill switch"

@@ -13,4 +13,10 @@ QtObject {
     readonly property string search: "qrc:/assets/icons/search.svg"
     readonly property string settings: "qrc:/assets/icons/settings.svg"
     readonly property string close: "qrc:/assets/icons/x.svg"
+    readonly property string pulse: "qrc:/assets/icons/activity.svg"
+    readonly property string list: "qrc:/assets/icons/list.svg"
+    readonly property string table: "qrc:/assets/icons/table.svg"
+    readonly property string chart: "qrc:/assets/icons/chart-candlestick.svg"
+    readonly property string popOut: "qrc:/assets/icons/external-link.svg"
+    readonly property string dock: "qrc:/assets/icons/arrow-down-to-line.svg"
 }

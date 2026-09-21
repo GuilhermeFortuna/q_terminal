@@ -96,6 +96,10 @@ pub mod chart {
         unsafe fn find_window_feed(engine: Pin<&mut QQmlApplicationEngine>) -> *mut BarFeed;
         unsafe fn setup_window_feed(engine: Pin<&mut QQmlApplicationEngine>, feed: *mut BarFeed);
         fn setup_window_auto_close(engine: Pin<&mut QQmlApplicationEngine>, ms: i32);
+        fn shell_eval(engine: Pin<&mut QQmlApplicationEngine>, js: &str) -> String;
+        fn shell_visible_window_count() -> i32;
+        fn shell_quit_on_last_window_closed() -> bool;
+        fn shell_grab_windows(dir: &str) -> i32;
 
         unsafe fn feed_set_symbol(feed: *mut BarFeed, symbol: &str);
         unsafe fn feed_set_timeframe(feed: *mut BarFeed, timeframe: &str, timeframe_ms: i64);
@@ -317,7 +321,8 @@ pub use chart::{
     ops_status_apply_health, ops_status_apply_positions, ops_status_mark_api_offline,
     ops_status_mark_postgres_down, ops_status_set_stream, post_execution_models_sync,
     post_feed_completed_bar, post_feed_forming_bar, post_feed_overlays, post_feed_stream_state,
-    process_events, setup_window_auto_close, setup_window_feed, BarFeed, ChartPaneProbe,
+    process_events, setup_window_auto_close, setup_window_feed, shell_eval, shell_grab_windows,
+    shell_quit_on_last_window_closed, shell_visible_window_count, BarFeed, ChartPaneProbe,
     ChartPaneProbeResult, EmptyStateProbe, EmptyStateProbeResult, ExecutionModels, ProbeResult,
     ProbeVertex, StatusStripProbe, StatusStripProbeResult, ViewportProbe, ViewportProbeResult,
 };
