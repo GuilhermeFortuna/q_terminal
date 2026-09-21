@@ -4,7 +4,8 @@
 **Project direction:** [`q_contracts/docs/system-architecture.md` §5.1, §10 Phase 5](https://github.com/GuilhermeFortuna/q_contracts/blob/03214a0760945120c56c2af97a542fcb26da2f1e/docs/system-architecture.md#51-ui-ownership-boundary)  
 **UI direction:** [`../../design/ui-direction.md`](../../design/ui-direction.md) §2, §4, §15  
 **Reference register:** [`../../design/references.md`](../../design/references.md)  
-**Depends on:** Q-053  
+**Batch:** 09 — terminal UX and visual validation
+**Depends on:** Q-053, Q-056, Q-058
 **Implementation plan:** [`../plans/Q-054-visual-baselines-plan.md`](../plans/Q-054-visual-baselines-plan.md)
 
 ## Purpose
@@ -19,8 +20,10 @@ This task closes that gap: the gallery and the real screens render offscreen in 
 environment, and their images are compared against committed baselines, so an unintended
 change in appearance fails like any other test.
 
-It comes after the shell and the workspaces because a baseline captured before those
-layouts settle is a baseline that gets thrown away.
+It comes after Q-055 to Q-058 because those tasks change chart identity, chart controls,
+the palette, and the merged workspace. Capturing the current screens first would commit
+baselines that the redesign immediately replaces. The component gallery and manual
+screenshots remain the visual review tools while those tasks are built.
 
 ## Requirements
 
@@ -28,7 +31,8 @@ layouts settle is a baseline that gets thrown away.
 
 - The Q-051 gallery and the real screens — each composition, each detail table, the header
   in a healthy state and in each §8.1 degraded state, each dialog, the merged single-window
-  arrangement — render offscreen to images in a fixed, reproducible environment.
+  arrangement, Q-055 chart identity/freshness states, and Q-056 chart picker/mode/error
+  states — render offscreen to images in a fixed, reproducible environment.
 - Rendering is deterministic: software rasterisation, vendored fonts with system font
   paths excluded, fixed sizes, fixed device pixel ratio, and fixed data from the existing
   fakes rather than anything live. Two runs on the same commit produce identical images.
@@ -63,14 +67,14 @@ layouts settle is a baseline that gets thrown away.
 2. A deliberate one-token change — a spacing value, then a colour token — fails the
    comparison, and the written diff image marks the changed regions. Reverting it passes.
 3. Baselines exist for the gallery, every composition, every detail table, the header in a healthy
-   state and in each §8.1 degraded state, every dialog and the merged arrangement, at both
-   workstation resolutions.
+   state and in each §8.1 degraded state, every dialog, the merged arrangement, chart
+   identity/freshness states, and picker/mode/error states at both workstation resolutions.
 4. The acceptance command rewrites baselines, reports every file it rewrote, and a normal
    test run never modifies a baseline file, proven by asserting the working tree is clean
    after a failing run.
 5. Fonts resolve from the vendored resources with system font directories excluded, and
    the rendering environment is pinned and recorded.
-6. Every Q-035 to Q-053 test passes; `make check` passes and includes the comparison.
+6. Every Q-035 to Q-058 test passes; `make check` passes and includes the comparison.
 
 ### Human-verifiable
 

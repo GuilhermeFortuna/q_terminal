@@ -2,7 +2,8 @@
 
 **Status:** authoritative in the [Q project board](https://github.com/users/GuilhermeFortuna/projects/2)  
 **Specification:** [`../specs/Q-054-visual-baselines-spec.md`](../specs/Q-054-visual-baselines-spec.md)  
-**Depends on:** Q-053
+**Batch:** 09 — terminal UX and visual validation
+**Depends on:** Q-053, Q-056, Q-058
 
 ## Current-system context
 
@@ -10,9 +11,10 @@ After Q-051 the design system exists, the gallery renders every component in eve
 behind the `gallery` cargo feature and captures itself offscreen through `make
 gallery-shot`, the fonts are vendored in the `qrc`, and
 `tools/token_gate.py` enforces the rules statically. After Q-052 the shell composes
-panels into windows; after Q-053 workspaces restore them. Appearance itself is checked only by a
-human opening the gallery or comparing screenshots attached to a handoff; nothing notices
-a change.
+panels into windows; after Q-053 workspaces restore them. Q-055 to Q-058 settle chart
+context and controls, the black palette, and the default workspace hierarchy before
+baselines are captured. Until then, a human checks the gallery and screenshots; nothing
+automatically notices a visual change.
 
 The existing headless harnesses (`tests/degraded_states.rs`, `tests/slice_end_to_end.rs`,
 `tests/ops_views.rs`, and the Q-052 and Q-053 suites) already drive the application
@@ -71,7 +73,7 @@ Makefile                         new targets: visual-check (in check), visual-ac
 ## Ordered implementation
 
 - [ ] 1. Work on the branch `Q-054-visual-baselines` in `q_terminal`, created from
-   `development` by `./work start`. Confirm Q-053 is merged. Commit.
+   `development` by `./work start`. Confirm Q-053, Q-056, and Q-058 are merged. Commit.
 - [ ] 2. Pin the rendering environment and prove byte-identity across two runs of one
    screen before anything else is built (criterion 1, and criterion 5's font check). If it
    does not hold, fix the environment here. Record it in `docs/design/visual-testing.md`.
@@ -79,7 +81,8 @@ Makefile                         new targets: visual-check (in check), visual-ac
 - [ ] 3. Implement `src/visual/capture.rs` and `compare.rs` with the diff image writer, and
    `tools/visual.py` with `capture`, `check` and `accept`. Commit.
 - [ ] 4. Capture baselines for the Q-051 gallery and every screen in criterion 3 at both
-   resolutions, from the existing fake harnesses. Commit the baselines.
+   resolutions, including Q-055 identity/freshness and Q-056 picker/mode/error states,
+   from the existing fake harnesses. Commit the baselines.
 - [ ] 5. Wire `visual-check` into `make check` and CI, publishing diff images on failure.
    Prove criteria 2 and 4 with the deliberate token change and the clean-tree assertion.
    Commit.
@@ -97,7 +100,7 @@ Makefile                         new targets: visual-check (in check), visual-ac
   resolutions.
 - **Hygiene:** the working tree is clean after a failing run; `visual-accept` reports every
   file it rewrote.
-- **Regression:** every Q-035 to Q-053 test, the token gate, `qmllint`,
+- **Regression:** every Q-035 to Q-058 test, the token gate, `qmllint`,
   `make contracts-check`.
 
 ```bash
