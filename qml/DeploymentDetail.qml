@@ -51,6 +51,16 @@ Rectangle {
     }
 
     property int currentTabIndex: 0
+
+    function trigger(command) {
+        if (command === "deployment.flatten") {
+            flattenDialog.open();
+        } else if (command === "detail.next-tab") {
+            root.currentTabIndex = (root.currentTabIndex + 1) % 5;
+        } else if (command === "detail.previous-tab") {
+            root.currentTabIndex = (root.currentTabIndex + 4) % 5;
+        }
+    }
     readonly property var tabNames: ["orders", "fills", "decisions", "risk", "ledger"]
 
     function getSelectedPosition() {

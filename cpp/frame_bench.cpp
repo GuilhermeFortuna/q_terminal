@@ -9,6 +9,8 @@
 #include <vector>
 
 #include <QtCore/QElapsedTimer>
+#include <QtCore/QMetaObject>
+#include <QtGui/QGuiApplication>
 #include <QtCore/QTimer>
 #include <QtQuick/QQuickWindow>
 #include <QtQuick/QSGRendererInterface>
@@ -42,20 +44,66 @@ const char* graphics_api_name(QSGRendererInterface::GraphicsApi api) {
 
 } // namespace
 
+namespace {
+
+struct WindowStats {
+    QQuickWindow* window;
+    std::vector<double> frame_ms;
+    std::vector<int> uploads;
+    QElapsedTimer timer;
+};
+
+void print_stats(const WindowStats& stats, int visible_buckets, int execution_rows, int markers,
+                 int overlays) {
+    const QString name = stats.window->title();
+    if (stats.frame_ms.empty()) {
+        std::cout << "frame_bench window=\"" << name.toStdString() << "\" buckets="
+                  << visible_buckets << " execution_rows=" << execution_rows << " frames=0"
+                  << std::endl;
+        return;
+    }
+    std::vector<double> sorted = stats.frame_ms;
+    std::sort(sorted.begin(), sorted.end());
+    auto pct = [&](double q) {
+        return sorted[static_cast<std::size_t>(q * static_cast<double>(sorted.size() - 1))];
+    };
+    double upload_sum = 0.0;
+    for (int uploads : stats.uploads) {
+        upload_sum += static_cast<double>(uploads);
+    }
+    const double avg_uploads =
+        stats.uploads.empty() ? 0.0 : upload_sum / static_cast<double>(stats.uploads.size());
+    QSGRendererInterface* rif = stats.window->rendererInterface();
+    const QSGRendererInterface::GraphicsApi api =
+        rif ? rif->graphicsApi() : stats.window->graphicsApi();
+    std::cout << "frame_bench window=\"" << name.toStdString() << "\" buckets=" << visible_buckets
+              << " execution_rows=" << execution_rows << " markers=" << markers
+              << " overlays=" << overlays << " frames=" << sorted.size() << " p50_ms=" << pct(0.50)
+              << " p95_ms=" << pct(0.95) << " p99_ms=" << pct(0.99) << " max_ms=" << sorted.back()
+              << " avg_uploads_per_frame=" << avg_uploads
+              << " graphics_api=" << graphics_api_name(api) << std::endl;
+}
+
+}  // namespace
+
 void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar_count,
                      int duration_ms, int execution_rows, int markers, int overlays) {
-    QQuickWindow* window = nullptr;
-    for (QObject* root : engine.rootObjects()) {
-        window = qobject_cast<QQuickWindow*>(root);
-        if (window != nullptr) {
-            break;
-        }
+    // The shell root is not a window. With Q_BENCH_WINDOWS=both both compositions are
+    // opened, so the chart and the tables render in separate windows.
+    QObject* root = engine.rootObjects().isEmpty() ? nullptr : engine.rootObjects().first();
+    if (root != nullptr && qEnvironmentVariable("Q_BENCH_WINDOWS") == QStringLiteral("both")) {
+        QVariant ignored;
+        QMetaObject::invokeMethod(root, "openWindow", Q_RETURN_ARG(QVariant, ignored),
+                                  Q_ARG(QVariant, QStringLiteral("market")));
+        QMetaObject::invokeMethod(root, "openWindow", Q_RETURN_ARG(QVariant, ignored),
+                                  Q_ARG(QVariant, QStringLiteral("operations")));
     }
 
-    BarChartItem* chart = window ? window->findChild<BarChartItem*>("benchChart") : nullptr;
-    if (chart == nullptr && window != nullptr) {
-        chart = window->findChild<BarChartItem*>();
+    BarChartItem* chart = root ? root->findChild<BarChartItem*>("benchChart") : nullptr;
+    if (chart == nullptr && root != nullptr) {
+        chart = root->findChild<BarChartItem*>();
     }
+    QQuickWindow* window = chart ? chart->window() : nullptr;
     BarSeries* series = nullptr;
     if (chart != nullptr) {
         if (auto* s = qobject_cast<BarSeries*>(chart->series())) {
@@ -70,7 +118,6 @@ void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar
         std::cerr << "frame bench: chart scene not found" << std::endl;
         return;
     }
-
     series->load_history_sample(bar_count);
     chart->setFirstBar(0);
     chart->setLastBar(visible_buckets);
@@ -78,9 +125,9 @@ void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar
     chart->setHighPrice(series->getHigh());
 
     if (execution_rows > 0) {
-        auto* models = window->findChild<ExecutionModels*>("executionModels");
+        auto* models = root->findChild<ExecutionModels*>("executionModels");
         if (models == nullptr) {
-            models = window->findChild<ExecutionModels*>();
+            models = root->findChild<ExecutionModels*>();
         }
         if (models != nullptr) {
             QObject* depObj = qvariant_cast<QObject*>(models->getDeployments());
@@ -141,10 +188,22 @@ void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar
         item->setHighPrice(overlayFeed->getHigh() + 1.0);
     }
 
-    auto* frame_ms = new std::vector<double>();
-    auto* uploads_per_frame = new std::vector<int>();
-    auto* timer = new QElapsedTimer();
-    timer->start();
+    // One frame series per visible window: a second window costs a second render loop.
+    auto* all = new std::vector<WindowStats*>();
+    for (QWindow* w : QGuiApplication::topLevelWindows()) {
+        auto* quick = qobject_cast<QQuickWindow*>(w);
+        if (quick == nullptr || !quick->isVisible()) {
+            continue;
+        }
+        auto* stats = new WindowStats{quick, {}, {}, {}};
+        stats->timer.start();
+        all->push_back(stats);
+        QObject::connect(quick, &QQuickWindow::afterRendering, quick, [stats, chart]() {
+            stats->frame_ms.push_back(static_cast<double>(stats->timer.nsecsElapsed()) / 1'000'000.0);
+            stats->uploads.push_back(stats->window == chart->window() ? chart->takeFrameUploads() : 0);
+            stats->timer.restart();
+        });
+    }
 
     QObject::connect(window, &QQuickWindow::beforeRendering, window, [series, overlayFeed]() {
         if (overlayFeed != nullptr) {
@@ -156,61 +215,17 @@ void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar
                                    series->getLast_price() + 0.5, 1.0);
     });
 
-    QObject::connect(window, &QQuickWindow::afterRendering, window,
-                     [window, chart, frame_ms, uploads_per_frame, timer, visible_buckets]() {
-                         frame_ms->push_back(static_cast<double>(timer->nsecsElapsed()) /
-                                             1'000'000.0);
-                         uploads_per_frame->push_back(chart->takeFrameUploads());
-                         timer->restart();
-                     });
-
     QTimer* stopTimer = new QTimer(window);
     stopTimer->setSingleShot(true);
     QObject::connect(stopTimer, &QTimer::timeout, window,
-                     [window, frame_ms, uploads_per_frame, visible_buckets, execution_rows, markers, overlays]() {
-                         if (frame_ms->empty()) {
-                             std::cout << "frame_bench buckets=" << visible_buckets
-                                       << " execution_rows=" << execution_rows
-                                       << " frames=0" << std::endl;
-                             window->close();
-                             return;
+                     [all, visible_buckets, execution_rows, markers, overlays]() {
+                         for (WindowStats* stats : *all) {
+                             print_stats(*stats, visible_buckets, execution_rows, markers, overlays);
                          }
-
-                         std::vector<double> sorted = *frame_ms;
-                         std::sort(sorted.begin(), sorted.end());
-                         const std::size_t idx50 =
-                             static_cast<std::size_t>(0.50 * static_cast<double>(sorted.size() - 1));
-                         const std::size_t idx95 =
-                             static_cast<std::size_t>(0.95 * static_cast<double>(sorted.size() - 1));
-                         const std::size_t idx99 =
-                             static_cast<std::size_t>(0.99 * static_cast<double>(sorted.size() - 1));
-                         const double p50 = sorted[idx50];
-                         const double p95 = sorted[idx95];
-                         const double p99 = sorted[idx99];
-                         const double max_ms = sorted.back();
-                         double upload_sum = 0.0;
-                         for (int uploads : *uploads_per_frame) {
-                             upload_sum += static_cast<double>(uploads);
+                         const auto windows = QGuiApplication::topLevelWindows();
+                         for (QWindow* w : windows) {
+                             w->close();
                          }
-                         const double avg_uploads =
-                             upload_sum / static_cast<double>(uploads_per_frame->size());
-
-                         QSGRendererInterface* rif = window->rendererInterface();
-                         const QSGRendererInterface::GraphicsApi api =
-                             rif ? rif->graphicsApi() : window->graphicsApi();
-
-                         std::cout << "frame_bench buckets=" << visible_buckets
-                                   << " execution_rows=" << execution_rows
-                                   << " markers=" << markers
-                                   << " overlays=" << overlays
-                                   << " frames=" << sorted.size()
-                                   << " p50_ms=" << p50
-                                   << " p95_ms=" << p95
-                                   << " p99_ms=" << p99
-                                   << " max_ms=" << max_ms
-                                   << " avg_uploads_per_frame=" << avg_uploads
-                                   << " graphics_api=" << graphics_api_name(api) << std::endl;
-                         window->close();
                      });
     int dur = duration_ms > 0 ? duration_ms : 5000;
     stopTimer->start(dur);

@@ -89,7 +89,16 @@ fn main() {
         .qml_file("qml/RiskTable.qml")
         .qml_file("qml/LedgerTable.qml")
         .qml_file("qml/DeploymentDetail.qml")
-        .qml_file("qml/OpsWorkspace.qml")
+        .qml_file("qml/shell/PanelFrame.qml")
+        .qml_file("qml/shell/PanelHost.qml")
+        .qml_file("qml/shell/CommandPalette.qml")
+        .qml_file("qml/shell/ShellWindow.qml")
+        .qml_file("qml/panels/StatusPanel.qml")
+        .qml_file("qml/panels/DeploymentsPanel.qml")
+        .qml_file("qml/panels/DetailPanel.qml")
+        .qml_file("qml/panels/ChartPanel.qml")
+        .qml_file("qml/panels/InstrumentPanel.qml")
+        .qml_file("qml/panels/PlaceholderPanel.qml")
         .qml_file("qml/ConfirmDialog.qml")
         .qml_file("qml/AccountDialog.qml")
         .qml_file("qml/DeployDialog.qml")
@@ -214,6 +223,34 @@ fn main() {
                         )
                         .file(
                             qt_build_utils::QResourceFile::new("assets/icons/x.svg").alias("x.svg"),
+                        )
+                        .file(
+                            qt_build_utils::QResourceFile::new("assets/icons/activity.svg")
+                                .alias("activity.svg"),
+                        )
+                        .file(
+                            qt_build_utils::QResourceFile::new("assets/icons/list.svg")
+                                .alias("list.svg"),
+                        )
+                        .file(
+                            qt_build_utils::QResourceFile::new("assets/icons/table.svg")
+                                .alias("table.svg"),
+                        )
+                        .file(
+                            qt_build_utils::QResourceFile::new(
+                                "assets/icons/chart-candlestick.svg",
+                            )
+                            .alias("chart-candlestick.svg"),
+                        )
+                        .file(
+                            qt_build_utils::QResourceFile::new("assets/icons/external-link.svg")
+                                .alias("external-link.svg"),
+                        )
+                        .file(
+                            qt_build_utils::QResourceFile::new(
+                                "assets/icons/arrow-down-to-line.svg",
+                            )
+                            .alias("arrow-down-to-line.svg"),
                         ),
                 ),
         )
@@ -230,6 +267,7 @@ fn main() {
         .file("src/execution_models.rs")
         .file("src/execution_controls.rs")
         .file("src/ops_status.rs")
+        .file("src/shell_controller.rs")
         .cpp_file("src/render_backend.cpp")
         .cpp_file("cpp/bar_chart_node.cpp")
         .cpp_file(manifest_dir.join("cpp/bar_chart_item.h"))

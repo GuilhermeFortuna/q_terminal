@@ -104,27 +104,27 @@ tests/shell_windows.rs           new: criteria 1–7
 
 ## Ordered implementation
 
-- [ ] 1. Work on the branch `Q-052-multi-window-shell` in `q_terminal`, created from
+- [x] 1. Work on the branch `Q-052-multi-window-shell` in `q_terminal`, created from
    `development` by `./work start`. Confirm Q-051 is merged. Commit.
-- [ ] 2. KDDockWidgets spike: build it against Qt 6.11 with the cxx-qt engine, host one
+- [x] 2. KDDockWidgets spike: build it against Qt 6.11 with the cxx-qt engine, host one
    existing panel and the scene-graph chart item, float it, dock it, tab it. Record the
    result and, if it fails, the fallback. Commit the spike and its write-up.
-- [ ] 3. Move the stores into `Shell`, expose them as context properties, and adapt the
+- [x] 3. Move the stores into `Shell`, expose them as context properties, and adapt the
    test harnesses. Every Q-047 and Q-048 test must pass with one window before any second
    window exists. Commit.
-- [ ] 4. Implement the panel registry and wrap the Q-047–Q-049 surfaces as panels, keeping
+- [x] 4. Implement the panel registry and wrap the Q-047–Q-049 surfaces as panels, keeping
    their behaviour. Commit per panel.
-- [ ] 5. Implement `ShellWindow`, `PanelHost` and `PanelFrame`, and the two compositions.
+- [x] 5. Implement `ShellWindow`, `PanelHost` and `PanelFrame`, and the two compositions.
    Add criteria 1–3 tests as soon as two windows can open. Commit.
-- [ ] 6. Implement the selection context with detach, and criterion 5. Commit.
-- [ ] 7. Implement the command registry, the palette, window-modal dialogs and the
+- [x] 6. Implement the selection context with detach, and criterion 5. Commit.
+- [x] 7. Implement the command registry, the palette, window-modal dialogs and the
    shortcut-collision startup error, and criterion 6. Commit.
-- [ ] 8. Implement panel move, float, dock, merge and split, and criteria 4 and 7. Commit.
-- [ ] 9. Make frame coalescing per-window, then record p95 per window with both
+- [x] 8. Implement panel move, float, dock, merge and split, and criteria 4 and 7. Commit.
+- [x] 9. Make frame coalescing per-window, then record p95 per window with both
    compositions open and 10 000 rows (criterion 8). Commit the numbers.
-- [ ] 10. Update `BOUNDARY.md`, `README.md` and `docs/design/components.md` (panel chrome,
+- [x] 10. Update `BOUNDARY.md`, `README.md` and `docs/design/components.md` (panel chrome,
    palette, and their references). Commit.
-- [ ] 11. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run, commit.
+- [x] 11. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run, commit.
 - [ ] 12. **Human:** human-verifiable criteria 1–4.
 
 ## Validation

@@ -19,6 +19,39 @@ unscaled dimensions, and conditional colour decisions.
 
 ---
 
+## The Multi-Window Shell
+
+Q-052 replaces the single window with a shell: several top-level windows composed of
+relocatable panels, all reading one set of stores. `qml/Main.qml` is the shell root. It draws
+nothing and declares the stores once (`BarFeed`, `ExecutionModels`, `OpsStatus`,
+`ExecutionControls`, `AppInfo`), so one stream subscription, one health poller and one
+execution store serve every window. `ShellController` (`src/shell_controller.rs`) exposes
+the pure structure in `src/shell/`: the panel registry (`panels.rs`), the window and panel
+arrangement (`layout.rs`), the selection context (`context.rs`) and the command registry
+(`commands.rs`).
+
+- **Panels** are persistent items owned by the shell and identified by a stable string
+  (`status`, `deployments`, `detail`, `chart`, `instrument`, and the placeholders `tape`,
+  `dom`, `footprint`). A window lends a panel a place to sit by reparenting it, so moving,
+  floating, docking, merging and splitting keep its state and never touch the subscription.
+- **Compositions**: `market` (chart, instrument, placeholders), `operations` (status,
+  deployments, detail) and `merged` (all of it in one window, the single-monitor default).
+  A window's **Merge windows** action folds the others into its tabs and panes; **Split out**
+  restores them. Panes resize by dragging and keep their sizes while the window is open.
+- **Selection** is one named context, global by default: selecting a deployment in one window
+  retargets the chart in another. A window can detach and hold its own list selection; it
+  says so in a banner. Detail tables and the chart follow the global selection.
+- **Commands** are data in a Rust registry: id, label, §8.1 enablement rule, shortcut. Every
+  window renders the same set in the command palette (`Ctrl+Shift+P`), enablement comes from
+  global state, and two commands sharing a shortcut is a startup error. Dialogs are
+  window-modal, so a confirmation never freezes another window's chart.
+- **Nothing is saved.** A workspace is gone when the terminal exits (Q-053).
+
+Set `Q_BENCH_WINDOWS=both` with `make bench-frames` to open both compositions and print one
+frame-time line per window.
+
+---
+
 ## The Live Chart Slice
 
 The live chart slice provides a read-only, reactive candlestick chart window displaying live and historical market bars for a configured symbol and timeframe.
@@ -39,7 +72,7 @@ The live chart slice provides a read-only, reactive candlestick chart window dis
 
 ## The Operations Workspace
 
-The operations workspace is the terminal's execution surface. It sits alongside the live chart in `OpsWorkspace.qml` and is driven by the in-memory execution store plus a two-second health/positions poller. Q-048 adds command controls (accounts, deployments, lifecycle, flatten, kill switch, resolve) with confirmations and §8.1 enablement.
+The operations workspace is the terminal's execution surface. It is arranged by the shell into panels (see above) and is driven by the in-memory execution store plus a two-second health/positions poller. Q-048 adds command controls (accounts, deployments, lifecycle, flatten, kill switch, resolve) with confirmations and §8.1 enablement.
 
 ### What It Shows
 
@@ -149,8 +182,9 @@ q_terminal/
 │   ├── bar_chart_probe.cpp       # Headless vertex and scene graph inspection
 │   └── chart_cxx.h / .cpp        # CXX-Qt bridge helper functions and event pump
 ├── qml/                # Declarative QML scenes
-│   ├── Main.qml        # Main application window wiring OpsWorkspace and models
-│   ├── OpsWorkspace.qml# Operations layout: header, deployments, chart, detail tables
+│   ├── Main.qml        # Shell root: the shared stores, persistent panels, window list
+│   ├── shell/          # ShellWindow, PanelHost (splits and tabs), PanelFrame, CommandPalette
+│   ├── panels/         # The Q-047 to Q-049 surfaces wrapped as panels
 │   ├── OpsHeader.qml   # Stream/API/worker/edge/kill-switch health header
 │   ├── DeploymentList.qml / DeploymentDetail.qml / *Table.qml
 │   ├── Format.js       # Decimal-string and time formatting (no money arithmetic)
@@ -170,6 +204,8 @@ q_terminal/
 │   ├── config.rs       # TOML configuration and environment loading
 │   ├── bar_feed.rs     # CXX-Qt BarFeed model binding live and historical bars to QML
 │   ├── bridge.rs       # CXX-Qt AppInfo projection over q_core::CoreInfo
+│   ├── shell/          # Pure shell structure: panels, layout, selection context, commands
+│   ├── shell_controller.rs # CXX-Qt ShellController exposing that structure to QML
 │   ├── chart_bridge.rs # CXX-Qt chart probe bindings for headless testing
 │   ├── chart_target.rs # Follows the selected deployment: retarget by generation, overlay fetcher
 │   ├── execution/      # Execution store, markers, overlays, health poller, and ops status bridge
@@ -181,6 +217,7 @@ q_terminal/
     ├── test_chart_bridge.rs   # Viewport, geometry, and probe unit tests
     ├── execution_store.rs     # Execution protocol against the fake stream server
     ├── execution_convergence.rs # Seeded fault interleavings converge to the snapshot
+    ├── shell_windows.rs       # Q-052: window counts, shared state, move, merge, commands
     ├── markers.rs / chart_target.rs / overlays.rs / chart_alignment.rs # Q-049 chart tests
     ├── test_execution_report.rs # --headless-report --execution
     └── test_headless_report.rs# CLI headless report verification
@@ -194,7 +231,7 @@ q_terminal/
 open positions, orders, decisions, fills, risk events and the kill switch. It is kept by the
 same snapshot-then-delta protocol as the bars (subscribe, snapshot, discard at or below the
 watermark, fill gaps from history by sequence, re-snapshot on expiry or epoch change), over
-the **same stream connection**. Q-047 draws it in `OpsWorkspace.qml` (read-only; commands in Q-048).
+the **same stream connection**. Q-047 draws it in the operations panels (read-only; commands in Q-048).
 
 - **Six topics, one snapshot.** `decisions`, `orders`, `fills`, `risk`, `ledger` and
   `deployments` each follow the protocol independently. A re-snapshot triggered by any one of

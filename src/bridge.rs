@@ -7,6 +7,8 @@ pub mod execution_controls;
 pub mod execution_models;
 #[path = "ops_status.rs"]
 pub mod ops_status;
+#[path = "shell_controller.rs"]
+pub mod shell_controller;
 
 #[cxx_qt::bridge]
 pub mod ffi {

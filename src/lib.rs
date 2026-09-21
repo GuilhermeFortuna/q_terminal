@@ -12,12 +12,14 @@ pub mod gallery;
 pub mod history;
 pub mod ops_session;
 pub mod semantic;
+pub mod shell;
 pub mod startup;
 pub mod stream;
 
 pub use bridge::execution_controls;
 pub use bridge::execution_models;
 pub use bridge::ops_status;
+pub use bridge::shell_controller;
 
 /// Prints app version, core version, contracts rev and render backend, then exits 0.
 /// Opens no window; the path CI and an agent session take.

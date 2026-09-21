@@ -100,6 +100,12 @@ BarFeed* find_window_feed(QQmlApplicationEngine& engine);
 void setup_window_feed(QQmlApplicationEngine& engine, BarFeed* feed);
 void setup_window_auto_close(QQmlApplicationEngine& engine, int ms);
 
+// Shell test seams (Q-052).
+rust::String shell_eval(QQmlApplicationEngine& engine, rust::Str js);
+std::int32_t shell_visible_window_count();
+bool shell_quit_on_last_window_closed();
+std::int32_t shell_grab_windows(rust::Str dir);
+
 void feed_set_symbol(BarFeed* feed, rust::Str symbol);
 void feed_set_timeframe(BarFeed* feed, rust::Str timeframe, std::int64_t timeframe_ms);
 void feed_setup_and_load(BarFeed* feed, rust::Str api_base, rust::Str symbol, rust::Str timeframe);
