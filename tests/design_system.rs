@@ -99,3 +99,39 @@ fn vendored_font_and_icon_assets_are_present() {
         assert!(metadata.len() > 100, "empty asset: {path}");
     }
 }
+
+fn palette_color(name: &str) -> (u8, u8, u8) {
+    let palette = fs::read_to_string("qml/theme/Palette.qml").unwrap();
+    let marker = format!("property color {name}: \"#");
+    let start = palette
+        .find(&marker)
+        .unwrap_or_else(|| panic!("missing token: {name}"))
+        + marker.len();
+    let hex = &palette[start..start + 6];
+    let byte = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).unwrap();
+    (byte(0), byte(2), byte(4))
+}
+
+#[test]
+fn canvas_is_true_black_and_neutral_tokens_have_no_tint() {
+    assert_eq!(palette_color("surfaceBase"), (0, 0, 0));
+    assert_eq!(palette_color("surfaceSunken"), (0, 0, 0));
+    for name in [
+        "surfaceRaised",
+        "surfaceOverlay",
+        "surfaceElevated",
+        "surfaceSelected",
+        "surfaceHover",
+        "borderSubtle",
+        "borderDefault",
+        "borderStrong",
+        "textMuted",
+        "textTertiary",
+        "textSecondary",
+        "textPrimary",
+        "textStrong",
+    ] {
+        let (r, g, b) = palette_color(name);
+        assert!(r == g && g == b, "{name} has a colour cast: {r},{g},{b}");
+    }
+}

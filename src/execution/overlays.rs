@@ -249,7 +249,7 @@ pub fn line_layers(series: &[OverlaySeries], bar_opens_ms: &[i64], view: View) -
         }
     }
     if lo.is_finite() {
-        let mut sep = Layer::new(MODE_LINE_STRIP, 0x2a2e39ff);
+        let mut sep = Layer::new(MODE_LINE_STRIP, 0x2a2a2aff);
         sep.xy
             .extend_from_slice(&[0.0, osc_top, view.width, osc_top]);
         out.push(sep);
