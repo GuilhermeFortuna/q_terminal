@@ -7,8 +7,9 @@ use cxx_qt_lib::QString;
 
 use crate::shell::commands::CommandRegistry;
 use crate::shell::context::SelectionContext;
-use crate::shell::layout::Layout;
+use crate::shell::layout::{Layout, Window};
 use crate::shell::panels;
+use crate::workspace::schema::WorkspaceSelection;
 
 #[cxx_qt::bridge]
 pub mod ffi {
@@ -87,6 +88,17 @@ pub mod ffi {
 
         #[qinvokable]
         fn commands_json(self: &ShellController) -> QString;
+
+        #[qinvokable]
+        fn restore_workspace(self: Pin<&mut ShellController>, windows_json: QString) -> QString;
+        #[qinvokable]
+        fn capture_windows(self: &ShellController) -> QString;
+        #[qinvokable]
+        fn restore_selection(self: Pin<&mut ShellController>, selection_json: QString);
+        #[qinvokable]
+        fn capture_selection(self: &ShellController) -> QString;
+        #[qinvokable]
+        fn clear_windows(self: Pin<&mut ShellController>);
     }
 }
 
@@ -333,5 +345,49 @@ impl ffi::ShellController {
 
     pub fn commands_json(&self) -> QString {
         QString::from(CommandRegistry::shared().to_json())
+    }
+
+    pub fn restore_workspace(mut self: std::pin::Pin<&mut Self>, windows_json: QString) -> QString {
+        #[derive(serde::Deserialize)]
+        struct Spec {
+            composition: String,
+            root: crate::shell::layout::Node,
+        }
+        let specs: Vec<Spec> = serde_json::from_str(&windows_json.to_string()).unwrap_or_default();
+        let specs: Vec<(String, crate::shell::layout::Node)> =
+            specs.into_iter().map(|s| (s.composition, s.root)).collect();
+        let ids = self.as_mut().rust_mut().layout.restore_workspace(&specs);
+        self.as_mut().publish();
+        self.bump_selection();
+        QString::from(serde_json::to_string(&ids).unwrap_or_else(|_| "[]".into()))
+    }
+
+    pub fn capture_windows(&self) -> QString {
+        let windows: Vec<Window> = self.rust().layout.windows().to_vec();
+        QString::from(serde_json::to_string(&windows).unwrap_or_else(|_| "[]".into()))
+    }
+
+    pub fn restore_selection(mut self: std::pin::Pin<&mut Self>, selection_json: QString) {
+        if let Ok(sel) = serde_json::from_str::<WorkspaceSelection>(&selection_json.to_string()) {
+            self.as_mut()
+                .rust_mut()
+                .context
+                .restore(&sel.global, &sel.detached);
+            self.bump_selection();
+        }
+    }
+
+    pub fn capture_selection(&self) -> QString {
+        let sel = WorkspaceSelection {
+            global: self.rust().context.global().to_string(),
+            detached: self.rust().context.detached_map().clone(),
+        };
+        QString::from(serde_json::to_string(&sel).unwrap_or_else(|_| "{}".into()))
+    }
+
+    pub fn clear_windows(mut self: std::pin::Pin<&mut Self>) {
+        self.as_mut().rust_mut().layout.clear();
+        self.as_mut().publish();
+        self.bump_selection();
     }
 }

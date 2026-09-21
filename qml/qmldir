@@ -16,6 +16,8 @@ PanelFrame 1.0 shell/PanelFrame.qml
 PanelHost 1.0 shell/PanelHost.qml
 CommandPalette 1.0 shell/CommandPalette.qml
 ShellWindow 1.0 shell/ShellWindow.qml
+WorkspaceMenu 1.0 shell/WorkspaceMenu.qml
+PlacementNotice 1.0 shell/PlacementNotice.qml
 StatusPanel 1.0 panels/StatusPanel.qml
 DeploymentsPanel 1.0 panels/DeploymentsPanel.qml
 DetailPanel 1.0 panels/DetailPanel.qml

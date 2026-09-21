@@ -3,7 +3,9 @@
 
 use std::collections::HashMap;
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SelectionContext {
     global: String,
     /// Windows that detached, with the selection each one holds.
@@ -53,6 +55,15 @@ impl SelectionContext {
     /// Forget a closed window.
     pub fn forget(&mut self, window: &str) {
         self.detached.remove(window);
+    }
+
+    pub fn restore(&mut self, global: &str, detached: &HashMap<String, String>) {
+        self.global = global.to_string();
+        self.detached = detached.clone();
+    }
+
+    pub fn detached_map(&self) -> &HashMap<String, String> {
+        &self.detached
     }
 }
 

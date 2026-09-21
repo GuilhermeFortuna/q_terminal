@@ -6,6 +6,7 @@ pub mod bridge;
 pub mod chart_bridge;
 pub mod chart_target;
 pub mod config;
+pub mod display;
 pub mod execution;
 #[cfg(feature = "gallery")]
 pub mod gallery;
@@ -15,11 +16,13 @@ pub mod semantic;
 pub mod shell;
 pub mod startup;
 pub mod stream;
+pub mod workspace;
 
 pub use bridge::execution_controls;
 pub use bridge::execution_models;
 pub use bridge::ops_status;
 pub use bridge::shell_controller;
+pub use bridge::workspace_controller;
 
 /// Prints app version, core version, contracts rev and render backend, then exits 0.
 /// Opens no window; the path CI and an agent session take.
