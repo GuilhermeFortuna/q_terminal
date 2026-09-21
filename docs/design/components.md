@@ -24,6 +24,10 @@ Controls behaviour for focus, keyboard input and accessibility.
 | `EmptyState` | Linear | Short title, muted explanation and optional action | Kept compact so an empty operational panel does not resemble onboarding |
 | `AppDialog` | FluentUI for QML, Qt Quick Controls | Native dialog focus scope, buttons and modal keyboard behaviour | Strong live/critical warning treatment is token-backed and consequence-first |
 | `AppTextField` | FluentUI for QML | QQC2 editing, selection and focus behaviour with a token-backed frame | Dense control height and numeric-family option |
+| `PanelFrame` | Quantower, MuseScore 4 | Quantower's panel as the unit of a workspace, with a per-panel title and focus state; MuseScore's compact panel header | Focus ring is the only chrome that moves with keyboard focus; the float/dock action is one icon button, no drag handle (see the docking note) |
+| `PanelHost` | Quantower, Qt Quick Controls | Splits and tab groups arranged per window; native `SplitView` resizing and `TabBar` keyboard behaviour | A slot borrows a persistent panel item by reparenting rather than creating one, so a moved panel keeps its state; KDDockWidgets was not adopted |
+| `CommandPalette` | Linear | A single filtered list, shortcut at the right edge, restraint at density | Commands come from the Rust registry, disabled ones stay listed with the reason; modal to its own window only |
+| `ShellWindow` chrome | Quantower | A window-level strip for the workspace actions and a visible detached-selection banner | The banner is warning-coloured: a silently detached window is an operational hazard |
 | `AppComboBox` | Qaterial, Qt Quick Controls | QQC2 popup/list and keyboard selection structure | Desktop-density popup rows and Lucide chevron asset |
 
 ## Asset and pipeline notes
@@ -31,6 +35,10 @@ Controls behaviour for focus, keyboard input and accessibility.
 - Radix dark scales provide the colour hierarchy, with incumbent Tailwind colours kept
   where they already express the intended terminal semantics.
 - Inter and JetBrains Mono are shipped resources; Lucide supplies the icon subset.
+- The Q-052 panel icons (`activity`, `list`, `table`, `chart-candlestick`, `external-link`,
+  `arrow-down-to-line`) are Lucide glyphs with the stroke fixed to the `textSecondary` colour:
+  Qt renders `currentColor` black, which vanishes on the dark surfaces, and the software
+  backend cannot recolour an image at runtime.
 - Figma to Qt 1.0 was assessed using `StatusBadge` as the round-trip specimen. Its
   generated QQC2 structure is useful as a layout handoff, but generated token bindings
   still require a manual pass to target the terminal singleton API. Later greenfield

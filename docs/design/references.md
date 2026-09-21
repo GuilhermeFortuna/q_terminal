@@ -31,7 +31,7 @@ an implementing agent works with each one.
 | Lucide | <https://github.com/lucide-icons/lucide> | Icon set. Consistent 24px grid and stroke weight, and an SVG-per-icon layout that vendors cleanly into a `qrc`. |
 | Tabler Icons | <https://github.com/tabler/tabler-icons> | Fallback icon source for glyphs Lucide lacks — ladder, depth, footprint-adjacent shapes. |
 | Qt Quick Controls | Qt 6.11, already a dependency | The control substrate. Keyboard navigation, focus handling, interaction states and accessibility come from here; the terminal supplies only the look, as a custom style. |
-| KDDockWidgets | <https://github.com/KDAB/KDDockWidgets> | Docking, floating panels, tab merging and layout save/restore, with supported QtQuick bindings. Actively maintained; integration spike is Q-052's first step. |
+| KDDockWidgets | <https://github.com/KDAB/KDDockWidgets> | Docking, floating panels, tab merging and layout save/restore, with supported QtQuick bindings. Actively maintained. Q-052's spike was not built and the shell uses `SplitView` panes with custom float, dock, tab and merge instead; see [`../development/notes/Q-052-docking-decision.md`](../development/notes/Q-052-docking-decision.md). |
 
 ## Read
 

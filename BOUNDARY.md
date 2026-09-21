@@ -14,7 +14,7 @@ This document defines the strict ownership scope and architectural boundaries fo
 
 ### Operations surfaces (Q-047)
 
-The terminal's read-only operations workspace (`qml/OpsWorkspace.qml` and its components) displays:
+The terminal's operations surfaces (the panels under `qml/panels/` and their components) display:
 - **Deployments** — lifecycle, broker mode, positions, pending actions, and unknown-order counts (`DeploymentList.qml`).
 - **Execution detail tables** — orders, fills, decisions, and risk events for the selected deployment (`DeploymentDetail.qml`, `*Table.qml`).
 - **Accounts and ledger** — paper-account balances and ledger entries with paged "load older" (`DeploymentDetail.qml`, `LedgerTable.qml`).
@@ -35,6 +35,28 @@ and shows effects only when the execution stream delivers them:
 Enablement follows architecture §8.1 via `ExecutionControls` + `enablement.rs`.
 Confirmations name the consequence; `mt5_live` deployments show a distinct live banner.
 The configured operator name (`operator` / `Q_TERMINAL_OPERATOR`) is sent as the actor on lifecycle and resolve commands.
+
+### The multi-window shell (Q-052)
+
+The terminal is one process that opens several top-level windows over **one** set of
+stores. The shell (`qml/Main.qml`, `qml/shell/`, `src/shell/`) only arranges surfaces this
+document already permits:
+
+- **One process, one subscription.** However many windows are open there is one stream
+  connection, one health poller, one execution store and one command path. A second
+  terminal process is never the way to serve a second monitor.
+- **Panels are the unit of composition**, and every panel is one of the surfaces above
+  (status, deployments, detail tables, chart, instrument strip) or an empty placeholder
+  reserved for a later live-trading panel (tape, DOM, footprint). The shell adds no data,
+  route or topic.
+- **Window count does not widen scope.** More windows, floated panels and merged
+  compositions are not permission for a strategy editor, an optimizer, a result browser or
+  a dataset explorer; section 2 applies to every window equally.
+- **Global state has one value.** Connection and health, execution, risk and account state,
+  the kill switch and command enablement are evaluated once for the process; a command
+  disabled by the kill switch is disabled in every window. Only arrangement, sizes, active
+  tab and scroll are per-window.
+- **Nothing is persisted yet.** Saving and restoring a workspace is Q-053.
 
 ---
 
