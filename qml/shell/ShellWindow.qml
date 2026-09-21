@@ -43,7 +43,9 @@ Window {
     visible: true
     width: Spacing.size1280
     height: Spacing.size800
-    title: "q_terminal · " + win.composition
+    title: win.shell.workspace.active_workspace
+           ? ("q_terminal · " + win.shell.workspace.active_workspace + " · " + win.composition)
+           : ("q_terminal · " + win.composition)
     color: Theme.surfaceBase
 
     Component.onCompleted: win.reload()
@@ -59,6 +61,17 @@ Window {
     ColumnLayout {
         anchors.fill: parent
         spacing: Spacing.none
+
+        PlacementNotice {
+            Layout.fillWidth: true
+            workspace: win.shell.workspace
+        }
+
+        WorkspaceMenu {
+            Layout.fillWidth: true
+            shell: win.shell
+            workspace: win.shell.workspace
+        }
 
         Toolbar {
             Layout.fillWidth: true

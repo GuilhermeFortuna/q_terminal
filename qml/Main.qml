@@ -46,11 +46,17 @@ Item {
         objectName: "shellController"
     }
 
+    WorkspaceController {
+        id: workspaceController
+        objectName: "workspaceController"
+    }
+
     readonly property var activeFeed: shell.feed ? shell.feed : defaultFeed
     readonly property var activeExecutionModels: shell.executionModels ? shell.executionModels : defaultExecutionModels
     readonly property var activeOpsStatus: shell.opsStatus ? shell.opsStatus : defaultOpsStatus
     readonly property var activeExecutionControls: shell.executionControls ? shell.executionControls : defaultExecutionControls
     readonly property var controller: shellController
+    readonly property var workspace: workspaceController
 
     readonly property var commands: JSON.parse(shellController.commands_json())
     readonly property var registry: JSON.parse(shellController.panel_registry())
@@ -106,6 +112,34 @@ Item {
         var id = shellController.open_window(composition);
         shell.syncWindows();
         return id;
+    }
+
+    function saveWorkspace(name) {
+        workspaceController.save(
+            shellController.capture_windows(),
+            shellController.capture_selection(),
+            name
+        );
+    }
+
+    function applyWorkspacePlacement() {
+        workspaceController.apply_placement(
+            workspaceController.active_workspace,
+            workspaceController.pending_placement_json
+        );
+    }
+
+    function restoreWorkspaceLayout() {
+        shellController.restore_workspace(workspaceController.pending_restore_json);
+        shellController.restore_selection(workspaceController.pending_selection_json);
+        shell.syncWindows();
+        Qt.callLater(shell.applyWorkspacePlacement);
+    }
+
+    function switchWorkspace(name) {
+        shell.saveWorkspace(workspaceController.active_workspace);
+        workspaceController.switch_to(name);
+        shell.restoreWorkspaceLayout();
     }
 
     // Called from a window's closing signal. The window object itself is destroyed a turn
@@ -262,7 +296,8 @@ Item {
     }
 
     Component.onCompleted: {
-        shellController.open_window("merged");
-        shell.syncWindows();
+        workspaceController.refresh();
+        workspaceController.restore_last("");
+        shell.restoreWorkspaceLayout();
     }
 }
