@@ -50,6 +50,9 @@ pub struct FakeServer {
     chart_json: Arc<RwLock<Option<String>>>,
     chart_calls: Arc<std::sync::atomic::AtomicUsize>,
     health_calls: Arc<std::sync::atomic::AtomicUsize>,
+    ws_connections: Arc<std::sync::atomic::AtomicUsize>,
+    ws_subscribes: Arc<std::sync::atomic::AtomicUsize>,
+    exec_snapshot_calls: Arc<std::sync::atomic::AtomicUsize>,
     positions_calls: Arc<std::sync::atomic::AtomicUsize>,
     paged_calls: Arc<std::sync::atomic::AtomicUsize>,
     rest_calls: Arc<std::sync::atomic::AtomicUsize>,
@@ -79,6 +82,9 @@ impl FakeServer {
         let chart_json = Arc::new(RwLock::new(None::<String>));
         let chart_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let health_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let ws_connections = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let ws_subscribes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let exec_snapshot_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let positions_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let paged_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let rest_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -131,6 +137,9 @@ impl FakeServer {
         let cjson_arc = chart_json.clone();
         let ccalls_arc = chart_calls.clone();
         let hcalls_arc = health_calls.clone();
+        let ws_conn_arc = ws_connections.clone();
+        let ws_sub_arc = ws_subscribes.clone();
+        let snap_calls_arc = exec_snapshot_calls.clone();
         let pcalls_arc = positions_calls.clone();
         let paged_calls_arc = paged_calls.clone();
         let rest_cnt = rest_calls.clone();
@@ -161,6 +170,9 @@ impl FakeServer {
                             let cjson_arc = cjson_arc.clone();
                             let ccalls_arc = ccalls_arc.clone();
                             let hcalls_arc = hcalls_arc.clone();
+                            let ws_conn_arc = ws_conn_arc.clone();
+                            let ws_sub_arc = ws_sub_arc.clone();
+                            let snap_calls_arc = snap_calls_arc.clone();
                             let pcalls_arc = pcalls_arc.clone();
                             let paged_calls_arc = paged_calls_arc.clone();
                             let rest_cnt = rest_cnt.clone();
@@ -192,9 +204,11 @@ impl FakeServer {
                                         Ok(ws) => ws,
                                         Err(_) => return,
                                     };
+                                    ws_conn_arc.fetch_add(1, Ordering::SeqCst);
 
                                     // Wait for SubscribeFrame
                                     if let Some(Ok(Message::Text(sub_text))) = ws_stream.next().await {
+                                        ws_sub_arc.fetch_add(1, Ordering::SeqCst);
                                         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&sub_text) {
                                             let cur_ep = ep_arc.read().await.clone();
                                             let mut topics_obj = serde_json::Map::new();
@@ -507,6 +521,7 @@ impl FakeServer {
                                 }
 
                                 if path.ends_with("/stream/execution/snapshot") {
+                                    snap_calls_arc.fetch_add(1, Ordering::SeqCst);
                                     if snap503.load(Ordering::SeqCst) {
                                         let resp = "HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}";
                                         let _ = socket.write_all(resp.as_bytes()).await;
@@ -668,6 +683,9 @@ impl FakeServer {
             chart_json,
             chart_calls,
             health_calls,
+            ws_connections,
+            ws_subscribes,
+            exec_snapshot_calls,
             positions_calls,
             paged_calls,
             rest_calls,
@@ -711,6 +729,21 @@ impl FakeServer {
 
     pub fn health_calls(&self) -> usize {
         self.health_calls.load(Ordering::SeqCst)
+    }
+
+    /// WebSocket connections accepted so far.
+    pub fn ws_connections(&self) -> usize {
+        self.ws_connections.load(Ordering::SeqCst)
+    }
+
+    /// Subscribe frames received so far.
+    pub fn ws_subscribes(&self) -> usize {
+        self.ws_subscribes.load(Ordering::SeqCst)
+    }
+
+    /// Requests for the execution snapshot route so far (503s included).
+    pub fn exec_snapshot_calls(&self) -> usize {
+        self.exec_snapshot_calls.load(Ordering::SeqCst)
     }
 
     pub fn positions_calls(&self) -> usize {
