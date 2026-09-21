@@ -9,6 +9,8 @@ pub mod execution_models;
 pub mod ops_status;
 #[path = "shell_controller.rs"]
 pub mod shell_controller;
+#[path = "workspace_controller.rs"]
+pub mod workspace_controller;
 
 #[cxx_qt::bridge]
 pub mod ffi {

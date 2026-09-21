@@ -577,6 +577,53 @@ impl Layout {
     pub fn to_json(&self) -> String {
         serde_json::to_string(&self.windows).unwrap_or_else(|_| "[]".into())
     }
+
+    /// Replaces the entire arrangement. Used by workspace restore (Q-053).
+    pub fn replace_all(&mut self, windows: Vec<Window>) {
+        self.windows = windows;
+        self.merges.clear();
+        self.origin.clear();
+        self.next_id = self
+            .windows
+            .iter()
+            .filter_map(|w| w.id.strip_prefix('w').and_then(|n| n.parse().ok()))
+            .max()
+            .unwrap_or(0);
+    }
+
+    /// Clears every window without preserving panels elsewhere.
+    pub fn clear(&mut self) {
+        self.replace_all(Vec::new());
+    }
+
+    /// Opens windows from a saved workspace. Panel items persist in QML by id.
+    pub fn restore_workspace(&mut self, windows: &[(String, Node)]) -> Vec<String> {
+        self.merges.clear();
+        self.origin.clear();
+        self.windows.clear();
+        self.next_id = 0;
+        let mut ids = Vec::new();
+        for (composition, root) in windows {
+            let id = self.fresh_id();
+            self.windows.push(Window {
+                id: id.clone(),
+                composition: composition.clone(),
+                root: root.clone(),
+            });
+            ids.push(id);
+        }
+        ids
+    }
+
+    /// When only one display is available, fold a multi-window workspace into one window.
+    pub fn merge_all_windows(&mut self) -> Result<(), LayoutError> {
+        if self.windows.len() <= 1 {
+            return Ok(());
+        }
+        let target = self.windows[0].id.clone();
+        self.merge_into(&target)?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
