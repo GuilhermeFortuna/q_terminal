@@ -107,27 +107,27 @@ docs/workspaces.md              new: the schema, the resolution rules, the Wayla
 
 ## Ordered implementation
 
-- [ ] 1. Work on the branch `Q-053-workspaces-and-displays` in `q_terminal`, created from
+- [x] 1. Work on the branch `Q-053-workspaces-and-displays` in `q_terminal`, created from
    `development` by `./work start`. Confirm Q-052 is merged. Commit.
-- [ ] 2. Measure the platform reality first: enumerate `QScreen` attributes under Wayland,
+- [x] 2. Measure the platform reality first: enumerate `QScreen` attributes under Wayland,
    XWayland and offscreen on the real two-monitor setup, and confirm what placement each
    honours. Record it in `docs/workspaces.md`; it is the evidence the rest of the task
    rests on. Commit.
-- [ ] 3. Implement `ScreenFingerprint` and the resolution rules with the fake display
+- [x] 3. Implement `ScreenFingerprint` and the resolution rules with the fake display
    fixtures, including the two real monitors. Criteria 3 and 4. Commit.
-- [ ] 4. Implement the versioned schema, `WorkspaceStore`, and load/save round-trip with
+- [x] 4. Implement the versioned schema, `WorkspaceStore`, and load/save round-trip with
    the malformed, truncated and future-version cases. Criteria 1 and 2. Commit.
-- [ ] 5. Implement `placement.rs` with the direct strategy, and restore under X11 and
+- [x] 5. Implement `placement.rs` with the direct strategy, and restore under X11 and
    offscreen. Commit.
-- [ ] 6. Implement `compositor.rs` with the Hyprland emitter and its fixture test, and the
+- [x] 6. Implement `compositor.rs` with the Hyprland emitter and its fixture test, and the
    Wayland strategy with honest `placement_mode` reporting. Criterion 6. Commit.
-- [ ] 7. Implement `WorkspaceMenu` and `PlacementNotice` on the Q-051 primitives, and the
+- [x] 7. Implement `WorkspaceMenu` and `PlacementNotice` on the Q-051 primitives, and the
    switch path with criterion 7. Commit.
-- [ ] 8. Implement single-display resolution onto Q-052's merge, and criterion 5. Ship the
+- [x] 8. Implement single-display resolution onto Q-052's merge, and criterion 5. Ship the
    default two-display and single-display workspaces, created on first run only. Commit.
-- [ ] 9. Write `docs/workspaces.md` fully — schema, rules, the Wayland path and the
+- [x] 9. Write `docs/workspaces.md` fully — schema, rules, the Wayland path and the
    XWayland trade-off — and update `README.md`, `BOUNDARY.md` and `./dev` guidance. Commit.
-- [ ] 10. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run, commit.
+- [x] 10. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`. Fix, re-run, commit.
 - [ ] 11. **Human:** human-verifiable criteria 1–4, on the real two-monitor setup.
 
 ## Validation

@@ -45,7 +45,9 @@ arrangement (`layout.rs`), the selection context (`context.rs`) and the command 
   window renders the same set in the command palette (`Ctrl+Shift+P`), enablement comes from
   global state, and two commands sharing a shortcut is a startup error. Dialogs are
   window-modal, so a confirmation never freezes another window's chart.
-- **Nothing is saved.** A workspace is gone when the terminal exits (Q-053).
+- **Workspaces (Q-053).** Named layouts are saved under `~/.config/q_terminal/workspaces/`,
+  restored on launch with display fingerprint resolution, and switched without touching
+  the shared stores. See [`docs/workspaces.md`](docs/workspaces.md).
 
 Set `Q_BENCH_WINDOWS=both` with `make bench-frames` to open both compositions and print one
 frame-time line per window.
