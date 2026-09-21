@@ -7,8 +7,11 @@ pub mod chart_bridge;
 pub mod chart_target;
 pub mod config;
 pub mod execution;
+#[cfg(feature = "gallery")]
+pub mod gallery;
 pub mod history;
 pub mod ops_session;
+pub mod semantic;
 pub mod startup;
 pub mod stream;
 

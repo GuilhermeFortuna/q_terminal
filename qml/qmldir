@@ -2,8 +2,19 @@ module qml
 Main 1.0 Main.qml
 Viewport 1.0 Viewport.qml
 ChartPane 1.0 ChartPane.qml
-EmptyState 1.0 EmptyState.qml
+ChartEmptyState 1.0 ChartEmptyState.qml
 StatusStrip 1.0 StatusStrip.qml
-
-
+OpsHeader 1.0 OpsHeader.qml
+DeploymentList 1.0 DeploymentList.qml
+OrdersTable 1.0 OrdersTable.qml
+FillsTable 1.0 FillsTable.qml
+DecisionsTable 1.0 DecisionsTable.qml
+RiskTable 1.0 RiskTable.qml
+LedgerTable 1.0 LedgerTable.qml
+DeploymentDetail 1.0 DeploymentDetail.qml
+OpsWorkspace 1.0 OpsWorkspace.qml
+ConfirmDialog 1.0 ConfirmDialog.qml
+AccountDialog 1.0 AccountDialog.qml
+DeployDialog 1.0 DeployDialog.qml
+ResolveDialog 1.0 ResolveDialog.qml
 

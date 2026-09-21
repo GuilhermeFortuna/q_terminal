@@ -5,10 +5,10 @@ import qml
 Window {
     id: window
     visible: true
-    width: 1280
-    height: 800
+    width: Spacing.size1280
+    height: Spacing.size800
     title: "q_terminal"
-    color: "#131722"
+    color: Theme.surfaceBase
 
     property var feed: null
     property var executionModels: null

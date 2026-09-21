@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import qml
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -8,7 +9,7 @@ Dialog {
     title: "Resolve unknown order"
     modal: true
     standardButtons: Dialog.NoButton
-    width: 420
+    width: Spacing.size420
     anchors.centerIn: parent
 
     property string orderId: ""
@@ -18,16 +19,16 @@ Dialog {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 8
+        spacing: Spacing.size8
 
         Text {
             text: "Order: " + root.orderId
-            color: "#94a3b8"
-            font.pixelSize: 10
+            color: Theme.textSecondary
+            font.pixelSize: Theme.typeLabel
             Layout.fillWidth: true
         }
 
-        Label { text: "Outcome (required)"; color: "#94a3b8"; font.pixelSize: 10 }
+        Label { text: "Outcome (required)"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabel }
 
         RowLayout {
             Layout.fillWidth: true

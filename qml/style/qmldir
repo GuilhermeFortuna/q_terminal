@@ -1,0 +1,5 @@
+module Q.Terminal.Style
+Button 1.0 Button.qml
+TextField 1.0 TextField.qml
+ComboBox 1.0 ComboBox.qml
+TabButton 1.0 TabButton.qml

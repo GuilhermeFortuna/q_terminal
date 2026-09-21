@@ -7,7 +7,7 @@ import "Format.js" as Format
 Rectangle {
     id: root
     height: bannerColumn.height + 48
-    color: "#1e222d"
+    color: Theme.surfaceElevated
 
     required property OpsStatus opsStatus
     required property ExecutionControls executionControls
@@ -40,7 +40,7 @@ Rectangle {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        spacing: 0
+        spacing: Spacing.size0
 
         // Warning banner: Postgres down
         Rectangle {
@@ -48,18 +48,18 @@ Rectangle {
             Layout.fillWidth: true
             height: (!root.opsStatus.postgres_available) ? 32 : 0
             visible: !root.opsStatus.postgres_available
-            color: "#ef4444"
+            color: Theme.negativeStrong
             clip: true
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
+                anchors.leftMargin: Spacing.size16
+                anchors.rightMargin: Spacing.size16
 
                 Text {
                     text: "⚠ Database Unavailable (503): Postgres is down — all deployments marked unknown"
-                    color: "#ffffff"
-                    font.pixelSize: 12
+                    color: Theme.textOnAccent
+                    font.pixelSize: Theme.typeBody
                     font.bold: true
                     Layout.alignment: Qt.AlignVCenter
                 }
@@ -72,18 +72,18 @@ Rectangle {
             Layout.fillWidth: true
             height: (root.opsStatus.postgres_available && (root.opsStatus.worker_status !== "active" || root.opsStatus.worker_heartbeat_age_s > 30.0)) ? 32 : 0
             visible: root.opsStatus.postgres_available && (root.opsStatus.worker_status !== "active" || root.opsStatus.worker_heartbeat_age_s > 30.0)
-            color: "#f59e0b"
+            color: Theme.warningStrong
             clip: true
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
+                anchors.leftMargin: Spacing.size16
+                anchors.rightMargin: Spacing.size16
 
                 Text {
                     text: "⚠ Execution Worker Offline / Stale (Status: " + root.opsStatus.worker_status + ", Heartbeat age: " + Format.formatAge(root.opsStatus.worker_heartbeat_age_s) + ")"
-                    color: "#000000"
-                    font.pixelSize: 12
+                    color: Theme.warningForeground
+                    font.pixelSize: Theme.typeBody
                     font.bold: true
                     Layout.alignment: Qt.AlignVCenter
                 }
@@ -96,18 +96,18 @@ Rectangle {
             Layout.fillWidth: true
             height: (root.opsStatus.unknown_orders > 0) ? 32 : 0
             visible: root.opsStatus.unknown_orders > 0
-            color: "#dc2626"
+            color: Theme.criticalStrong
             clip: true
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
+                anchors.leftMargin: Spacing.size16
+                anchors.rightMargin: Spacing.size16
 
                 Text {
                     text: "⚠ Reconciliation Required: " + root.opsStatus.unknown_orders + " unknown order(s) detected"
-                    color: "#ffffff"
-                    font.pixelSize: 12
+                    color: Theme.textOnAccent
+                    font.pixelSize: Theme.typeBody
                     font.bold: true
                     Layout.alignment: Qt.AlignVCenter
                 }
@@ -117,56 +117,56 @@ Rectangle {
         // Main status bar
         Rectangle {
             Layout.fillWidth: true
-            height: 48
-            color: "#1e222d"
+            height: Spacing.size48
+            color: Theme.surfaceElevated
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 12
+                anchors.leftMargin: Spacing.size16
+                anchors.rightMargin: Spacing.size16
+                spacing: Spacing.size12
 
                 // Workspace Title
                 Text {
                     text: "OPERATIONS"
-                    color: "#f8fafc"
-                    font.pixelSize: 15
+                    color: Theme.textStrong
+                    font.pixelSize: Theme.typeTitle
                     font.bold: true
                     Layout.alignment: Qt.AlignVCenter
                 }
 
                 Rectangle {
-                    width: 1
-                    height: 20
-                    color: "#334155"
+                    width: Spacing.size1
+                    height: Spacing.size20
+                    color: Theme.borderDefault
                     Layout.alignment: Qt.AlignVCenter
                 }
 
                 // Stream Connection & Age
                 Rectangle {
-                    height: 24
+                    height: Spacing.size24
                     implicitWidth: streamRow.implicitWidth + 16
-                    radius: 4
-                    color: (root.opsStatus.stream_state === "connected") ? "#064e3b" : "#7f1d1d"
-                    border.color: (root.opsStatus.stream_state === "connected") ? "#10b981" : "#ef4444"
+                    radius: Spacing.size4
+                    color: Semantic.background(Semantic.health(root.opsStatus.stream_state))
+                    border.color: Semantic.border(Semantic.health(root.opsStatus.stream_state))
                     Layout.alignment: Qt.AlignVCenter
 
                     RowLayout {
                         id: streamRow
                         anchors.centerIn: parent
-                        spacing: 6
+                        spacing: Spacing.size6
 
                         Rectangle {
-                            width: 6
-                            height: 6
-                            radius: 3
-                            color: (root.opsStatus.stream_state === "connected") ? "#34d399" : "#f87171"
+                            width: Spacing.size6
+                            height: Spacing.size6
+                            radius: Spacing.size3
+                            color: Semantic.foreground(Semantic.health(root.opsStatus.stream_state))
                         }
 
                         Text {
                             text: "Stream: " + root.opsStatus.stream_state + (root.opsStatus.stream_age_s > 0 ? " (" + Format.formatAge(root.opsStatus.stream_age_s) + ")" : "")
-                            color: "#ffffff"
-                            font.pixelSize: 11
+                            color: Theme.textOnAccent
+                            font.pixelSize: Theme.typeBodySmall
                             font.bold: true
                         }
                     }
@@ -174,41 +174,41 @@ Rectangle {
 
                 // API Status
                 Rectangle {
-                    height: 24
+                    height: Spacing.size24
                     implicitWidth: apiText.implicitWidth + 16
-                    radius: 4
-                    color: (root.opsStatus.api_status === "ok") ? "#0f2f24" : "#450a0a"
-                    border.color: (root.opsStatus.api_status === "ok") ? "#059669" : "#dc2626"
+                    radius: Spacing.size4
+                    color: Semantic.background(Semantic.health(root.opsStatus.api_status))
+                    border.color: Semantic.border(Semantic.health(root.opsStatus.api_status))
                     Layout.alignment: Qt.AlignVCenter
 
                     Text {
                         id: apiText
                         anchors.centerIn: parent
                         text: "API: " + root.opsStatus.api_status
-                        color: (root.opsStatus.api_status === "ok") ? "#34d399" : "#f87171"
-                        font.pixelSize: 11
+                        color: Semantic.foreground(Semantic.health(root.opsStatus.api_status))
+                        font.pixelSize: Theme.typeBodySmall
                         font.bold: true
                     }
                 }
 
                 // Worker Status & Heartbeat
                 Rectangle {
-                    height: 24
+                    height: Spacing.size24
                     implicitWidth: workerRow.implicitWidth + 16
-                    radius: 4
-                    color: (root.opsStatus.worker_status === "active" && root.opsStatus.worker_heartbeat_age_s <= 30.0) ? "#0f2f24" : "#451a03"
-                    border.color: (root.opsStatus.worker_status === "active" && root.opsStatus.worker_heartbeat_age_s <= 30.0) ? "#059669" : "#d97706"
+                    radius: Spacing.size4
+                    color: Semantic.background(Semantic.workerHealth(root.opsStatus.worker_status, root.opsStatus.worker_heartbeat_age_s))
+                    border.color: Semantic.border(Semantic.workerHealth(root.opsStatus.worker_status, root.opsStatus.worker_heartbeat_age_s))
                     Layout.alignment: Qt.AlignVCenter
 
                     RowLayout {
                         id: workerRow
                         anchors.centerIn: parent
-                        spacing: 6
+                        spacing: Spacing.size6
 
                         Text {
                             text: "Worker: " + root.opsStatus.worker_status + " (" + Format.formatAge(root.opsStatus.worker_heartbeat_age_s) + ")"
-                            color: (root.opsStatus.worker_status === "active" && root.opsStatus.worker_heartbeat_age_s <= 30.0) ? "#34d399" : "#fbbf24"
-                            font.pixelSize: 11
+                            color: Semantic.foreground(Semantic.workerHealth(root.opsStatus.worker_status, root.opsStatus.worker_heartbeat_age_s))
+                            font.pixelSize: Theme.typeBodySmall
                             font.bold: true
                         }
                     }
@@ -216,22 +216,22 @@ Rectangle {
 
                 // MT5 Edge & Terminal Build
                 Rectangle {
-                    height: 24
+                    height: Spacing.size24
                     implicitWidth: edgeRow.implicitWidth + 16
-                    radius: 4
-                    color: (root.opsStatus.edge_reachable && root.opsStatus.edge_mt5_connected) ? "#0f2f24" : "#3b1111"
-                    border.color: (root.opsStatus.edge_reachable && root.opsStatus.edge_mt5_connected) ? "#059669" : "#b91c1c"
+                    radius: Spacing.size4
+                    color: Semantic.background(Semantic.edgeHealth(root.opsStatus.edge_reachable, root.opsStatus.edge_mt5_connected))
+                    border.color: Semantic.border(Semantic.edgeHealth(root.opsStatus.edge_reachable, root.opsStatus.edge_mt5_connected))
                     Layout.alignment: Qt.AlignVCenter
 
                     RowLayout {
                         id: edgeRow
                         anchors.centerIn: parent
-                        spacing: 6
+                        spacing: Spacing.size6
 
                         Text {
                             text: "MT5: " + (root.opsStatus.edge_mt5_connected ? "connected (b" + root.opsStatus.terminal_build + ")" : (root.opsStatus.edge_reachable ? "terminal down" : "edge down"))
-                            color: (root.opsStatus.edge_reachable && root.opsStatus.edge_mt5_connected) ? "#34d399" : "#f87171"
-                            font.pixelSize: 11
+                            color: Semantic.foreground(Semantic.edgeHealth(root.opsStatus.edge_reachable, root.opsStatus.edge_mt5_connected))
+                            font.pixelSize: Theme.typeBodySmall
                             font.bold: true
                         }
                     }
@@ -243,61 +243,61 @@ Rectangle {
 
                 // Unknown Orders Chip
                 Rectangle {
-                    height: 24
+                    height: Spacing.size24
                     implicitWidth: unkText.implicitWidth + 16
-                    radius: 4
+                    radius: Spacing.size4
                     visible: root.opsStatus.unknown_orders > 0
-                    color: "#7f1d1d"
-                    border.color: "#ef4444"
+                    color: Theme.criticalSurface
+                    border.color: Theme.negativeStrong
                     Layout.alignment: Qt.AlignVCenter
 
                     Text {
                         id: unkText
                         anchors.centerIn: parent
                         text: "Unknown orders: " + root.opsStatus.unknown_orders
-                        color: "#fca5a5"
-                        font.pixelSize: 11
+                        color: Theme.negativeSoft
+                        font.pixelSize: Theme.typeBodySmall
                         font.bold: true
                     }
                 }
 
                 // Kill Switch Badge + control
                 RowLayout {
-                    spacing: 6
+                    spacing: Spacing.size6
                     Layout.alignment: Qt.AlignVCenter
 
                     Rectangle {
-                        height: 24
+                        height: Spacing.size24
                         implicitWidth: killText.implicitWidth + 16
-                        radius: 4
-                        color: root.opsStatus.kill_switch_enabled ? "#7f1d1d" : "#1e293b"
-                        border.color: root.opsStatus.kill_switch_enabled ? "#ef4444" : "#475569"
+                        radius: Spacing.size4
+                        color: Semantic.background(Semantic.killSwitch(root.opsStatus.kill_switch_enabled))
+                        border.color: Semantic.border(Semantic.killSwitch(root.opsStatus.kill_switch_enabled))
 
                         Text {
                             id: killText
                             anchors.centerIn: parent
                             text: "Kill Switch: " + (root.opsStatus.kill_switch_enabled ? "ENGAGED" : "OFF")
-                            color: root.opsStatus.kill_switch_enabled ? "#fca5a5" : "#94a3b8"
-                            font.pixelSize: 11
+                            color: Semantic.foreground(Semantic.killSwitch(root.opsStatus.kill_switch_enabled))
+                            font.pixelSize: Theme.typeBodySmall
                             font.bold: true
                         }
                     }
 
                     Rectangle {
-                        height: 24
+                        height: Spacing.size24
                         implicitWidth: killBtnText.implicitWidth + 16
-                        radius: 4
+                        radius: Spacing.size4
                         visible: !root.opsStatus.kill_switch_enabled
-                        color: root.executionControls.is_command_enabled("kill_switch_set") && !killEngageMouse.pressed ? "#7f1d1d" : "#450a0a"
-                        border.color: "#ef4444"
+                        color: Semantic.background(Semantic.critical)
+                        border.color: Semantic.border(Semantic.critical)
                         opacity: root.executionControls.is_command_enabled("kill_switch_set") ? 1.0 : 0.4
 
                         Text {
                             id: killBtnText
                             anchors.centerIn: parent
                             text: "Engage"
-                            color: "#fca5a5"
-                            font.pixelSize: 10
+                            color: Theme.negativeSoft
+                            font.pixelSize: Theme.typeLabel
                             font.bold: true
                         }
 
@@ -310,20 +310,20 @@ Rectangle {
                     }
 
                     Rectangle {
-                        height: 24
+                        height: Spacing.size24
                         implicitWidth: releaseBtnText.implicitWidth + 16
-                        radius: 4
+                        radius: Spacing.size4
                         visible: root.opsStatus.kill_switch_enabled
-                        color: root.executionControls.is_command_enabled("kill_switch_clear") ? "#1e293b" : "#0f172a"
-                        border.color: "#64748b"
+                        color: Semantic.background(Semantic.neutral)
+                        border.color: Semantic.border(Semantic.neutral)
                         opacity: root.executionControls.is_command_enabled("kill_switch_clear") ? 1.0 : 0.4
 
                         Text {
                             id: releaseBtnText
                             anchors.centerIn: parent
                             text: "Release"
-                            color: "#cbd5e1"
-                            font.pixelSize: 10
+                            color: Theme.textPrimary
+                            font.pixelSize: Theme.typeLabel
                             font.bold: true
                         }
 
@@ -337,19 +337,19 @@ Rectangle {
 
                 // Live Lock Badge
                 Rectangle {
-                    height: 24
+                    height: Spacing.size24
                     implicitWidth: liveLockText.implicitWidth + 16
-                    radius: 4
-                    color: root.opsStatus.live_locked ? "#334155" : "#b45309"
-                    border.color: root.opsStatus.live_locked ? "#64748b" : "#f59e0b"
+                    radius: Spacing.size4
+                    color: Semantic.background(Semantic.liveLock(root.opsStatus.live_locked))
+                    border.color: Semantic.border(Semantic.liveLock(root.opsStatus.live_locked))
                     Layout.alignment: Qt.AlignVCenter
 
                     Text {
                         id: liveLockText
                         anchors.centerIn: parent
                         text: root.opsStatus.live_locked ? "Live locked" : "LIVE UNLOCKED"
-                        color: root.opsStatus.live_locked ? "#94a3b8" : "#fef3c7"
-                        font.pixelSize: 11
+                        color: Semantic.foreground(Semantic.liveLock(root.opsStatus.live_locked))
+                        font.pixelSize: Theme.typeBodySmall
                         font.bold: true
                     }
                 }

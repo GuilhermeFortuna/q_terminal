@@ -97,9 +97,9 @@ Item {
             Rectangle {
                 required property int index
                 width: chartArea.width
-                height: 1
+                height: Spacing.size1
                 y: (index + 1) * chartArea.height / 5
-                color: "#2a2e39"
+                color: Theme.borderSubtle
             }
         }
 
@@ -107,10 +107,10 @@ Item {
             model: 4
             Rectangle {
                 required property int index
-                width: 1
+                width: Spacing.size1
                 height: chartArea.height
                 x: (index + 1) * chartArea.width / 5
-                color: "#2a2e39"
+                color: Theme.borderSubtle
             }
         }
 
@@ -158,19 +158,19 @@ Item {
                 y: Math.min(hover.point.position.y + 12, chartContainer.height - height)
                 width: tipText.implicitWidth + 12
                 height: tipText.implicitHeight + 8
-                color: "#1e222d"
-                border.color: "#363a45"
+                color: Theme.surfaceElevated
+                border.color: Theme.borderStrong
 
                 Text {
                     id: tipText
                     anchors.centerIn: parent
-                    color: "#d1d4dc"
-                    font.pixelSize: 11
+                    color: Theme.textPrimary
+                    font.pixelSize: Theme.typeBodySmall
                 }
             }
         }
 
-        EmptyState {
+        ChartEmptyState {
             id: emptyState
             objectName: "emptyState"
             anchors.fill: chartArea
@@ -184,14 +184,14 @@ Item {
         anchors.top: parent.top
         anchors.right: parent.right
         anchors.bottom: timeAxis.top
-        width: 64
+        width: Spacing.size64
 
         Rectangle {
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.bottom: parent.bottom
-            width: 1
-            color: "#2a2e39"
+            width: Spacing.size1
+            color: Theme.borderSubtle
         }
 
         Text {
@@ -199,10 +199,10 @@ Item {
             objectName: "topPriceText"
             anchors.top: parent.top
             anchors.left: parent.left
-            anchors.margins: 4
+            anchors.margins: Spacing.size4
             text: root.topPriceLabel
-            color: "#787b86"
-            font.pixelSize: 11
+            color: Theme.textTertiary
+            font.pixelSize: Theme.typeBodySmall
             visible: !viewport.empty
         }
 
@@ -211,10 +211,10 @@ Item {
             objectName: "bottomPriceText"
             anchors.bottom: parent.bottom
             anchors.left: parent.left
-            anchors.margins: 4
+            anchors.margins: Spacing.size4
             text: root.bottomPriceLabel
-            color: "#787b86"
-            font.pixelSize: 11
+            color: Theme.textTertiary
+            font.pixelSize: Theme.typeBodySmall
             visible: !viewport.empty
         }
     }
@@ -224,14 +224,14 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        height: 24
+        height: Spacing.size24
 
         Rectangle {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 1
-            color: "#2a2e39"
+            height: Spacing.size1
+            color: Theme.borderSubtle
         }
 
         Text {
@@ -239,10 +239,10 @@ Item {
             objectName: "leftTimeText"
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: 4
+            anchors.leftMargin: Spacing.size4
             text: root.leftTimeLabel
-            color: "#787b86"
-            font.pixelSize: 11
+            color: Theme.textTertiary
+            font.pixelSize: Theme.typeBodySmall
             visible: !viewport.empty
         }
 
@@ -250,11 +250,11 @@ Item {
             id: rightTimeText
             objectName: "rightTimeText"
             anchors.right: parent.right
-            anchors.rightMargin: 70
+            anchors.rightMargin: Spacing.size70
             anchors.verticalCenter: parent.verticalCenter
             text: root.rightTimeLabel
-            color: "#787b86"
-            font.pixelSize: 11
+            color: Theme.textTertiary
+            font.pixelSize: Theme.typeBodySmall
             visible: !viewport.empty
         }
     }

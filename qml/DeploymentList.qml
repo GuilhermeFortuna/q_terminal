@@ -6,9 +6,9 @@ import "Format.js" as Format
 
 Rectangle {
     id: root
-    color: "#131722"
-    border.color: "#1e293b"
-    border.width: 1
+    color: Theme.surfaceBase
+    border.color: Theme.surfaceSelected
+    border.width: Spacing.size1
 
     required property ExecutionModels executionModels
     required property ExecutionControls executionControls
@@ -48,43 +48,43 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 0
+        spacing: Spacing.size0
 
         // List Header
         Rectangle {
             Layout.fillWidth: true
-            height: 36
-            color: "#1e222d"
-            border.color: "#334155"
-            border.width: 1
+            height: Spacing.size36
+            color: Theme.surfaceElevated
+            border.color: Theme.borderDefault
+            border.width: Spacing.size1
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
+                anchors.leftMargin: Spacing.size12
+                anchors.rightMargin: Spacing.size12
 
                 Text {
                     text: "DEPLOYMENTS"
-                    color: "#94a3b8"
-                    font.pixelSize: 11
+                    color: Theme.textSecondary
+                    font.pixelSize: Theme.typeBodySmall
                     font.bold: true
                     Layout.alignment: Qt.AlignVCenter
                 }
 
                 Rectangle {
-                    height: 22
+                    height: Spacing.size22
                     implicitWidth: acctBtnText.implicitWidth + 12
-                    radius: 3
-                    color: acctMouse.containsMouse ? "#243044" : "#1e293b"
-                    border.color: "#334155"
+                    radius: Spacing.size3
+                    color: acctMouse.containsMouse ? Theme.surfaceHover : Theme.surfaceSelected
+                    border.color: Theme.borderDefault
                     opacity: root.executionControls.is_command_enabled("create_account") ? 1.0 : 0.4
 
                     Text {
                         id: acctBtnText
                         anchors.centerIn: parent
                         text: "+ Account"
-                        color: "#38bdf8"
-                        font.pixelSize: 10
+                        color: Theme.accent
+                        font.pixelSize: Theme.typeLabel
                         font.bold: true
                     }
 
@@ -98,19 +98,19 @@ Rectangle {
                 }
 
                 Rectangle {
-                    height: 22
+                    height: Spacing.size22
                     implicitWidth: newBtnText.implicitWidth + 12
-                    radius: 3
-                    color: newMouse.containsMouse ? "#1d4ed8" : "#1e3a8a"
-                    border.color: "#2563eb"
+                    radius: Spacing.size3
+                    color: newMouse.containsMouse ? Theme.accentPressed : Theme.accentDark
+                    border.color: Theme.accentStrong
                     opacity: root.executionControls.is_command_enabled("create_deployment") ? 1.0 : 0.4
 
                     Text {
                         id: newBtnText
                         anchors.centerIn: parent
                         text: "+ New"
-                        color: "#ffffff"
-                        font.pixelSize: 10
+                        color: Theme.textOnAccent
+                        font.pixelSize: Theme.typeLabel
                         font.bold: true
                     }
 
@@ -129,8 +129,8 @@ Rectangle {
 
                 Text {
                     text: (deploymentsView.count !== undefined ? deploymentsView.count : 0) + " active"
-                    color: "#64748b"
-                    font.pixelSize: 11
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.typeBodySmall
                     Layout.alignment: Qt.AlignVCenter
                 }
             }
@@ -143,7 +143,7 @@ Rectangle {
             Layout.fillHeight: true
             clip: true
             model: root.executionModels.deployments
-            spacing: 2
+            spacing: Spacing.size2
 
             boundsBehavior: Flickable.StopAtBounds
 
@@ -168,23 +168,18 @@ Rectangle {
                 readonly property bool isLive: card.broker_mode.toLowerCase() === "live"
 
                 width: deploymentsView.width
-                height: 84
-                color: card.isSelected ? "#1e293b" : (mouseArea.containsMouse ? "#182030" : "#131722")
-                border.color: card.isSelected ? "#38bdf8" : "#1e293b"
+                height: Spacing.size84
+                color: card.isSelected ? Theme.surfaceSelected : (mouseArea.containsMouse ? Theme.surfaceOverlay : Theme.surfaceBase)
+                border.color: card.isSelected ? Theme.accent : Theme.surfaceSelected
                 border.width: card.isSelected ? 1 : 1
 
                 // Left status indicator bar
                 Rectangle {
-                    width: 4
+                    width: Spacing.size4
                     anchors.left: parent.left
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
-                    color: {
-                        if (card.lifecycle === "running") return "#10b981";
-                        if (card.lifecycle === "paused") return "#f59e0b";
-                        if (card.lifecycle === "stopped") return "#ef4444";
-                        return "#64748b";
-                    }
+                    color: Semantic.foreground(Semantic.lifecycle(card.lifecycle))
                 }
 
                 MouseArea {
@@ -198,21 +193,21 @@ Rectangle {
 
                 ColumnLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: 12
-                    anchors.rightMargin: 10
-                    anchors.topMargin: 8
-                    anchors.bottomMargin: 8
-                    spacing: 4
+                    anchors.leftMargin: Spacing.size12
+                    anchors.rightMargin: Spacing.size10
+                    anchors.topMargin: Spacing.size8
+                    anchors.bottomMargin: Spacing.size8
+                    spacing: Spacing.size4
 
                     // Line 1: Name and Badges
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 6
+                        spacing: Spacing.size6
 
                         Text {
                             text: card.name !== "" ? card.name : card.id
-                            color: "#f8fafc"
-                            font.pixelSize: 13
+                            color: Theme.textStrong
+                            font.pixelSize: Theme.typeBodyLarge
                             font.bold: true
                             elide: Text.ElideRight
                             Layout.fillWidth: true
@@ -220,64 +215,54 @@ Rectangle {
 
                         // Unknown orders warning badge
                         Rectangle {
-                            height: 18
+                            height: Spacing.size18
                             implicitWidth: unkOrderText.implicitWidth + 8
-                            radius: 3
+                            radius: Spacing.size3
                             visible: Number(card.unknown_order_count) > 0
-                            color: "#7f1d1d"
-                            border.color: "#ef4444"
+                            color: Theme.criticalSurface
+                            border.color: Theme.negativeStrong
 
                             Text {
                                 id: unkOrderText
                                 anchors.centerIn: parent
                                 text: "!" + card.unknown_order_count + " unk"
-                                color: "#fca5a5"
-                                font.pixelSize: 9
+                                color: Theme.negativeSoft
+                                font.pixelSize: Theme.typeLabelSmall
                                 font.bold: true
                             }
                         }
 
                         // Broker Mode Badge: Live vs Paper
                         Rectangle {
-                            height: 18
+                            height: Spacing.size18
                             implicitWidth: modeText.implicitWidth + 8
-                            radius: 3
-                            color: card.isLive ? "#991b1b" : "#1e293b"
-                            border.color: card.isLive ? "#f87171" : "#475569"
+                            radius: Spacing.size3
+                            color: Semantic.background(Semantic.brokerMode(card.broker_mode))
+                            border.color: Semantic.border(Semantic.brokerMode(card.broker_mode))
 
                             Text {
                                 id: modeText
                                 anchors.centerIn: parent
                                 text: card.broker_mode.toUpperCase()
-                                color: card.isLive ? "#fef2f2" : "#94a3b8"
-                                font.pixelSize: 9
+                                color: Semantic.foreground(Semantic.brokerMode(card.broker_mode))
+                                font.pixelSize: Theme.typeLabelSmall
                                 font.bold: true
                             }
                         }
 
                         // Lifecycle badge
                         Rectangle {
-                            height: 18
+                            height: Spacing.size18
                             implicitWidth: lifeText.implicitWidth + 8
-                            radius: 3
-                            color: {
-                                if (card.lifecycle === "running") return "#064e3b";
-                                if (card.lifecycle === "paused") return "#451a03";
-                                if (card.lifecycle === "stopped") return "#450a0a";
-                                return "#1e293b";
-                            }
+                            radius: Spacing.size3
+                            color: Semantic.background(Semantic.lifecycle(card.lifecycle))
 
                             Text {
                                 id: lifeText
                                 anchors.centerIn: parent
                                 text: card.lifecycle.toUpperCase()
-                                color: {
-                                    if (card.lifecycle === "running") return "#34d399";
-                                    if (card.lifecycle === "paused") return "#fbbf24";
-                                    if (card.lifecycle === "stopped") return "#f87171";
-                                    return "#94a3b8";
-                                }
-                                font.pixelSize: 9
+                                color: Semantic.foreground(Semantic.lifecycle(card.lifecycle))
+                                font.pixelSize: Theme.typeLabelSmall
                                 font.bold: true
                             }
                         }
@@ -286,12 +271,12 @@ Rectangle {
                     // Line 2: Symbol, Timeframe, Pending Action
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 8
+                        spacing: Spacing.size8
 
                         Text {
                             text: card.symbol + " · " + card.timeframe
-                            color: "#94a3b8"
-                            font.pixelSize: 11
+                            color: Theme.textSecondary
+                            font.pixelSize: Theme.typeBodySmall
                         }
 
                         Item { Layout.fillWidth: true }
@@ -299,8 +284,8 @@ Rectangle {
                         Text {
                             visible: card.pending_action !== ""
                             text: "Action: " + card.pending_action
-                            color: "#f59e0b"
-                            font.pixelSize: 10
+                            color: Theme.warningStrong
+                            font.pixelSize: Theme.typeLabel
                             font.bold: true
                         }
                     }
@@ -308,7 +293,7 @@ Rectangle {
                     // Line 3: Net Position & Entry Price, Last Evaluated Bar
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 8
+                        spacing: Spacing.size8
 
                         Text {
                             text: {
@@ -317,12 +302,8 @@ Rectangle {
                                 }
                                 return card.pos_side.toUpperCase() + " " + card.pos_quantity + " @ " + card.pos_entry_price;
                             }
-                            color: {
-                                if (card.pos_side.toLowerCase() === "long") return "#34d399";
-                                if (card.pos_side.toLowerCase() === "short") return "#f87171";
-                                return "#64748b";
-                            }
-                            font.pixelSize: 11
+                            color: Semantic.foreground(Semantic.position(card.pos_side))
+                            font.pixelSize: Theme.typeBodySmall
                             font.bold: card.pos_side.toLowerCase() !== "flat" && card.pos_side !== ""
                         }
 
@@ -330,8 +311,8 @@ Rectangle {
 
                         Text {
                             text: card.last_bar_close_time !== "" ? Format.formatShortTime(card.last_bar_close_time) : "--"
-                            color: "#64748b"
-                            font.pixelSize: 10
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.typeLabel
                         }
                     }
                 }

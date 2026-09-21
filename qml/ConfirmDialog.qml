@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import qml
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -22,13 +23,13 @@ Dialog {
 
     ColumnLayout {
         anchors.fill: parent
-        spacing: 12
+        spacing: Spacing.size12
 
         Text {
             text: root.actionTitle
-            font.pixelSize: 14
+            font.pixelSize: Theme.typeBodyLarge
             font.bold: true
-            color: "#f8fafc"
+            color: Theme.textStrong
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
         }
@@ -37,17 +38,17 @@ Dialog {
             visible: root.liveWarning
             Layout.fillWidth: true
             height: liveBanner.implicitHeight + 16
-            radius: 4
-            color: "#7f1d1d"
-            border.color: "#ef4444"
+            radius: Spacing.size4
+            color: Theme.criticalSurface
+            border.color: Theme.negativeStrong
 
             Text {
                 id: liveBanner
                 anchors.centerIn: parent
                 width: parent.width - 24
                 text: "LIVE DEPLOYMENT — real broker orders"
-                color: "#fca5a5"
-                font.pixelSize: 12
+                color: Theme.negativeSoft
+                font.pixelSize: Theme.typeBody
                 font.bold: true
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
@@ -56,15 +57,15 @@ Dialog {
 
         Text {
             text: root.consequenceText
-            font.pixelSize: 12
-            color: "#cbd5e1"
+            font.pixelSize: Theme.typeBody
+            color: Theme.textPrimary
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
         }
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 8
+            spacing: Spacing.size8
             Item { Layout.fillWidth: true }
 
             Button {

@@ -1,5 +1,6 @@
 /target
 /target/
+/gallery-shots/
 /cpp/q-qt
 **/*.rs.bk
 *.swp
@@ -7,3 +8,5 @@
 .DS_Store
 .qmlls.ini
 *.ini
+__pycache__/
+*.pyc

@@ -2,6 +2,21 @@
 
 High-performance desktop trading and operations terminal for the Q platform, built on Qt 6 / QML and backed by Rust (`q_core`) via CXX-Qt.
 
+## Terminal design system
+
+Q-051 centralizes presentation tokens in `qml/theme/` (`Theme`, `Palette`, `Typography`,
+`Spacing`, `Icons`, and `Semantic`) and provides reusable controls in `qml/components/`.
+Existing screens consume those tokens; trading meaning is mapped through `Semantic` rather
+than inferred from raw model values in individual views. The custom Qt Quick Controls style
+in `qml/style/` keeps keyboard, focus, and accessibility behavior while applying terminal
+density and contrast.
+
+The component gallery is an opt-in build feature. Run `make gallery` for the interactive
+catalog or `env -u WAYLAND_DISPLAY -u DISPLAY make gallery-shot` for offscreen PNG captures.
+The gallery and its state catalog are compiled only with Cargo feature `gallery`.
+`make check` enforces the token gate, rejecting screen-level colour literals, raw font sizes,
+unscaled dimensions, and conditional colour decisions.
+
 ---
 
 ## The Live Chart Slice
@@ -19,7 +34,7 @@ The live chart slice provides a read-only, reactive candlestick chart window dis
   - Data freshness / staleness: flips to `STALE` when bar delivery age exceeds the timeframe interval.
   - History source & shortfall: indicates whether history loaded from lake or API, and shortfall bar count if any.
   - Reconnect / error banner: displays actionable diagnostics and retry status.
-- **Empty State (`EmptyState.qml`)**: Informative placeholder presented while history is loading or before the first bar arrives.
+- **Empty State (`ChartEmptyState.qml`)**: Informative placeholder presented while history is loading or before the first bar arrives.
 ---
 
 ## The Operations Workspace
@@ -142,7 +157,11 @@ q_terminal/
 │   ├── Viewport.qml    # Viewport tracking newest bar and sticky price bounds
 │   ├── ChartPane.qml   # Chart pane with gridlines, axes, BarChartItem, OverlayChartItem, marker tooltip
 │   ├── StatusStrip.qml # Live connection, freshness, history source, and error status
-│   ├── EmptyState.qml  # Placeholder before initial bars arrive
+│   ├── ChartEmptyState.qml  # Chart placeholder before initial bars arrive
+│   ├── components/     # Reusable terminal controls and stateful primitives
+│   ├── theme/          # Palette, typography, spacing, icons, and semantic roles
+│   ├── style/          # Custom Qt Quick Controls style
+│   ├── gallery/        # Opt-in component/state catalog
 │   └── qmldir          # QML module definition
 ├── src/                # Rust application and bridge code
 │   ├── lib.rs          # Library crate: modules, headless reports, and window launch helpers

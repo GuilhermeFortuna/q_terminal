@@ -1,6 +1,9 @@
 #include "render_backend.h"
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDebug>
+#include <QtGui/QFontDatabase>
+#include <QtGui/QFontMetricsF>
+#include <QtGui/QImage>
 #include <QtQuick/QQuickWindow>
 #include <QtQuick/QSGRendererInterface>
 #include <iostream>
@@ -48,4 +51,36 @@ QString query_graphics_api(QQmlApplicationEngine& engine) {
         }
     }
     return QStringLiteral("unknown");
+}
+
+bool verify_design_fonts() {
+    const int inter_id = QFontDatabase::addApplicationFont(QStringLiteral(":/assets/fonts/Inter-Variable.ttf"));
+    const int mono_id = QFontDatabase::addApplicationFont(QStringLiteral(":/assets/fonts/JetBrainsMono-Variable.ttf"));
+    if (inter_id < 0 || mono_id < 0) return false;
+    const QStringList inter_families = QFontDatabase::applicationFontFamilies(inter_id);
+    const QStringList mono_families = QFontDatabase::applicationFontFamilies(mono_id);
+    if (inter_families.isEmpty() || mono_families.isEmpty()) return false;
+    QFont numeric(mono_families.first());
+    numeric.setStyleStrategy(QFont::PreferNoShaping);
+    const QFontMetricsF metrics(numeric);
+    return qAbs(metrics.horizontalAdvance(QStringLiteral("111111"))
+              - metrics.horizontalAdvance(QStringLiteral("908276"))) < 0.01;
+}
+
+bool capture_window(QQmlApplicationEngine& engine, const QString& output_path, int width, int height) {
+    for (QObject* obj : engine.rootObjects()) {
+        if (auto* window = qobject_cast<QQuickWindow*>(obj)) {
+            window->setWidth(width);
+            window->setHeight(height);
+            window->show();
+            for (int i = 0; i < 8; ++i) {
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+                window->update();
+            }
+            const QImage image = window->grabWindow();
+            return !image.isNull() && image.width() == width && image.height() == height
+                && image.save(output_path, "PNG");
+        }
+    }
+    return false;
 }
