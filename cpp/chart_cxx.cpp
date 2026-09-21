@@ -413,11 +413,11 @@ EmptyStateProbe::EmptyStateProbe() : m_impl(std::make_unique<Impl>()) {
     m_impl->engine.addImportPath(QStringLiteral("target/cxxqt/qml_modules"));
 
     QQmlComponent component(&m_impl->engine);
-    QFileInfo fileInfo(QStringLiteral("qml/EmptyState.qml"));
+    QFileInfo fileInfo(QStringLiteral("qml/ChartEmptyState.qml"));
     if (fileInfo.exists()) {
         component.loadUrl(QUrl::fromLocalFile(fileInfo.absoluteFilePath()));
     } else {
-        component.loadUrl(QUrl(QStringLiteral("qrc:/qt/qml/qml/EmptyState.qml")));
+        component.loadUrl(QUrl(QStringLiteral("qrc:/qt/qml/qml/ChartEmptyState.qml")));
     }
     m_impl->emptyState = component.create();
 }

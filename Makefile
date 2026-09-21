@@ -50,7 +50,7 @@ CARGO_RUSTFLAGS := -C link-arg=-fuse-ld=lld -C link-arg=-B$(RUST_GCC_LD)
 export RUSTFLAGS ?= $(CARGO_RUSTFLAGS)
 
 test:
-	cargo test
+	cargo test -- --test-threads=1
 
 bench-stream:
 	cargo test --release --test bench_stream -- --nocapture --ignored
