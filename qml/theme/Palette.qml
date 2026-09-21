@@ -2,24 +2,24 @@ pragma Singleton
 import QtQuick
 
 QtObject {
-    // Radix-inspired dark surface ladder, preserving the incumbent terminal palette.
-    readonly property color surfaceSunken: "#0b0f17"
-    readonly property color surfaceBase: "#131722"
-    readonly property color surfaceRaised: "#161c28"
-    readonly property color surfaceOverlay: "#182030"
-    readonly property color surfaceElevated: "#1e222d"
-    readonly property color surfaceSelected: "#1e293b"
-    readonly property color surfaceHover: "#243044"
+    // Radix-style stepwise neutral ladder on a true-black canvas; equal RGB, no blue cast.
+    readonly property color surfaceSunken: "#000000"
+    readonly property color surfaceBase: "#000000"
+    readonly property color surfaceRaised: "#0f0f0f"
+    readonly property color surfaceOverlay: "#171717"
+    readonly property color surfaceElevated: "#1f1f1f"
+    readonly property color surfaceSelected: "#2a2a2a"
+    readonly property color surfaceHover: "#333333"
 
-    readonly property color borderSubtle: "#2a2e39"
-    readonly property color borderDefault: "#334155"
-    readonly property color borderStrong: "#475569"
+    readonly property color borderSubtle: "#2a2a2a"
+    readonly property color borderDefault: "#3d3d3d"
+    readonly property color borderStrong: "#666666"
 
-    readonly property color textMuted: "#64748b"
-    readonly property color textTertiary: "#787b86"
-    readonly property color textSecondary: "#94a3b8"
-    readonly property color textPrimary: "#d1d4dc"
-    readonly property color textStrong: "#f8fafc"
+    readonly property color textMuted: "#8c8c8c"
+    readonly property color textTertiary: "#9e9e9e"
+    readonly property color textSecondary: "#b8b8b8"
+    readonly property color textPrimary: "#e2e2e2"
+    readonly property color textStrong: "#fafafa"
     readonly property color textOnAccent: "#ffffff"
 
     readonly property color accent: "#38bdf8"

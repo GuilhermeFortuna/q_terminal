@@ -36,7 +36,7 @@ Controls behaviour for focus, keyboard input and accessibility.
   where they already express the intended terminal semantics.
 - Inter and JetBrains Mono are shipped resources; Lucide supplies the icon subset.
 - The Q-052 panel icons (`activity`, `list`, `table`, `chart-candlestick`, `external-link`,
-  `arrow-down-to-line`) are Lucide glyphs with the stroke fixed to the `textSecondary` colour:
+  `arrow-down-to-line`) are Lucide glyphs with the stroke fixed to the `textSecondary` colour (`#b8b8b8`, Q-057):
   Qt renders `currentColor` black, which vanishes on the dark surfaces, and the software
   backend cannot recolour an image at runtime.
 - Figma to Qt 1.0 was assessed using `StatusBadge` as the round-trip specimen. Its
@@ -44,3 +44,36 @@ Controls behaviour for focus, keyboard input and accessibility.
   still require a manual pass to target the terminal singleton API. Later greenfield
   screens may start in Figma when a shared library exists; generated QML is not accepted
   directly into the component module.
+
+## Q-057 true-black neutral token map
+
+Radix's stepwise surface/contrast approach, with the blue hue removed: every neutral has
+equal RGB components (asserted in `tests/design_system.rs`). Semantic colours are unchanged.
+
+| Level | Tokens |
+| --- | --- |
+| Canvas | `surfaceSunken`, `surfaceBase` `#000000` (workspace, chart, controls at rest) |
+| Surfaces | `surfaceRaised` `#0f0f0f`, `surfaceOverlay` `#171717`, `surfaceElevated` `#1f1f1f`, `surfaceSelected` `#2a2a2a`, `surfaceHover` `#333333` |
+| Borders | `borderSubtle` `#2a2a2a` (grid, separators), `borderDefault` `#3d3d3d`, `borderStrong` `#666666` |
+| Text | `textMuted` `#8c8c8c`, `textTertiary` `#9e9e9e`, `textSecondary` `#b8b8b8`, `textPrimary` `#e2e2e2`, `textStrong` `#fafafa` |
+
+Measured contrast (WCAG, base/raised/overlay/elevated/selected/hover):
+
+| Foreground | Ratios |
+| --- | --- |
+| `textMuted` | 6.2 / 5.7 / 5.3 / 4.9 / 4.3 / 3.8 |
+| `textTertiary` (axes, table header) | 7.8 / 7.2 / 6.7 / 6.2 / 5.4 / 4.7 |
+| `textSecondary` | 10.6 / 9.7 / 9.0 / 8.3 / 7.2 / 6.4 |
+| `textPrimary` | 16.2 / 14.8 / 13.8 / 12.7 / 11.1 / 9.8 |
+| `warning` / `negative` / `positive` | all >= 4.6 on every surface (warning 7.6+, positive 6.6+) |
+| `critical` | 5.4 / 4.9 / 4.6 / 4.2 / 3.7 / 3.2 |
+| Banners: `warningText` on `warningSurface`, `negativeText` on `negativeSurface`, white on `criticalSurface` | 13.5, 14.8, 10.0 |
+
+Exceptions: `textMuted` on selected/hover (4.3, 3.8) is used only for secondary or disabled
+text, which is exempt from the 4.5 target but stays above 3:1. `critical` as text on
+elevated/selected/hover (4.2 / 3.7 / 3.2) meets only the 3:1 large-text target on hover; critical
+states are always paired with a text label and the `criticalSurface` banner (10.0), never colour
+alone. Grid and separators (`borderSubtle`, 1.5:1 on black) are deliberately quiet graphics.
+
+Icons `activity`, `list`, `table`, `chart-candlestick`, `external-link` and `arrow-down-to-line`
+use `#b8b8b8`; the execution overlay separator uses `#2a2a2a`.

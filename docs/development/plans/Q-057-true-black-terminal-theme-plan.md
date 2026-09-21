@@ -12,24 +12,24 @@ show component states. `tools/token_gate.py` forbids screen-level literals.
 
 ## Ordered implementation
 
-- [ ] 1. On the Q-057 task branch, record a neutral token map in
+- [x] 1. On the Q-057 task branch, record a neutral token map in
   `docs/design/components.md`: canvas `#000000`, neutral charcoal surface levels,
   border levels, text levels, and preserved semantic colors. Adapt Radix's stepwise
   surface/contrast approach without retaining its blue-neutral hue.
-- [ ] 2. Update only `qml/theme/Palette.qml`, `Theme.qml`, and `Semantic.qml` for the
+- [x] 2. Update only `qml/theme/Palette.qml`, `Theme.qml`, and `Semantic.qml` for the
   neutral ladder and semantic pairings. Keep token names stable where possible to avoid
   unrelated screen changes. Add a focused design-system test in `tests/design_system.rs`
   that asserts the base canvas is black and neutral surfaces have equal RGB components.
-- [ ] 3. Capture the gallery with `env -u WAYLAND_DISPLAY -u DISPLAY make gallery-shot`.
+- [x] 3. Capture the gallery with `env -u WAYLAND_DISPLAY -u DISPLAY make gallery-shot`.
   Inspect the PNGs with an image tool. Fix clipped or low-contrast states through tokens
   or reusable components; do not add local screen color literals.
-- [ ] 4. Check contrast for text/surface pairs used by controls, tables, warning/critical
+- [x] 4. Check contrast for text/surface pairs used by controls, tables, warning/critical
   banners, dialogs, and chart axes. Record measured pairs and any documented exception in
   `docs/design/components.md`. Inspect the merged, market, and operations compositions
   at 1920×1080 and 2560×1440.
-- [ ] 5. Update fixed-color icons/assets whose strokes disappear on black. Save and
+- [x] 5. Update fixed-color icons/assets whose strokes disappear on black. Save and
   inspect gallery and screen captures; Q-054 will record baselines after the redesign.
-- [ ] 6. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`, inspect final captures,
+- [x] 6. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check`, inspect final captures,
   and commit focused changes on the task branch.
 
 ## Review focus
