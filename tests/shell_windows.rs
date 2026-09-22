@@ -50,7 +50,15 @@ async fn until(what: &str, mut cond: impl FnMut() -> bool) {
     panic!("timed out waiting for {what}");
 }
 
-async fn start() -> (FakeServer, SliceContext) {
+fn isolated_config_home() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("temp config home");
+    // Tests run with --test-threads=1; no concurrent env mutation.
+    unsafe { std::env::set_var("XDG_CONFIG_HOME", dir.path()) };
+    dir
+}
+
+async fn start() -> (FakeServer, SliceContext, tempfile::TempDir) {
+    let config_home = isolated_config_home();
     let server = FakeServer::start().await;
     let config = Config {
         api_base: server.api_base(),
@@ -64,7 +72,7 @@ async fn start() -> (FakeServer, SliceContext) {
     })
     .await;
     pump(300).await;
-    (server, ctx)
+    (server, ctx, config_home)
 }
 
 fn windows(ctx: &mut SliceContext) -> i64 {
@@ -99,7 +107,7 @@ async fn health_polls_over(server: &FakeServer, ms: u64) -> usize {
 
 #[tokio::test(flavor = "current_thread")]
 async fn one_two_and_four_windows_share_one_subscription() {
-    let (server, mut ctx) = start().await;
+    let (server, mut ctx, _config_home) = start().await;
 
     assert_eq!(windows(&mut ctx), 1);
     let base = counts(&server);
@@ -144,7 +152,7 @@ async fn one_two_and_four_windows_share_one_subscription() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn an_event_is_visible_in_every_window_at_the_same_revision() {
-    let (server, mut ctx) = start().await;
+    let (server, mut ctx, _config_home) = start().await;
     ev(&mut ctx, "openWindow('market')");
     ev(&mut ctx, "openWindow('operations')");
     pump(200).await;
@@ -200,7 +208,7 @@ async fn an_event_is_visible_in_every_window_at_the_same_revision() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn closing_a_window_keeps_the_rest_working_and_the_last_one_exits() {
-    let (server, mut ctx) = start().await;
+    let (server, mut ctx, _config_home) = start().await;
     ev(&mut ctx, "openWindow('market')");
     let ops = ev(&mut ctx, "openWindow('operations')");
     pump(200).await;
@@ -280,7 +288,7 @@ fn closing_every_window_ends_the_process() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn a_moved_panel_keeps_its_identity_and_state() {
-    let (server, mut ctx) = start().await;
+    let (server, mut ctx, _config_home) = start().await;
     for i in 0..14 {
         server
             .exec_publish(
@@ -360,7 +368,7 @@ async fn a_moved_panel_keeps_its_identity_and_state() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn a_detached_window_holds_its_own_selection() {
-    let (server, mut ctx) = start().await;
+    let (server, mut ctx, _config_home) = start().await;
     server
         .exec_publish("deployments", fx::deployment(DEP, "running"))
         .await;
@@ -420,7 +428,7 @@ async fn a_detached_window_holds_its_own_selection() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn commands_are_one_registry_and_enablement_is_global() {
-    let (server, mut ctx) = start().await;
+    let (server, mut ctx, _config_home) = start().await;
     ev(&mut ctx, "openWindow('operations')");
     pump(200).await;
 
@@ -487,7 +495,7 @@ async fn commands_are_one_registry_and_enablement_is_global() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn merging_keeps_every_panel_and_splitting_restores_the_arrangement() {
-    let (_server, mut ctx) = start().await;
+    let (_server, mut ctx, _config_home) = start().await;
     ev(&mut ctx, "openWindow('market')");
     let ops = ev(&mut ctx, "openWindow('operations')");
     pump(300).await;
@@ -541,7 +549,7 @@ async fn merging_keeps_every_panel_and_splitting_restores_the_arrangement() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn merged_workstation_prioritizes_chart_and_restores_legacy_window_tree() {
-    let (_server, mut ctx) = start().await;
+    let (_server, mut ctx, _config_home) = start().await;
 
     let layout: serde_json::Value = serde_json::from_str(&ev(
         &mut ctx,
@@ -610,7 +618,7 @@ async fn merged_workstation_prioritizes_chart_and_restores_legacy_window_tree() 
 /// agent with an image tool) to read. It asserts only that the images exist.
 #[tokio::test(flavor = "current_thread")]
 async fn windows_render_to_images() {
-    let (server, mut ctx) = start().await;
+    let (server, mut ctx, _config_home) = start().await;
     for (i, name) in ["momentum", "reversion", "breakout"].iter().enumerate() {
         let id = format!("bbbbbbbb-0000-0000-0000-{i:012}");
         let mut dep = fx::deployment(&id, if i == 1 { "paused" } else { "running" });
@@ -640,7 +648,7 @@ async fn windows_render_to_images() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn chart_target_commands_route_and_toggle_mode() {
-    let (_server, mut ctx) = start().await;
+    let (_server, mut ctx, _config_home) = start().await;
     pump(200).await;
 
     // Both chart commands are enabled

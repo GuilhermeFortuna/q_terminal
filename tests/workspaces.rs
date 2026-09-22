@@ -75,7 +75,15 @@ async fn pump(ms: u64) {
     chart_bridge::process_events();
 }
 
-async fn start() -> (FakeServer, SliceContext) {
+fn isolated_config_home() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("temp config home");
+    // Tests run with --test-threads=1; no concurrent env mutation.
+    unsafe { std::env::set_var("XDG_CONFIG_HOME", dir.path()) };
+    dir
+}
+
+async fn start() -> (FakeServer, SliceContext, tempfile::TempDir) {
+    let config_home = isolated_config_home();
     let server = FakeServer::start().await;
     let config = Config {
         api_base: server.api_base(),
@@ -92,12 +100,12 @@ async fn start() -> (FakeServer, SliceContext) {
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
     pump(400).await;
-    (server, ctx)
+    (server, ctx, config_home)
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn switching_workspaces_does_not_resubscribe() {
-    let (server, mut ctx) = start().await;
+    let (server, mut ctx, _config_home) = start().await;
     let base_ws = server.ws_subscribes();
     let base_snap = server.exec_snapshot_calls();
 
