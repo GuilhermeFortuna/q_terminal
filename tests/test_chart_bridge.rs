@@ -1077,3 +1077,27 @@ fn chart_pane_draws_bars_after_retarget_without_resize() {
         assert!(probe.result().vertex_count > 0);
     }
 }
+
+#[test]
+fn chart_pane_real_wheel_events_zoom_around_the_pointer() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let _feed = setup_chart_pane_with_known_bars(&mut probe, 100);
+        let mut pin = probe.pin_mut();
+        pin.as_mut().set_bars_visible(20);
+        chart::process_events();
+        assert_eq!((pin.first_bar(), pin.last_bar()), (80, 100));
+
+        // One notch up at the plot's left edge zooms in and keeps the leftmost bar.
+        pin.as_mut().send_wheel(1.0, 100.0, 120);
+        assert_eq!((pin.first_bar(), pin.last_bar()), (80, 96));
+        assert_eq!(pin.navigation_mode(), "inspecting");
+
+        // Touchpad-sized deltas accumulate: three 40-unit events make one step out.
+        for _ in 0..3 {
+            pin.as_mut().send_wheel(1.0, 100.0, -40);
+        }
+        assert_eq!(pin.last_bar() - pin.first_bar(), 20);
+    }
+}

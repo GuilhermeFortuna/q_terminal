@@ -219,6 +219,9 @@ pub mod chart {
             modifiers: i32,
             text: &str,
         ) -> bool;
+        fn send_wheel(self: Pin<&mut ChartPaneProbe>, x: f32, y: f32, angle_delta_y: i32);
+        fn first_bar(self: &ChartPaneProbe) -> i32;
+        fn last_bar(self: &ChartPaneProbe) -> i32;
         fn readout_item_pointer_price(self: &ChartPaneProbe) -> String;
         fn navigation_mode(self: &ChartPaneProbe) -> String;
         fn high_price(self: &ChartPaneProbe) -> f64;

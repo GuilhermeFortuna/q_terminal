@@ -19,6 +19,7 @@
 #include <QtCore/QUrl>
 #include <QtCore/QVariant>
 #include <QtGui/QKeyEvent>
+#include <QtGui/QWheelEvent>
 #include <QtGui/QGuiApplication>
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQml/QQmlComponent>
@@ -582,6 +583,28 @@ bool ChartPaneProbe::send_canvas_key(int key, int modifiers, rust::Str text) {
     process_events();
     process_events();
     return invokePaneBool(m_impl->pane, "testTargetPromptOpen");
+}
+
+void ChartPaneProbe::send_wheel(float x, float y, int angle_delta_y) {
+    if (!m_impl->window) {
+        return;
+    }
+    const QPointF local(x, y);
+    const QPointF global = m_impl->window->mapToGlobal(local);
+    QWheelEvent wheel(local, global, QPoint(), QPoint(0, angle_delta_y), Qt::NoButton,
+                      Qt::NoModifier, Qt::NoScrollPhase, false);
+    QCoreApplication::sendEvent(m_impl->window.get(), &wheel);
+    process_events();
+}
+
+int ChartPaneProbe::first_bar() const {
+    auto* vp = m_impl->pane ? m_impl->pane->property("viewport").value<QObject*>() : nullptr;
+    return vp ? vp->property("firstBar").toInt() : 0;
+}
+
+int ChartPaneProbe::last_bar() const {
+    auto* vp = m_impl->pane ? m_impl->pane->property("viewport").value<QObject*>() : nullptr;
+    return vp ? vp->property("lastBar").toInt() : 0;
 }
 
 rust::String ChartPaneProbe::readout_item_pointer_price() const {

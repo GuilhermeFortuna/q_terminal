@@ -607,7 +607,9 @@ Item {
                     var steps = Math.trunc(pendingUnits / unitsPerStep);
                     if (steps !== 0) {
                         pendingUnits -= steps * unitsPerStep;
-                        viewport.zoomAt(event.position.x / Math.max(1, chartArea.width), steps);
+                        // WheelEvent carries x/y (not position), in this handler's parent
+                        // item coordinates, which is the plot.
+                        viewport.zoomAt(event.x / Math.max(1, chartContainer.width), steps);
                     }
                     event.accepted = true;
                 }

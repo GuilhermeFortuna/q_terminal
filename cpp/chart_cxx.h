@@ -80,6 +80,9 @@ public:
     void pan_bars(int delta);
     void zoom_at(double anchor, int direction);
     bool send_canvas_key(int key, int modifiers, rust::Str text);
+    void send_wheel(float x, float y, int angle_delta_y);
+    int first_bar() const;
+    int last_bar() const;
     rust::String readout_item_pointer_price() const;
     rust::String navigation_mode() const;
     double high_price() const;
