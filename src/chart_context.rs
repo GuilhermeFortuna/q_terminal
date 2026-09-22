@@ -219,6 +219,9 @@ pub mod ffi {
 
         #[qinvokable]
         fn sync(self: Pin<&mut ChartContext>);
+
+        #[qinvokable]
+        fn parse_target_draft(self: Pin<&mut ChartContext>, draft: QString) -> QString;
     }
 
     impl cxx_qt::Threading for ChartContext {}
@@ -616,6 +619,15 @@ impl ffi::ChartContext {
         self.sync_props();
     }
 
+    pub fn parse_target_draft(self: std::pin::Pin<&mut Self>, draft: QString) -> QString {
+        let rust = self.rust();
+        QString::from(&crate::chart_target_input::parse_target_draft_json(
+            &draft.to_string(),
+            &rust.active_symbol.to_string(),
+            &rust.active_timeframe.to_string(),
+        ))
+    }
+
     pub fn sync(mut self: std::pin::Pin<&mut Self>) {
         let feed_addr = self.rust().feed_addr;
         if feed_addr != 0 {
@@ -629,6 +641,39 @@ impl ffi::ChartContext {
         }
         self.sync_props();
     }
+}
+
+/// # Safety
+/// `ctx` must be a valid `ChartContext` pointer.
+pub unsafe fn active_symbol(ctx: *mut ffi::ChartContext) -> String {
+    if ctx.is_null() {
+        return String::new();
+    }
+    std::pin::Pin::new_unchecked(&*ctx)
+        .active_symbol()
+        .to_string()
+}
+
+/// # Safety
+/// `ctx` must be a valid `ChartContext` pointer.
+pub unsafe fn active_timeframe(ctx: *mut ffi::ChartContext) -> String {
+    if ctx.is_null() {
+        return String::new();
+    }
+    std::pin::Pin::new_unchecked(&*ctx)
+        .active_timeframe()
+        .to_string()
+}
+
+/// # Safety
+/// `ctx` must be a valid `ChartContext` pointer.
+pub unsafe fn target_error(ctx: *mut ffi::ChartContext) -> String {
+    if ctx.is_null() {
+        return String::new();
+    }
+    std::pin::Pin::new_unchecked(&*ctx)
+        .target_error()
+        .to_string()
 }
 
 /// # Safety
