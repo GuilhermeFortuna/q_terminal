@@ -31,6 +31,26 @@ ApplicationWindow {
                 ConnectionIndicator { text: "GALLERY BUILD"; role: Semantic.positive }
             }
 
+            Text { text: "CHART STATES"; color: Theme.accent; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabel; font.weight: Typography.weightBold }
+            RowLayout {
+                Layout.fillWidth: true; spacing: Theme.spaceMd
+                Repeater {
+                    model: ["following", "inspecting", "crosshair"]
+                    ColumnLayout {
+                        id: chartState
+                        required property string modelData
+                        Layout.fillWidth: true; spacing: Theme.spaceXs
+                        Text { text: chartState.modelData.toUpperCase(); color: Theme.textMuted; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                        ChartPreview { previewState: chartState.modelData; Layout.fillWidth: true; Layout.preferredHeight: Spacing.galleryChartHeight }
+                    }
+                }
+                ColumnLayout {
+                    spacing: Theme.spaceXs
+                    Text { text: "NARROW · CROSSHAIR"; color: Theme.textMuted; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                    ChartPreview { previewState: "crosshair"; Layout.preferredWidth: Spacing.galleryNarrowChartWidth; Layout.preferredHeight: Spacing.galleryChartHeight }
+                }
+            }
+
             GridLayout {
                 Layout.fillWidth: true
                 columns: root.width >= Spacing.workstationWideWidth ? Spacing.galleryWideColumns : Spacing.galleryColumns

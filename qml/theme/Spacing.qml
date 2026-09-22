@@ -37,6 +37,8 @@ QtObject {
     readonly property int deploymentRowHeight: 76
     readonly property int galleryCardHeight: 116
     readonly property int galleryPreviewHeight: 44
+    readonly property int galleryChartHeight: 280
+    readonly property int galleryNarrowChartWidth: 360
     readonly property int galleryIconCell: 52
     readonly property int workstationWidth: 1920
     readonly property int workstationHeight: 1080
