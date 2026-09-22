@@ -144,7 +144,14 @@ QSGNode* BarChartItem::testUpdatePaintNode(QSGNode* oldNode) {
         return node;
     }
 
+    // The surface is set on every paint, not only on resize: a newly assigned series, or
+    // the fresh series a feed makes on retarget, would otherwise keep a zero surface and
+    // draw nothing until the item is resized.
+    const auto surfaceWidth = static_cast<float>(width());
+    const auto surfaceHeight = static_cast<float>(height());
+
     if (barFeed != nullptr) {
+        barFeed->set_surface(surfaceWidth, surfaceHeight);
         barFeed->set_viewport(m_firstBar, m_lastBar, m_lowPrice, m_highPrice);
         barFeed->rebuild_geometry();
 
@@ -155,6 +162,7 @@ QSGNode* BarChartItem::testUpdatePaintNode(QSGNode* oldNode) {
         return node;
     }
 
+    barSeries->set_surface(surfaceWidth, surfaceHeight);
     barSeries->set_viewport(m_firstBar, m_lastBar, m_lowPrice, m_highPrice);
     barSeries->rebuild_geometry();
 
