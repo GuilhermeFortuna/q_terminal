@@ -15,28 +15,28 @@ provide keyboard/focus behavior.
 
 ## Ordered implementation
 
-- [ ] 1. On the Q-056 task branch, add failing policy tests in `tests/chart_target.rs`:
+- [x] 1. On the Q-056 task branch, add failing policy tests in `tests/chart_target.rs`:
   following→manual, deployment change during manual, manual→following, rapid target
   changes, and a delayed old-generation history result.
-- [ ] 2. Add a Rust-owned `ChartSelection` mode and requested pair adjacent to
+- [x] 2. Add a Rust-owned `ChartSelection` mode and requested pair adjacent to
   `ChartTargeter` in `src/chart_target.rs`. Keep the committed feed pair separate from the
   requested pair. Route both deployment-follow and manual requests through the same
   generation-safe retargeter and overlay handling. Manual mode clears deployment overlays
   and markers; following mode restores them for the current deployment.
-- [ ] 3. Expose chart selection and request methods to QML through the existing CXX-Qt
+- [x] 3. Expose chart selection and request methods to QML through the existing CXX-Qt
   bridge in `src/chart_bridge.rs`/`src/startup.rs`. Update `qml/Main.qml` so deployment
   selection changes execution context and asks the chart policy to follow only when in
   Following mode. Keep one feed/subscription across windows.
-- [ ] 4. Add `qml/components/ChartTargetPicker.qml` using restyled Qt Quick Controls:
+- [x] 4. Add `qml/components/ChartTargetPicker.qml` using restyled Qt Quick Controls:
   direct symbol entry, suggestions from configured/deployment/recent successful pairs,
   timeframe choice, explicit apply, and `Follow selected deployment`. Wire it into the
   Q-055 chart strip. Reject blank/malformed input before retarget; report missing history
   and stream failures after retarget without showing the old pair as newly loaded.
-- [ ] 5. Add noncolliding chart commands to `src/shell/commands.rs` and their routing in
+- [x] 5. Add noncolliding chart commands to `src/shell/commands.rs` and their routing in
   `qml/Main.qml`; add focus/shortcut tests to `tests/shell_windows.rs`. Extend gallery
   examples for open, manual, following, invalid, and no-data states. Document the
   Quantower and Qt Controls adaptations in `docs/design/components.md`.
-- [ ] 6. Run targeted chart/stream/shell tests, inspect gallery shots at 1920×1080 and
+- [x] 6. Run targeted chart/stream/shell tests, inspect gallery shots at 1920×1080 and
   2560×1440, run `env -u WAYLAND_DISPLAY -u DISPLAY make check`, then commit focused
   changes on the task branch.
 
