@@ -21,5 +21,6 @@ var entries = [
     { name: "AppTextField", states: commonStates },
     { name: "AppComboBox", states: commonStates },
     { name: "ChartIdentity", states: ["rest", "switching", "loading", "stale", "disconnected"] },
-    { name: "ChartTargetPicker", states: ["open", "manual", "following", "invalid", "no-data"] }
+    { name: "ChartTargetPicker", states: ["open", "manual", "following", "invalid", "no-data"] },
+    { name: "ChartTargetPrompt", states: ["open", "error"] }
 ]

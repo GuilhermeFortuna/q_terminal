@@ -6,6 +6,7 @@ pub mod bridge;
 pub mod chart_bridge;
 pub mod chart_context;
 pub mod chart_target;
+pub mod chart_target_input;
 pub mod config;
 pub mod display;
 pub mod execution;

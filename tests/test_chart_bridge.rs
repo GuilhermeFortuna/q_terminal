@@ -1,6 +1,6 @@
 pub use q_terminal::{
-    bridge, chart_bridge, chart_target, config, contracts_stream, execution, execution_controls,
-    execution_models, history, ops_session, ops_status, startup, stream,
+    bridge, chart_bridge, chart_context, chart_target, config, contracts_stream, execution,
+    execution_controls, execution_models, history, ops_session, ops_status, startup, stream,
 };
 
 use chart_bridge::chart::{self, make_test_chart_item, make_test_series, ProbeState};
@@ -436,5 +436,124 @@ fn empty_state_shows_retrying_when_api_down() {
         let empty_res = empty_probe.result();
         assert_eq!(empty_res.message, "API unreachable, retrying...");
         assert_eq!(empty_res.reason, "connection refused");
+    }
+}
+
+unsafe fn setup_chart_pane_with_context(
+    probe: &mut cxx::UniquePtr<chart::ChartPaneProbe>,
+) -> *mut chart_context::ffi::ChartContext {
+    let feed = chart::make_test_feed();
+    chart::feed_set_symbol(feed, "PETR4");
+    chart::feed_set_timeframe(feed, "1m", 60_000);
+    chart::feed_set_bar_count(feed, 4);
+
+    let ctx = chart::make_test_chart_context() as *mut chart_context::ffi::ChartContext;
+    chart_context::set_configured(ctx, "PETR4", "1m");
+    chart_context::sync_ptr(ctx);
+
+    let mut pin = probe.pin_mut();
+    pin.as_mut().set_size(640.0, 360.0);
+    pin.as_mut().set_feed(feed);
+    pin.as_mut().set_context(ctx as *mut chart::ChartContext);
+    chart::process_events();
+    ctx
+}
+
+#[test]
+fn chart_pane_target_prompt_symbol_only_requests_pair() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let ctx = setup_chart_pane_with_context(&mut probe);
+        let mut pin = probe.pin_mut();
+        pin.as_mut().focus_canvas();
+        pin.as_mut().set_target_prompt_draft("VALE3");
+        let preview = pin.target_prompt_preview();
+        assert!(preview.contains("VALE3"));
+        assert!(preview.contains("1m"));
+        pin.as_mut().submit_target_prompt();
+        assert_eq!(chart_context::active_symbol(ctx), "VALE3");
+        assert_eq!(chart_context::active_timeframe(ctx), "1m");
+        assert!(!pin.target_prompt_open());
+    }
+}
+
+#[test]
+fn chart_pane_target_prompt_timeframe_only_requests_pair() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let ctx = setup_chart_pane_with_context(&mut probe);
+        let mut pin = probe.pin_mut();
+        pin.as_mut().focus_canvas();
+        pin.as_mut().set_target_prompt_draft("5m");
+        let preview = pin.target_prompt_preview();
+        assert!(preview.contains("PETR4"));
+        assert!(preview.contains("5m"));
+        pin.as_mut().submit_target_prompt();
+        assert_eq!(chart_context::active_symbol(ctx), "PETR4");
+        assert_eq!(chart_context::active_timeframe(ctx), "5m");
+    }
+}
+
+#[test]
+fn chart_pane_target_prompt_combined_input_requests_pair() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let ctx = setup_chart_pane_with_context(&mut probe);
+        let mut pin = probe.pin_mut();
+        pin.as_mut().focus_canvas();
+        pin.as_mut().set_target_prompt_draft("VALE3 5m");
+        pin.as_mut().submit_target_prompt();
+        assert_eq!(chart_context::active_symbol(ctx), "VALE3");
+        assert_eq!(chart_context::active_timeframe(ctx), "5m");
+    }
+}
+
+#[test]
+fn chart_pane_target_prompt_escape_leaves_target_unchanged() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let ctx = setup_chart_pane_with_context(&mut probe);
+        let mut pin = probe.pin_mut();
+        pin.as_mut().focus_canvas();
+        pin.as_mut().set_target_prompt_draft("VALE3 5m");
+        pin.as_mut().cancel_target_prompt();
+        assert_eq!(chart_context::active_symbol(ctx), "PETR4");
+        assert_eq!(chart_context::active_timeframe(ctx), "1m");
+        assert!(!pin.target_prompt_open());
+    }
+}
+
+#[test]
+fn chart_pane_target_prompt_invalid_input_keeps_settled_target() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let ctx = setup_chart_pane_with_context(&mut probe);
+        let mut pin = probe.pin_mut();
+        pin.as_mut().focus_canvas();
+        pin.as_mut().set_target_prompt_draft("PETR4 99m");
+        let preview = pin.target_prompt_preview();
+        assert!(preview.contains("99m"));
+        assert!(preview.contains("Unsupported timeframe"));
+        pin.as_mut().submit_target_prompt();
+        assert_eq!(chart_context::active_symbol(ctx), "PETR4");
+        assert_eq!(chart_context::active_timeframe(ctx), "1m");
+        assert!(chart_context::target_error(ctx).is_empty());
+    }
+}
+
+#[test]
+fn chart_pane_canvas_without_focus_does_not_open_prompt() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let _ctx = setup_chart_pane_with_context(&mut probe);
+        let mut pin = probe.pin_mut();
+        assert!(!pin.as_mut().canvas_type_key("P"));
+        assert!(!pin.target_prompt_open());
     }
 }

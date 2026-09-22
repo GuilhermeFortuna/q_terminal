@@ -176,9 +176,18 @@ pub mod chart {
 
         fn make_chart_pane_probe() -> UniquePtr<ChartPaneProbe>;
         unsafe fn set_series(self: Pin<&mut ChartPaneProbe>, series: *mut BarSeries);
+        unsafe fn set_feed(self: Pin<&mut ChartPaneProbe>, feed: *mut BarFeed);
+        unsafe fn set_context(self: Pin<&mut ChartPaneProbe>, context: *mut ChartContext);
         fn set_size(self: Pin<&mut ChartPaneProbe>, width: f32, height: f32);
         fn set_bars_visible(self: Pin<&mut ChartPaneProbe>, count: i32);
         fn set_price_margin(self: Pin<&mut ChartPaneProbe>, margin: f64);
+        fn focus_canvas(self: Pin<&mut ChartPaneProbe>);
+        fn canvas_type_key(self: Pin<&mut ChartPaneProbe>, text: &str) -> bool;
+        fn target_prompt_open(self: &ChartPaneProbe) -> bool;
+        fn set_target_prompt_draft(self: Pin<&mut ChartPaneProbe>, text: &str);
+        fn target_prompt_preview(self: &ChartPaneProbe) -> String;
+        fn submit_target_prompt(self: Pin<&mut ChartPaneProbe>);
+        fn cancel_target_prompt(self: Pin<&mut ChartPaneProbe>);
         fn result(self: &ChartPaneProbe) -> ChartPaneProbeResult;
 
         fn register_bar_chart_types();
