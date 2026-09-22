@@ -18,11 +18,13 @@
 #include <QtCore/QTimer>
 #include <QtCore/QUrl>
 #include <QtCore/QVariant>
+#include <QtGui/QKeyEvent>
 #include <QtGui/QGuiApplication>
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQml/QQmlComponent>
 #include <QtQml/QQmlEngine>
 #include <QtQml/QJSEngine>
+#include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickWindow>
 
 #include "q_terminal/src/chart_bridge.cxx.h"
@@ -226,9 +228,10 @@ void ViewportProbe::set_price_margin(double margin) {
 
 void ViewportProbe::update(int bar_count, double low, double high, int revision) {
     if (m_impl->viewport) {
-        m_impl->viewport->setProperty("barCount", bar_count);
+        // Prices first, as a feed publishes them with the bar that moved them.
         m_impl->viewport->setProperty("low", low);
         m_impl->viewport->setProperty("high", high);
+        m_impl->viewport->setProperty("barCount", bar_count);
         m_impl->viewport->setProperty("revision", revision);
     }
 }
@@ -277,6 +280,8 @@ std::unique_ptr<ViewportProbe> make_viewport_probe() {
 
 struct ChartPaneProbe::Impl {
     QQmlEngine engine;
+    // The pane lives in a window so focus and key events take the real delivery path.
+    std::unique_ptr<QQuickWindow> window;
     QObject* pane{nullptr};
     BarChartNode* node{nullptr};
 };
@@ -299,6 +304,10 @@ ChartPaneProbe::ChartPaneProbe() : m_impl(std::make_unique<Impl>()) {
     if (!m_impl->pane && component.isError()) {
         qWarning() << "ChartPaneProbe create error:" << component.errorString();
     }
+    m_impl->window = std::make_unique<QQuickWindow>();
+    if (auto* item = qobject_cast<QQuickItem*>(m_impl->pane)) {
+        item->setParentItem(m_impl->window->contentItem());
+    }
 }
 
 ChartPaneProbe::~ChartPaneProbe() {
@@ -308,6 +317,7 @@ ChartPaneProbe::~ChartPaneProbe() {
     if (m_impl->pane) {
         delete m_impl->pane;
     }
+    m_impl->window.reset();
 }
 
 void ChartPaneProbe::set_series(BarSeries* series) {
@@ -554,6 +564,53 @@ void ChartPaneProbe::set_size(float width, float height) {
         m_impl->pane->setProperty("width", width);
         m_impl->pane->setProperty("height", height);
     }
+    if (m_impl->window) {
+        m_impl->window->resize(static_cast<int>(width), static_cast<int>(height));
+    }
+}
+
+bool ChartPaneProbe::send_canvas_key(int key, int modifiers, rust::Str text) {
+    if (!m_impl->window) {
+        return false;
+    }
+    const QString qtext = QString::fromUtf8(text.data(), static_cast<int>(text.size()));
+    const auto mods = Qt::KeyboardModifiers(modifiers);
+    QKeyEvent press(QEvent::KeyPress, key, mods, qtext);
+    QCoreApplication::sendEvent(m_impl->window.get(), &press);
+    QKeyEvent release(QEvent::KeyRelease, key, mods, qtext);
+    QCoreApplication::sendEvent(m_impl->window.get(), &release);
+    process_events();
+    process_events();
+    return invokePaneBool(m_impl->pane, "testTargetPromptOpen");
+}
+
+rust::String ChartPaneProbe::readout_item_pointer_price() const {
+    if (!m_impl->pane) {
+        return rust::String();
+    }
+    auto* item = m_impl->pane->findChild<QObject*>(QStringLiteral("readoutPointerPrice"));
+    if (!item) {
+        return rust::String();
+    }
+    return rust::String(item->property("text").toString().toStdString());
+}
+
+rust::String ChartPaneProbe::navigation_mode() const {
+    if (!m_impl->pane) {
+        return rust::String();
+    }
+    auto* vp = m_impl->pane->property("viewport").value<QObject*>();
+    return vp ? rust::String(vp->property("mode").toString().toStdString()) : rust::String();
+}
+
+double ChartPaneProbe::high_price() const {
+    auto* vp = m_impl->pane ? m_impl->pane->property("viewport").value<QObject*>() : nullptr;
+    return vp ? vp->property("highPrice").toDouble() : 0.0;
+}
+
+double ChartPaneProbe::low_price() const {
+    auto* vp = m_impl->pane ? m_impl->pane->property("viewport").value<QObject*>() : nullptr;
+    return vp ? vp->property("lowPrice").toDouble() : 0.0;
 }
 
 void ChartPaneProbe::set_bars_visible(int count) {

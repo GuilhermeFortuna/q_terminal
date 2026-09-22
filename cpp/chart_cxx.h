@@ -79,6 +79,11 @@ public:
     bool marker_tooltip_visible() const;
     void pan_bars(int delta);
     void zoom_at(double anchor, int direction);
+    bool send_canvas_key(int key, int modifiers, rust::Str text);
+    rust::String readout_item_pointer_price() const;
+    rust::String navigation_mode() const;
+    double high_price() const;
+    double low_price() const;
     ChartPaneProbeResult result() const;
 
 private:

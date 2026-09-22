@@ -213,6 +213,16 @@ pub mod chart {
         fn marker_tooltip_visible(self: &ChartPaneProbe) -> bool;
         fn pan_bars(self: Pin<&mut ChartPaneProbe>, delta: i32);
         fn zoom_at(self: Pin<&mut ChartPaneProbe>, anchor: f64, direction: i32);
+        fn send_canvas_key(
+            self: Pin<&mut ChartPaneProbe>,
+            key: i32,
+            modifiers: i32,
+            text: &str,
+        ) -> bool;
+        fn readout_item_pointer_price(self: &ChartPaneProbe) -> String;
+        fn navigation_mode(self: &ChartPaneProbe) -> String;
+        fn high_price(self: &ChartPaneProbe) -> f64;
+        fn low_price(self: &ChartPaneProbe) -> f64;
         fn result(self: &ChartPaneProbe) -> ChartPaneProbeResult;
 
         fn register_bar_chart_types();

@@ -1,6 +1,7 @@
 pub use q_terminal::{
-    bridge, chart_bridge, chart_context, chart_target, config, contracts_stream, execution,
-    execution_controls, execution_models, history, ops_session, ops_status, startup, stream,
+    bridge, bridge::bar_feed, chart_bridge, chart_context, chart_target, config, contracts_stream,
+    execution, execution_controls, execution_models, history, ops_session, ops_status, startup,
+    stream,
 };
 
 use chart_bridge::chart::{self, make_test_chart_item, make_test_series, ProbeState};
@@ -280,6 +281,70 @@ fn viewport_zoom_keeps_anchor_bar_and_return_to_live_resumes_following() {
 
     pin.as_mut().update(42, 100.0, 200.0, 3);
     assert_eq!((pin.result().first_bar, pin.result().last_bar), (32, 42));
+}
+
+#[test]
+fn viewport_moves_that_keep_the_live_edge_keep_following() {
+    let _guard = setup();
+    let mut probe = chart::make_viewport_probe();
+    let mut pin = probe.pin_mut();
+    pin.as_mut().set_bars_visible(10);
+    pin.as_mut().update(40, 100.0, 200.0, 1);
+
+    // Dragging toward the future at the live edge moves nothing and freezes nothing.
+    pin.as_mut().pan_bars(3);
+    assert_eq!(pin.result().mode, "following");
+    assert_eq!((pin.result().first_bar, pin.result().last_bar), (30, 40));
+
+    // Zooming anchored on the newest bar keeps it visible, so live following continues.
+    pin.as_mut().zoom_at(1.0, 1);
+    let zoomed = pin.result();
+    assert_eq!(zoomed.mode, "following");
+    assert_eq!(zoomed.last_bar, 40);
+    assert_eq!(zoomed.last_bar - zoomed.first_bar, 8);
+    pin.as_mut().update(41, 100.0, 200.0, 2);
+    assert_eq!(pin.result().last_bar, 41);
+    assert_eq!(pin.result().last_bar - pin.result().first_bar, 8);
+
+    // Zoom steps scale the visible bar count rather than adding two bars each.
+    pin.as_mut().zoom_at(1.0, -3);
+    let out = pin.result();
+    assert_eq!(out.last_bar - out.first_bar, 16);
+}
+
+#[test]
+fn viewport_price_bounds_fit_visible_bars_without_tick_oscillation() {
+    let _guard = setup();
+    let mut probe = chart::make_viewport_probe();
+    let mut pin = probe.pin_mut();
+    pin.as_mut().set_bars_visible(10);
+    pin.as_mut().set_price_margin(0.05);
+    pin.as_mut().update(20, 100.0, 200.0, 1);
+    assert_eq!(
+        (pin.result().low_price, pin.result().high_price),
+        (95.0, 205.0)
+    );
+
+    // Same visible bars, narrower range: the axis holds still.
+    pin.as_mut().update(20, 100.0, 150.0, 2);
+    assert_eq!(
+        (pin.result().low_price, pin.result().high_price),
+        (95.0, 205.0)
+    );
+
+    // Same visible bars, a new high: the axis widens.
+    pin.as_mut().update(20, 100.0, 250.0, 3);
+    assert_eq!(
+        (pin.result().low_price, pin.result().high_price),
+        (92.5, 257.5)
+    );
+
+    // A new bar changes the visible bars: the axis refits, shrinking if it can.
+    pin.as_mut().update(21, 100.0, 150.0, 4);
+    assert_eq!(
+        (pin.result().low_price, pin.result().high_price),
+        (97.5, 152.5)
+    );
 }
 
 #[test]
@@ -793,5 +858,222 @@ fn chart_pane_marker_tooltip_coexists_with_crosshair() {
         pin.as_mut().hover_canvas(100.0, 150.0);
         assert!(pin.crosshair_visible());
         assert!(!pin.readout_open().is_empty());
+    }
+}
+
+const KEY_P: i32 = 0x50;
+const KEY_5: i32 = 0x35;
+const SHIFT: i32 = 0x0200_0000;
+const CONTROL: i32 = 0x0400_0000;
+const KEYPAD: i32 = 0x2000_0000;
+
+#[test]
+fn chart_pane_real_key_events_open_prompt_with_shift_and_keypad() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let _ctx = setup_chart_pane_with_context(&mut probe);
+        let mut pin = probe.pin_mut();
+        pin.as_mut().focus_canvas();
+        assert!(pin.as_mut().send_canvas_key(KEY_P, SHIFT, "P"));
+        assert!(pin.target_prompt_preview().starts_with("P "));
+    }
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let _ctx = setup_chart_pane_with_context(&mut probe);
+        let mut pin = probe.pin_mut();
+        pin.as_mut().focus_canvas();
+        assert!(pin.as_mut().send_canvas_key(KEY_5, KEYPAD, "5"));
+    }
+}
+
+#[test]
+fn chart_pane_shortcut_modifiers_never_open_prompt() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let _ctx = setup_chart_pane_with_context(&mut probe);
+        let mut pin = probe.pin_mut();
+        pin.as_mut().focus_canvas();
+        assert!(!pin.as_mut().send_canvas_key(KEY_P, CONTROL, "p"));
+        assert!(!pin.as_mut().send_canvas_key(KEY_P, CONTROL | SHIFT, "P"));
+        assert!(!pin.target_prompt_open());
+    }
+}
+
+const T0: i64 = 1_789_725_600_000;
+
+/// Bar `i` has unique prices that need three decimals: O 10+i, H 10.5+i, L 9.25+i,
+/// C 10.125+i.
+unsafe fn setup_chart_pane_with_known_bars(
+    probe: &mut cxx::UniquePtr<chart::ChartPaneProbe>,
+    bar_count: i64,
+) -> *mut chart::BarFeed {
+    let feed = chart::make_test_feed();
+    chart::feed_set_symbol(feed, "PETR4");
+    chart::feed_set_timeframe(feed, "1m", 60_000);
+    for i in 0..bar_count {
+        push_known_bar(feed, i, false);
+    }
+    let mut pin = probe.pin_mut();
+    pin.as_mut().set_size(640.0, 360.0);
+    pin.as_mut().set_feed(feed);
+    chart::process_events();
+    feed
+}
+
+unsafe fn push_known_bar(feed: *mut chart::BarFeed, i: i64, forming: bool) {
+    let base = i as f64;
+    bar_feed::apply_test_bar(
+        feed as *mut bar_feed::ffi::BarFeed,
+        T0 + i * 60_000,
+        10.0 + base,
+        10.5 + base,
+        9.25 + base,
+        10.125 + base,
+        forming,
+    );
+    chart::process_events();
+}
+
+#[test]
+fn chart_pane_readout_shows_exact_bar_after_pan_and_zoom() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let _feed = setup_chart_pane_with_known_bars(&mut probe, 30);
+        let mut pin = probe.pin_mut();
+        pin.as_mut().set_bars_visible(10);
+        chart::process_events();
+
+        pin.as_mut().pan_bars(-5);
+        pin.as_mut().hover_canvas(1.0, 100.0);
+        assert_eq!(pin.active_bar_index(), 15);
+        assert_eq!(
+            pin.readout_time(),
+            bar_feed::format_bar_time(T0 + 15 * 60_000)
+        );
+        assert_eq!(pin.readout_open(), "25.000");
+        assert_eq!(pin.readout_high(), "25.500");
+        assert_eq!(pin.readout_low(), "24.250");
+        assert_eq!(pin.readout_close(), "25.125");
+
+        // Zooming in anchored at the left edge keeps bar 15 under the pointer.
+        pin.as_mut().zoom_at(0.0, 1);
+        pin.as_mut().hover_canvas(1.0, 100.0);
+        assert_eq!(pin.active_bar_index(), 15);
+        assert_eq!(pin.readout_close(), "25.125");
+        assert_eq!(pin.navigation_mode(), "inspecting");
+    }
+}
+
+#[test]
+fn chart_pane_readout_item_shows_pointer_price() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let _feed = setup_chart_pane_with_known_bars(&mut probe, 20);
+        let mut pin = probe.pin_mut();
+        pin.as_mut().hover_canvas(100.0, 150.0);
+        let pointer = pin.readout_pointer_price();
+        assert!(!pointer.is_empty());
+        // Uses the feed's three decimals, not floating-point noise.
+        assert_eq!(pointer.split('.').nth(1).map(str::len), Some(3));
+        assert_eq!(pin.readout_item_pointer_price(), pointer);
+    }
+}
+
+#[test]
+fn chart_pane_forming_ticks_widen_price_axis() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let feed = setup_chart_pane_with_known_bars(&mut probe, 10);
+        let mut pin = probe.pin_mut();
+        pin.as_mut().set_bars_visible(20);
+        chart::process_events();
+        assert!(pin.high_price() < 25.0);
+
+        let time = T0 + 10 * 60_000;
+        bar_feed::apply_test_bar(
+            feed as *mut bar_feed::ffi::BarFeed,
+            time,
+            19.0,
+            30.0,
+            18.0,
+            29.0,
+            true,
+        );
+        chart::process_events();
+        assert!(pin.high_price() >= 30.0);
+
+        bar_feed::apply_test_bar(
+            feed as *mut bar_feed::ffi::BarFeed,
+            time,
+            19.0,
+            40.0,
+            18.0,
+            39.0,
+            true,
+        );
+        chart::process_events();
+        assert!(pin.high_price() >= 40.0);
+        assert_eq!(pin.navigation_mode(), "following");
+    }
+}
+
+#[test]
+fn chart_pane_keyboard_selection_survives_new_bars() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let feed = setup_chart_pane_with_known_bars(&mut probe, 20);
+        let mut pin = probe.pin_mut();
+        pin.as_mut().set_bars_visible(10);
+        chart::process_events();
+        pin.as_mut().focus_canvas();
+        pin.as_mut().select_adjacent_bar(-1);
+        assert_eq!(pin.active_bar_index(), 19);
+
+        push_known_bar(feed, 20, false);
+        assert_eq!(pin.active_bar_index(), 19);
+        assert_eq!(pin.readout_close(), "29.125");
+    }
+}
+
+#[test]
+fn chart_pane_target_change_returns_to_following_live() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let feed = setup_chart_pane_with_known_bars(&mut probe, 30);
+        let mut pin = probe.pin_mut();
+        pin.as_mut().set_bars_visible(10);
+        chart::process_events();
+        pin.as_mut().pan_bars(-5);
+        assert_eq!(pin.navigation_mode(), "inspecting");
+
+        chart::feed_set_symbol(feed, "VALE3");
+        chart::process_events();
+        assert_eq!(pin.navigation_mode(), "following");
+    }
+}
+
+#[test]
+fn chart_pane_draws_bars_after_retarget_without_resize() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let feed = setup_chart_pane_with_known_bars(&mut probe, 20);
+        assert!(probe.result().vertex_count > 0);
+
+        let generation = chart::feed_target_generation(feed) + 1;
+        chart::feed_retarget(feed, "VALE3", "1m", generation);
+        chart::process_events();
+        for i in 0..20 {
+            push_known_bar(feed, i, false);
+        }
+        // Same pane size: nothing resizes the chart item after the feed swaps its series.
+        assert!(probe.result().vertex_count > 0);
     }
 }
