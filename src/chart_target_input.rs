@@ -78,6 +78,11 @@ pub fn parse_target_draft(
                     timeframe,
                     hint,
                 })
+            } else if looks_like_timeframe(token) {
+                Err(format!(
+                    "Unsupported timeframe '{token}' in '{draft}'; use one of {}",
+                    SUPPORTED_TIMEFRAMES.join(", ")
+                ))
             } else {
                 let symbol = token.trim().to_uppercase();
                 if symbol.is_empty() {
@@ -138,23 +143,16 @@ pub fn parse_target_draft_json(
     effective_symbol: &str,
     effective_timeframe: &str,
 ) -> String {
-    match parse_target_draft(draft, effective_symbol, effective_timeframe) {
-        Ok(parsed) => format!(
-            r#"{{"ok":true,"symbol":"{}","timeframe":"{}","hint":"{}"}}"#,
-            escape_json(&parsed.symbol),
-            escape_json(&parsed.timeframe),
-            escape_json(&parsed.hint),
-        ),
-        Err(err) => format!(r#"{{"ok":false,"error":"{}"}}"#, escape_json(&err)),
-    }
-}
-
-fn escape_json(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
+    let value = match parse_target_draft(draft, effective_symbol, effective_timeframe) {
+        Ok(parsed) => serde_json::json!({
+            "ok": true,
+            "symbol": parsed.symbol,
+            "timeframe": parsed.timeframe,
+            "hint": parsed.hint,
+        }),
+        Err(err) => serde_json::json!({ "ok": false, "error": err }),
+    };
+    value.to_string()
 }
 
 #[cfg(test)]
@@ -220,6 +218,20 @@ mod tests {
         assert_eq!(parsed.timeframe, "1m");
         assert_eq!(parsed.symbol, "PETR4");
         assert!(parsed.hint.contains("Timeframe only"));
+    }
+
+    #[test]
+    fn unsupported_single_timeframe_is_not_taken_as_a_symbol() {
+        let err = parse_target_draft("3m", "PETR4", "1m").unwrap_err();
+        assert!(err.contains("Unsupported timeframe '3m'"));
+    }
+
+    #[test]
+    fn json_escapes_control_characters() {
+        let json = parse_target_draft_json("BAD\tSYM\u{1}", "PETR4", "1m");
+        let value: serde_json::Value = serde_json::from_str(&json).expect("valid json");
+        assert_eq!(value["ok"], false);
+        assert!(value["error"].as_str().unwrap().contains('\u{1}'));
     }
 
     #[test]
