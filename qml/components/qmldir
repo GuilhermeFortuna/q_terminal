@@ -21,3 +21,4 @@ AppComboBox 1.0 AppComboBox.qml
 ChartIdentity 1.0 ChartIdentity.qml
 ChartTargetPicker 1.0 ChartTargetPicker.qml
 ChartTargetPrompt 1.0 ChartTargetPrompt.qml
+BarReadout 1.0 BarReadout.qml

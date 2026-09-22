@@ -133,6 +133,7 @@ fn main() {
         .qml_file("qml/components/ChartIdentity.qml")
         .qml_file("qml/components/ChartTargetPicker.qml")
         .qml_file("qml/components/ChartTargetPrompt.qml")
+        .qml_file("qml/components/BarReadout.qml")
         .qml_file("qml/style/Button.qml")
         .qml_file("qml/style/TextField.qml")
         .qml_file("qml/style/ComboBox.qml")
