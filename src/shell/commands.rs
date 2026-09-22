@@ -165,6 +165,22 @@ pub const STANDARD: &[Command] = &[
         None,
         KillSwitch::Ignored,
     ),
+    cmd(
+        "chart.focus-symbol",
+        "Focus chart symbol",
+        "Ctrl+Shift+C",
+        Scope::App,
+        None,
+        KillSwitch::Ignored,
+    ),
+    cmd(
+        "chart.follow-deployment",
+        "Follow selected deployment",
+        "Ctrl+Shift+L",
+        Scope::App,
+        None,
+        KillSwitch::Ignored,
+    ),
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]

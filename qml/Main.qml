@@ -206,6 +206,12 @@ Item {
         case "deployment.flatten":
             shell.forward("detail", id);
             break;
+        case "chart.focus-symbol":
+            shell.forward("chart", id);
+            break;
+        case "chart.follow-deployment":
+            shell.activeChartContext.follow_deployment();
+            break;
         }
     }
 

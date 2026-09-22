@@ -20,5 +20,6 @@ var entries = [
     { name: "AppDialog", states: ["rest", "focused", "disabled", "degraded"] },
     { name: "AppTextField", states: commonStates },
     { name: "AppComboBox", states: commonStates },
-    { name: "ChartIdentity", states: ["rest", "switching", "loading", "stale", "disconnected"] }
+    { name: "ChartIdentity", states: ["rest", "switching", "loading", "stale", "disconnected"] },
+    { name: "ChartTargetPicker", states: ["open", "manual", "following", "invalid", "no-data"] }
 ]

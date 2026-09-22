@@ -10,12 +10,17 @@ Rectangle {
 
     property var context: null
     property var feed: null
+    property var executionModels: null
     property string previewState: "rest"
+
+    function focusSymbol() {
+        picker.focusSymbol();
+    }
 
     readonly property var effectiveContext: root.previewState !== "rest" ? preview : (root.context ? root.context : preview)
     readonly property string conditionRole: root.effectiveContext ? root.effectiveContext.condition_role : Semantic.neutral
 
-    implicitHeight: Spacing.size32
+    implicitHeight: Spacing.size60
     color: Theme.surfaceElevated
 
     QtObject {
@@ -27,6 +32,15 @@ Rectangle {
         property string condition_role: Semantic.positive
         property string last_bar_label: "2026-09-18 15:30:00 UTC"
         property bool is_switching: false
+        property string active_symbol: "PETR4"
+        property string active_timeframe: "1m"
+        property string chart_mode: "following"
+        property bool is_manual: false
+        property bool is_diverged: false
+        property string target_error: ""
+        property string configured_symbol: "PETR4"
+        property string configured_timeframe: "1m"
+        property string recent_symbols_json: "[\"PETR4\", \"VALE3\"]"
     }
 
     function applyPreviewState() {
@@ -39,6 +53,10 @@ Rectangle {
             preview.condition_role = Semantic.warning;
             preview.last_bar_label = "Last bar unavailable";
             preview.is_switching = true;
+            preview.active_symbol = "VALE3";
+            preview.active_timeframe = "5m";
+            preview.chart_mode = "following";
+            preview.is_manual = false;
             break;
         case "loading":
             preview.symbol_line = "PETR4 · 1m · Candles";
@@ -48,6 +66,10 @@ Rectangle {
             preview.condition_role = Semantic.warning;
             preview.last_bar_label = "Last bar unavailable";
             preview.is_switching = false;
+            preview.active_symbol = "PETR4";
+            preview.active_timeframe = "1m";
+            preview.chart_mode = "following";
+            preview.is_manual = false;
             break;
         case "stale":
             preview.symbol_line = "PETR4 · 1m · Candles";
@@ -57,6 +79,10 @@ Rectangle {
             preview.condition_role = Semantic.stale;
             preview.last_bar_label = "2026-09-18 15:28:00 UTC";
             preview.is_switching = false;
+            preview.active_symbol = "PETR4";
+            preview.active_timeframe = "1m";
+            preview.chart_mode = "following";
+            preview.is_manual = false;
             break;
         case "disconnected":
             preview.symbol_line = "PETR4 · 1m · Candles";
@@ -66,6 +92,10 @@ Rectangle {
             preview.condition_role = Semantic.critical;
             preview.last_bar_label = "2026-09-18 15:28:00 UTC";
             preview.is_switching = false;
+            preview.active_symbol = "PETR4";
+            preview.active_timeframe = "1m";
+            preview.chart_mode = "following";
+            preview.is_manual = false;
             break;
         default:
             preview.symbol_line = "PETR4 · 1m · Candles";
@@ -75,6 +105,10 @@ Rectangle {
             preview.condition_role = Semantic.positive;
             preview.last_bar_label = "2026-09-18 15:30:00 UTC";
             preview.is_switching = false;
+            preview.active_symbol = "PETR4";
+            preview.active_timeframe = "1m";
+            preview.chart_mode = "following";
+            preview.is_manual = false;
             break;
         }
     }
@@ -122,69 +156,84 @@ Rectangle {
         anchors.bottomMargin: Spacing.size4
         spacing: Spacing.size2
 
-        Item {
+        RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: Spacing.size16
+            Layout.preferredHeight: Theme.controlHeight
+            spacing: Spacing.size8
 
-            Row {
-                id: identityRow
-                anchors.fill: parent
-                spacing: Spacing.size8
+            ChartTargetPicker {
+                id: picker
+                objectName: "chartTargetPicker"
+                context: root.context
+                executionModels: root.executionModels
+                previewState: root.previewState
+                Layout.alignment: Qt.AlignVCenter
+            }
 
-                Text {
-                    id: symbolLine
-                    objectName: "symbolLineText"
-                    width: Math.max(0, identityRow.width - sourceLabel.width - conditionBadge.width - identityRow.spacing * 2)
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: root.effectiveContext ? root.effectiveContext.symbol_line : ""
-                    color: Theme.textPrimary
-                    font.pixelSize: Theme.typeBodySmall
-                    font.bold: true
-                    elide: Text.ElideRight
-                    maximumLineCount: 1
+            Item {
+                Layout.fillWidth: true
+            }
+
+            Text {
+                id: sourceLabel
+                objectName: "sourceLabelText"
+                Layout.alignment: Qt.AlignVCenter
+                text: root.effectiveContext ? root.effectiveContext.source_label : ""
+                color: Theme.textSecondary
+                font.family: Theme.uiFont
+                font.pixelSize: Theme.typeLabel
+                elide: Text.ElideRight
+                maximumLineCount: 1
+                ToolTip.visible: sourceMouse.containsMouse && root.effectiveContext && root.effectiveContext.source_tooltip !== ""
+                ToolTip.text: root.effectiveContext ? root.effectiveContext.source_tooltip : ""
+
+                MouseArea {
+                    id: sourceMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    acceptedButtons: Qt.NoButton
                 }
+            }
 
-                Text {
-                    id: sourceLabel
-                    objectName: "sourceLabelText"
-                    width: Math.min(implicitWidth, identityRow.width * 0.35)
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: root.effectiveContext ? root.effectiveContext.source_label : ""
-                    color: Theme.textSecondary
-                    font.pixelSize: Theme.typeLabel
-                    elide: Text.ElideRight
-                    maximumLineCount: 1
-                    ToolTip.visible: sourceMouse.containsMouse && root.effectiveContext && root.effectiveContext.source_tooltip !== ""
-                    ToolTip.text: root.effectiveContext ? root.effectiveContext.source_tooltip : ""
-
-                    MouseArea {
-                        id: sourceMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        acceptedButtons: Qt.NoButton
-                    }
-                }
-
-                StatusBadge {
-                    id: conditionBadge
-                    objectName: "conditionBadge"
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: root.effectiveContext ? root.effectiveContext.condition_label : ""
-                    role: root.conditionRole
-                }
+            StatusBadge {
+                id: conditionBadge
+                objectName: "conditionBadge"
+                Layout.alignment: Qt.AlignVCenter
+                text: root.effectiveContext ? root.effectiveContext.condition_label : ""
+                role: root.conditionRole
             }
         }
 
-        Text {
-            id: lastBarLabel
-            objectName: "lastBarLabelText"
+        RowLayout {
             Layout.fillWidth: true
-            text: root.effectiveContext ? ("Last bar: " + root.effectiveContext.last_bar_label) : ""
-            color: Theme.textTertiary
-            font.pixelSize: Theme.typeLabel
-            font.family: Theme.numericFontFamily
-            elide: Text.ElideRight
-            maximumLineCount: 1
+            Layout.preferredHeight: Spacing.size16
+            spacing: Spacing.size8
+
+            Text {
+                id: symbolLine
+                objectName: "symbolLineText"
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignVCenter
+                text: root.effectiveContext ? root.effectiveContext.symbol_line : ""
+                color: Theme.textPrimary
+                font.family: Theme.uiFont
+                font.pixelSize: Theme.typeBodySmall
+                font.bold: true
+                elide: Text.ElideRight
+                maximumLineCount: 1
+            }
+
+            Text {
+                id: lastBarLabel
+                objectName: "lastBarLabelText"
+                Layout.alignment: Qt.AlignVCenter
+                text: root.effectiveContext ? ("Last bar: " + root.effectiveContext.last_bar_label) : ""
+                color: Theme.textTertiary
+                font.pixelSize: Theme.typeLabel
+                font.family: Theme.numericFontFamily
+                elide: Text.ElideRight
+                maximumLineCount: 1
+            }
         }
     }
 }

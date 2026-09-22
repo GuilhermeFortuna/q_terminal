@@ -18,3 +18,5 @@ EmptyState 1.0 EmptyState.qml
 AppDialog 1.0 AppDialog.qml
 AppTextField 1.0 AppTextField.qml
 AppComboBox 1.0 AppComboBox.qml
+ChartIdentity 1.0 ChartIdentity.qml
+ChartTargetPicker 1.0 ChartTargetPicker.qml
