@@ -71,28 +71,7 @@ Window {
             Layout.fillWidth: true
             shell: win.shell
             workspace: win.shell.workspace
-        }
-
-        Toolbar {
-            Layout.fillWidth: true
-            tools: [
-                AppButton {
-                    text: "Commands"
-                    implicitWidth: Spacing.size100
-                    onClicked: win.openPalette()
-                },
-                AppButton {
-                    text: win.merged ? "Split out" : "Merge windows"
-                    implicitWidth: Spacing.size120
-                    visible: win.merged || win.shell.controller.window_count > 1
-                    onClicked: win.merged ? win.shell.controller.split_all(win.windowId) : win.shell.controller.merge_into(win.windowId)
-                },
-                AppButton {
-                    text: win.detached ? "Reattach selection" : "Detach selection"
-                    implicitWidth: Spacing.size140
-                    onClicked: win.toggleDetach()
-                }
-            ]
+            window: win
         }
 
         Rectangle {

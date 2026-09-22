@@ -18,6 +18,7 @@ pub mod ffi {
         #[qproperty(QString, api_status)]
         #[qproperty(QString, worker_status)]
         #[qproperty(f64, worker_heartbeat_age_s)]
+        #[qproperty(bool, worker_heartbeat_known)]
         #[qproperty(bool, edge_reachable)]
         #[qproperty(bool, edge_mt5_connected)]
         #[qproperty(i64, terminal_build)]
@@ -54,6 +55,7 @@ pub struct OpsStatusRust {
     pub api_status: QString,
     pub worker_status: QString,
     pub worker_heartbeat_age_s: f64,
+    pub worker_heartbeat_known: bool,
     pub edge_reachable: bool,
     pub edge_mt5_connected: bool,
     pub terminal_build: i64,
@@ -73,6 +75,7 @@ impl Default for OpsStatusRust {
             api_status: QString::from("unknown"),
             worker_status: QString::from("unknown"),
             worker_heartbeat_age_s: 0.0,
+            worker_heartbeat_known: false,
             edge_reachable: false,
             edge_mt5_connected: false,
             terminal_build: 0,
@@ -117,10 +120,10 @@ impl OpsStatusRust {
             .get("worker_status")
             .and_then(|v| v.as_str())
             .unwrap_or("unknown");
-        let hb_age = val
+        let worker_heartbeat_known = val
             .get("worker_heartbeat_age_s")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
+            .and_then(serde_json::Value::as_f64);
+        let hb_age = worker_heartbeat_known.unwrap_or(0.0);
         let kill_switch = val
             .get("kill_switch_enabled")
             .and_then(|v| v.as_bool())
@@ -155,6 +158,7 @@ impl OpsStatusRust {
         self.api_status = QString::from(api_st);
         self.worker_status = QString::from(worker_st);
         self.worker_heartbeat_age_s = hb_age;
+        self.worker_heartbeat_known = worker_heartbeat_known.is_some();
         self.edge_reachable = reachable;
         self.edge_mt5_connected = mt5_conn;
         self.terminal_build = build;
@@ -182,6 +186,8 @@ impl ffi::OpsStatus {
         self.as_mut().rust_mut().mark_api_offline();
         self.as_mut().set_api_status(QString::from("offline"));
         self.as_mut().set_worker_status(QString::from("unknown"));
+        self.as_mut().rust_mut().worker_heartbeat_known = false;
+        self.as_mut().set_worker_heartbeat_known(false);
         self.as_mut().set_postgres_available(false);
     }
 
@@ -199,6 +205,7 @@ impl ffi::OpsStatus {
         let api_status = r.api_status.clone();
         let worker_status = r.worker_status.clone();
         let worker_heartbeat_age_s = r.worker_heartbeat_age_s;
+        let worker_heartbeat_known = r.worker_heartbeat_known;
         let edge_reachable = r.edge_reachable;
         let edge_mt5_connected = r.edge_mt5_connected;
         let terminal_build = r.terminal_build;
@@ -212,6 +219,8 @@ impl ffi::OpsStatus {
         self.as_mut().set_worker_status(worker_status);
         self.as_mut()
             .set_worker_heartbeat_age_s(worker_heartbeat_age_s);
+        self.as_mut()
+            .set_worker_heartbeat_known(worker_heartbeat_known);
         self.as_mut().set_edge_reachable(edge_reachable);
         self.as_mut().set_edge_mt5_connected(edge_mt5_connected);
         self.as_mut().set_terminal_build(terminal_build);

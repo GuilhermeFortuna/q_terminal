@@ -177,6 +177,24 @@ fn test_degraded_state_worker_down_and_stale() {
     assert!(ops.edge_mt5_connected);
 }
 
+#[test]
+fn missing_worker_heartbeat_is_explicitly_unknown() {
+    let mut ops = OpsStatusRust::default();
+    ops.apply_health_str(
+        &serde_json::json!({
+            "api_status": "ok",
+            "worker_status": "active",
+            "edge": { "reachable": true, "mt5_connected": true, "terminal_build": 4150 }
+        })
+        .to_string(),
+    );
+
+    assert!(
+        !ops.worker_heartbeat_known,
+        "a missing heartbeat must not be represented as a fresh 0.0s heartbeat"
+    );
+}
+
 /// Acceptance Criterion 4:
 /// §8.1 State: MT5 edge disconnected
 /// Health response reports edge unreachable or mt5_connected false, quotes stale.

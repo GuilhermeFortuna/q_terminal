@@ -222,17 +222,17 @@ pub fn composition(name: &str) -> Option<Node> {
         ),
         "merged" => Node::split(
             V,
-            &[0.14, 0.82, 0.04],
+            &[0.12, 0.84, 0.04],
             vec![
                 Node::tabs(&["status"]),
                 Node::split(
                     H,
-                    &[0.26, 0.74],
+                    &[0.22, 0.78],
                     vec![
                         Node::tabs(&["deployments"]),
                         Node::split(
                             V,
-                            &[0.42, 0.58],
+                            &[0.68, 0.32],
                             vec![Node::tabs(&["chart"]), Node::tabs(&["detail"])],
                         ),
                     ],

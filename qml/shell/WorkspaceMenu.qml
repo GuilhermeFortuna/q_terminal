@@ -10,6 +10,7 @@ RowLayout {
 
     required property var shell
     required property var workspace
+    required property var window
 
     spacing: Theme.spaceSm
 
@@ -34,6 +35,32 @@ RowLayout {
         text: "Duplicate"
         implicitWidth: Spacing.size100
         onClicked: duplicateDialog.open()
+    }
+
+    Rectangle {
+        Layout.preferredWidth: Theme.dividerWidth
+        Layout.preferredHeight: Spacing.size20
+        color: Theme.borderDefault
+    }
+
+    AppButton {
+        text: "Commands"
+        implicitWidth: Spacing.size100
+        Accessible.name: "Open command palette"
+        onClicked: root.window.openPalette()
+    }
+
+    AppButton {
+        text: root.window.merged ? "Split out" : "Merge windows"
+        implicitWidth: Spacing.size120
+        visible: root.window.merged || root.shell.controller.window_count > 1
+        onClicked: root.window.merged ? root.shell.controller.split_all(root.window.windowId) : root.shell.controller.merge_into(root.window.windowId)
+    }
+
+    AppButton {
+        text: root.window.detached ? "Reattach selection" : "Detach selection"
+        implicitWidth: Spacing.size140
+        onClicked: root.window.toggleDetach()
     }
 
     AppDialog {
