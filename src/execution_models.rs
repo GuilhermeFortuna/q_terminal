@@ -84,6 +84,9 @@ pub mod ffi {
         ) -> QString;
 
         #[qinvokable]
+        fn deployment_symbols_json(self: Pin<&mut ExecutionModels>) -> QString;
+
+        #[qinvokable]
         fn field_for_selected_account(self: Pin<&mut ExecutionModels>, field: QString) -> QString;
 
         #[qinvokable]
@@ -729,6 +732,20 @@ impl ExecutionModelsRust {
             field,
         )
     }
+
+    pub fn deployment_symbols(&self) -> Vec<String> {
+        let count = unsafe { ffi::table_model_count(self.m_deployments.0) };
+        let mut symbols = Vec::new();
+        for index in 0..count {
+            let sym = unsafe { ffi::table_model_get_field(self.m_deployments.0, index, "symbol") };
+            let sym_clean = sym.trim().to_uppercase();
+            if !sym_clean.is_empty() && !symbols.contains(&sym_clean) {
+                symbols.push(sym_clean);
+            }
+        }
+        symbols.sort();
+        symbols
+    }
 }
 
 impl ffi::ExecutionModels {
@@ -770,6 +787,11 @@ impl ffi::ExecutionModels {
                 .rust()
                 .field_for_selected_deployment(&field.to_string()),
         )
+    }
+
+    pub fn deployment_symbols_json(self: Pin<&mut Self>) -> QString {
+        let symbols = self.rust().deployment_symbols();
+        QString::from(&serde_json::to_string(&symbols).unwrap_or_else(|_| "[]".into()))
     }
 
     pub fn field_for_selected_account(self: Pin<&mut Self>, field: QString) -> QString {
