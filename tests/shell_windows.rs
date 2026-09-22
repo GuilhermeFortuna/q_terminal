@@ -539,6 +539,73 @@ async fn merging_keeps_every_panel_and_splitting_restores_the_arrangement() {
     );
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn merged_workstation_prioritizes_chart_and_restores_legacy_window_tree() {
+    let (_server, mut ctx) = start().await;
+
+    let layout: serde_json::Value = serde_json::from_str(&ev(
+        &mut ctx,
+        "controller.window_layout(windowObjects()[0].windowId)",
+    ))
+    .unwrap();
+    let root = &layout["root"];
+    assert_eq!(root["type"], "split");
+    assert_eq!(root["weights"], serde_json::json!([0.12, 0.84, 0.04]));
+
+    let workbench = &root["children"][1];
+    assert_eq!(workbench["weights"], serde_json::json!([0.22, 0.78]));
+    let right_pane = &workbench["children"][1];
+    assert_eq!(right_pane["weights"], serde_json::json!([0.68, 0.32]));
+    assert_eq!(
+        right_pane["children"][0]["panels"],
+        serde_json::json!(["chart"]),
+        "the chart owns the majority of the right pane"
+    );
+    assert_eq!(
+        right_pane["children"][1]["panels"],
+        serde_json::json!(["detail"]),
+        "execution detail remains a separately resizable pane"
+    );
+
+    let legacy = serde_json::json!([{
+        "id": "legacy",
+        "composition": "merged",
+        "root": {
+            "type": "split",
+            "orientation": "vertical",
+            "weights": [0.14, 0.82, 0.04],
+            "children": [
+                { "type": "tabs", "panels": ["status"], "active": 0 },
+                { "type": "split", "orientation": "horizontal", "weights": [0.26, 0.74], "children": [
+                    { "type": "tabs", "panels": ["deployments"], "active": 0 },
+                    { "type": "split", "orientation": "vertical", "weights": [0.42, 0.58], "children": [
+                        { "type": "tabs", "panels": ["chart"], "active": 0 },
+                        { "type": "tabs", "panels": ["detail"], "active": 0 }
+                    ]}
+                ]},
+                { "type": "tabs", "panels": ["instrument"], "active": 0 }
+            ]
+        }
+    }]);
+    ev(
+        &mut ctx,
+        &format!(
+            "controller.restore_workspace('{}')",
+            legacy.to_string().replace('\'', "\\\\'")
+        ),
+    );
+    pump(200).await;
+    assert_eq!(windows(&mut ctx), 1);
+    assert_eq!(
+        ev(
+            &mut ctx,
+            "JSON.parse(controller.panel_ids()).sort().join(',')"
+        ),
+        "chart,deployments,detail,instrument,status",
+        "a saved pre-Q-058 tree restores every panel"
+    );
+}
+
 /// Looks at the shell: writes every window to `target/shell-shots/` for a human (or an
 /// agent with an image tool) to read. It asserts only that the images exist.
 #[tokio::test(flavor = "current_thread")]

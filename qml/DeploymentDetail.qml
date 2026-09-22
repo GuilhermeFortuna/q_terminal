@@ -15,6 +15,7 @@ Rectangle {
     required property ExecutionControls executionControls
 
     property string lastActionId: ""
+    readonly property bool hasSelection: root.executionModels.selected_deployment_id !== ""
 
     function deploymentField(field) {
         return root.executionModels.field_for_selected_deployment(field);
@@ -85,10 +86,39 @@ Rectangle {
         anchors.fill: parent
         spacing: Spacing.size0
 
+        Item {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: !root.hasSelection
+
+            ColumnLayout {
+                anchors.centerIn: parent
+                width: parent.width - Theme.spaceXxl * 2
+                spacing: Theme.spaceSm
+
+                Text {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: "No deployment selected"
+                    color: Theme.textStrong
+                    font.pixelSize: Theme.typeBodyLarge
+                    font.bold: true
+                }
+                Text {
+                    Layout.alignment: Qt.AlignHCenter
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: "Select a deployment to inspect execution activity. The chart remains available for the configured instrument."
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.typeLabel
+                }
+            }
+        }
+
         // Top Header: Selected Deployment info and Net Position Card
         Rectangle {
             Layout.fillWidth: true
-            height: Spacing.size72
+            height: root.hasSelection ? Spacing.size72 : Spacing.none
+            visible: root.hasSelection
             color: Theme.surfaceElevated
             border.color: Theme.borderDefault
             border.width: Spacing.size1
@@ -291,7 +321,8 @@ Rectangle {
         // Tab Navigation Bar
         Rectangle {
             Layout.fillWidth: true
-            height: Spacing.size32
+            height: root.hasSelection ? Spacing.size32 : Spacing.none
+            visible: root.hasSelection
             color: Theme.surfaceOverlay
             border.color: Theme.borderDefault
             border.width: Spacing.size1
@@ -343,8 +374,8 @@ Rectangle {
         // Account Details sub-bar (visible only on "Account & Ledger" tab)
         Rectangle {
             Layout.fillWidth: true
-            height: (root.currentTabIndex === 4) ? 92 : 0
-            visible: root.currentTabIndex === 4
+            height: (root.hasSelection && root.currentTabIndex === 4) ? Spacing.accountSummaryHeight : Spacing.none
+            visible: root.hasSelection && root.currentTabIndex === 4
             color: Theme.surfaceRaised
             border.color: Theme.surfaceSelected
             border.width: Spacing.size1
@@ -482,7 +513,8 @@ Rectangle {
         StackLayout {
             id: contentStack
             Layout.fillWidth: true
-            Layout.fillHeight: true
+            Layout.fillHeight: root.hasSelection
+            visible: root.hasSelection
             currentIndex: root.currentTabIndex
 
             OrdersTable {
@@ -509,7 +541,8 @@ Rectangle {
         // Table Footer: "Load older" button for paging
         Rectangle {
             Layout.fillWidth: true
-            height: Spacing.size32
+            height: root.hasSelection ? Spacing.size32 : Spacing.none
+            visible: root.hasSelection
             color: Theme.surfaceOverlay
             border.color: Theme.borderDefault
             border.width: Spacing.size1

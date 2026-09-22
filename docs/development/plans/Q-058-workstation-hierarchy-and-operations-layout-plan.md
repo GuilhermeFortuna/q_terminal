@@ -14,21 +14,21 @@ and the workspace controller persist panel arrangement.
 
 ## Ordered implementation
 
-- [ ] 1. On the Q-058 task branch, add layout tests in `tests/shell_windows.rs` for the
+- [x] 1. On the Q-058 task branch, add layout tests in `tests/shell_windows.rs` for the
   new merged weights, all panels present, resizability, and restoration of a saved
   pre-Q-058 window tree. Run the targeted tests and confirm the new expectations fail.
-- [ ] 2. Change only the default merged composition in `src/shell/layout.rs` so the chart
+- [x] 2. Change only the default merged composition in `src/shell/layout.rs` so the chart
   receives the majority of the right pane and the detail pane starts shorter. Preserve
   panel IDs and loaded workspace layouts. Test split/merge and old-workspace restoration.
-- [ ] 3. Combine workspace and shell actions into one compact toolbar in
+- [x] 3. Combine workspace and shell actions into one compact toolbar in
   `qml/shell/ShellWindow.qml` and `WorkspaceMenu.qml`. Keep active workspace and the
   command palette visible. Convert `PlacementNotice.qml` to a one-line status with a
   keyboard-operable disclosure containing the explanation and export button.
-- [ ] 4. Refactor `qml/OpsHeader.qml` into a severity-first status summary plus a details
+- [x] 4. Refactor `qml/OpsHeader.qml` into a severity-first status summary plus a details
   view that exposes every existing health field and action. Render `unknown` when worker
   heartbeat is unavailable. Add healthy, offline, reconciliation, kill-switch, and
   live-locked examples to the gallery and check for clipping at both resolutions.
-- [ ] 5. Update `qml/DeploymentList.qml` and `qml/DeploymentDetail.qml` empty states:
+- [x] 5. Update `qml/DeploymentList.qml` and `qml/DeploymentDetail.qml` empty states:
   show the next action, hide empty table headers/load-older affordances when no selection,
   and restore them when selected. Verify with fake models and the existing operations
   tests that pagination and command enablement are unchanged.

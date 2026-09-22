@@ -164,6 +164,34 @@ Rectangle {
 
             boundsBehavior: Flickable.StopAtBounds
 
+            footer: Item {
+                width: deploymentsView.width
+                height: deploymentsView.count === 0 ? Spacing.size84 : Spacing.none
+                visible: deploymentsView.count === 0
+
+                ColumnLayout {
+                    anchors.centerIn: parent
+                    width: parent.width - Theme.spaceXxl * 2
+                    spacing: Theme.spaceXs
+
+                    Text {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: "No deployments yet"
+                        color: Theme.textStrong
+                        font.pixelSize: Theme.typeBody
+                        font.bold: true
+                    }
+                    Text {
+                        Layout.alignment: Qt.AlignHCenter
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        text: "Create an account, then create a deployment to begin monitoring execution."
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.typeLabel
+                    }
+                }
+            }
+
             delegate: Rectangle {
                 id: card
                 required property string id

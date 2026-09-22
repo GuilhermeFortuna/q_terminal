@@ -6,7 +6,7 @@ import "Format.js" as Format
 
 Rectangle {
     id: root
-    height: bannerColumn.height + 48
+    height: bannerColumn.height
     color: Theme.surfaceElevated
 
     required property OpsStatus opsStatus
@@ -14,6 +14,19 @@ Rectangle {
     required property ExecutionModels executionModels
 
     property string killSwitchActionId: ""
+    readonly property bool workerUnavailable: !opsStatus.worker_heartbeat_known
+                                          || opsStatus.worker_status !== "active"
+                                          || opsStatus.worker_heartbeat_age_s > 30.0
+    readonly property string heartbeatAge: opsStatus.worker_heartbeat_known
+                                        ? Format.formatAge(opsStatus.worker_heartbeat_age_s) : "unknown"
+    readonly property string summary: {
+        if (!opsStatus.postgres_available) return "DATABASE UNAVAILABLE — execution state may be unknown"
+        if (opsStatus.kill_switch_enabled) return "KILL SWITCH ENGAGED — new risk is halted"
+        if (opsStatus.unknown_orders > 0) return "RECONCILIATION REQUIRED — " + opsStatus.unknown_orders + " unknown orders"
+        if (workerUnavailable) return "EXECUTION WORKER UNAVAILABLE — heartbeat " + heartbeatAge
+        if (opsStatus.live_locked) return "LIVE TRADING LOCKED"
+        return "OPERATIONS HEALTHY"
+    }
 
     // Shell command entry point (Q-052): the palette and shortcuts open the same
     // confirmations the buttons do.
@@ -52,12 +65,30 @@ Rectangle {
         anchors.right: parent.right
         spacing: Spacing.size0
 
+        Rectangle {
+            Layout.fillWidth: true
+            height: Spacing.size32
+            color: !root.opsStatus.postgres_available || root.opsStatus.kill_switch_enabled || root.opsStatus.unknown_orders > 0
+                   ? Theme.criticalStrong : (root.workerUnavailable || root.opsStatus.live_locked ? Theme.warningStrong : Theme.surfaceRaised)
+            Text {
+                anchors.fill: parent
+                anchors.leftMargin: Theme.spaceLg
+                anchors.rightMargin: Theme.spaceLg
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+                text: root.summary
+                color: Theme.textOnAccent
+                font.pixelSize: Theme.typeLabel
+                font.bold: true
+            }
+        }
+
         // Warning banner: Postgres down
         Rectangle {
             id: postgresBanner
             Layout.fillWidth: true
-            height: (!root.opsStatus.postgres_available) ? 32 : 0
-            visible: !root.opsStatus.postgres_available
+            height: Spacing.none
+            visible: false
             color: Theme.negativeStrong
             clip: true
 
@@ -80,8 +111,8 @@ Rectangle {
         Rectangle {
             id: workerBanner
             Layout.fillWidth: true
-            height: (root.opsStatus.postgres_available && (root.opsStatus.worker_status !== "active" || root.opsStatus.worker_heartbeat_age_s > 30.0)) ? 32 : 0
-            visible: root.opsStatus.postgres_available && (root.opsStatus.worker_status !== "active" || root.opsStatus.worker_heartbeat_age_s > 30.0)
+            height: Spacing.none
+            visible: false
             color: Theme.warningStrong
             clip: true
 
@@ -104,8 +135,8 @@ Rectangle {
         Rectangle {
             id: unkBanner
             Layout.fillWidth: true
-            height: (root.opsStatus.unknown_orders > 0) ? 32 : 0
-            visible: root.opsStatus.unknown_orders > 0
+            height: Spacing.none
+            visible: false
             color: Theme.criticalStrong
             clip: true
 
@@ -127,13 +158,18 @@ Rectangle {
         // Main status bar
         Rectangle {
             Layout.fillWidth: true
-            height: Spacing.size48
+            implicitHeight: healthFlow.implicitHeight + Theme.spaceMd * 2
+            height: implicitHeight
             color: Theme.surfaceElevated
 
-            RowLayout {
-                anchors.fill: parent
+            Flow {
+                id: healthFlow
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
                 anchors.leftMargin: Spacing.size16
                 anchors.rightMargin: Spacing.size16
+                anchors.topMargin: Theme.spaceMd
                 spacing: Spacing.size12
 
                 // Workspace Title
@@ -216,7 +252,7 @@ Rectangle {
                         spacing: Spacing.size6
 
                         Text {
-                            text: "Worker: " + root.opsStatus.worker_status + " (" + Format.formatAge(root.opsStatus.worker_heartbeat_age_s) + ")"
+                            text: "Worker: " + root.opsStatus.worker_status + " (" + root.heartbeatAge + ")"
                             color: Semantic.foreground(Semantic.workerHealth(root.opsStatus.worker_status, root.opsStatus.worker_heartbeat_age_s))
                             font.pixelSize: Theme.typeBodySmall
                             font.bold: true
@@ -245,10 +281,6 @@ Rectangle {
                             font.bold: true
                         }
                     }
-                }
-
-                Item {
-                    Layout.fillWidth: true
                 }
 
                 // Unknown Orders Chip
