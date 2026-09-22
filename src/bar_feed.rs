@@ -230,6 +230,15 @@ pub mod ffi {
         fn bar_time_at(self: &BarFeed, index: i32) -> i64;
 
         #[qinvokable]
+        fn bar_snapshot_json(self: &BarFeed, index: i32) -> QString;
+
+        #[qinvokable]
+        fn bar_readout_json(self: &BarFeed, index: i32) -> QString;
+
+        #[qinvokable]
+        fn format_price(self: &BarFeed, price: f64) -> QString;
+
+        #[qinvokable]
         fn visible_range_json(self: &BarFeed, first_bar: i32, last_bar: i32) -> QString;
 
         #[qinvokable]
@@ -280,6 +289,101 @@ pub fn parse_timeframe_ms(timeframe: &str) -> i64 {
     60_000
 }
 
+/// Value-preserving decimal display rule for prices.
+///
+/// Standard financial conventions format with at least two decimal places (e.g., "100.00", "10.50").
+/// For symbols with higher precision (e.g. crypto, forex, 3+ decimal contracts), exact decimals
+/// are preserved without truncation or rounding to two places (e.g., "1.2345", "0.000125", "100.125").
+pub fn format_feed_price(val: f64) -> String {
+    if val.is_nan() || val.is_infinite() {
+        return "--".to_string();
+    }
+    let s = format!("{:.8}", val);
+    if let Some(dot_pos) = s.find('.') {
+        let int_part = &s[..dot_pos];
+        let dec_part = &s[dot_pos + 1..];
+        let trimmed = dec_part.trim_end_matches('0');
+        if trimmed.len() < 2 {
+            format!("{}.{:0<2}", int_part, trimmed)
+        } else {
+            format!("{}.{}", int_part, trimmed)
+        }
+    } else {
+        format!("{}.00", s)
+    }
+}
+
+pub fn format_bar_time(time: i64) -> String {
+    let ms = markers::normalize_ms(time);
+    if ms <= 0 {
+        return String::new();
+    }
+    let total_secs = ms / 1000;
+    let sec = (total_secs % 60) as u32;
+    let total_mins = total_secs / 60;
+    let min = (total_mins % 60) as u32;
+    let total_hours = total_mins / 60;
+    let hour = (total_hours % 24) as u32;
+    let days = total_hours / 24;
+
+    let z = days + 719468;
+    let era = (if z >= 0 { z } else { z - 146096 }) / 146097;
+    let doe = (z - era * 146097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = (yoe as i64) + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+
+    if sec == 0 && ms % 1000 == 0 {
+        format!("{:04}-{:02}-{:02} {:02}:{:02} UTC", y, m, d, hour, min)
+    } else {
+        format!(
+            "{:04}-{:02}-{:02} {:02}:{:02}:{:02} UTC",
+            y, m, d, hour, min, sec
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BarSnapshot {
+    pub valid: bool,
+    pub index: i32,
+    pub time: i64,
+    pub time_text: String,
+    pub open: f64,
+    pub high: f64,
+    pub low: f64,
+    pub close: f64,
+    pub open_text: String,
+    pub high_text: String,
+    pub low_text: String,
+    pub close_text: String,
+    pub forming: bool,
+}
+
+impl BarSnapshot {
+    pub fn invalid() -> Self {
+        Self {
+            valid: false,
+            index: -1,
+            time: 0,
+            time_text: String::new(),
+            open: 0.0,
+            high: 0.0,
+            low: 0.0,
+            close: 0.0,
+            open_text: String::new(),
+            high_text: String::new(),
+            low_text: String::new(),
+            close_text: String::new(),
+            forming: false,
+        }
+    }
+}
+
 pub struct BarFeedRust {
     pub connection_state: QString,
     pub last_error: QString,
@@ -326,6 +430,8 @@ pub struct BarFeedRust {
     pending_deliveries: Vec<BarDelivery>,
     /// Chart target generation. Bars and history results stamped with another one belong
     /// to a previous target and are dropped.
+    /// Open of each completed bar, indexed like `bar_times`.
+    pub bar_opens: Vec<f64>,
     /// High, low and close of each completed bar, indexed like `bar_times`.
     pub bar_hlc: Vec<(f64, f64, f64)>,
     /// The forming bar is not part of `bar_hlc` until it completes.
@@ -429,6 +535,7 @@ impl BarFeedRust {
             generation: 0,
             stale_dropped: 0,
             overlay_revision: 0,
+            bar_opens: Vec::new(),
             bar_hlc: Vec::new(),
             forming: None,
             decisions: Vec::new(),
@@ -510,6 +617,7 @@ impl BarFeedRust {
             real_volume: false,
         };
         self.bar_times.clear();
+        self.bar_opens.clear();
         self.bar_hlc.clear();
         self.forming = None;
         self.overlay_series.clear();
@@ -579,6 +687,7 @@ impl BarFeedRust {
                 .sin()
                 .mul_add(5.0, 100.0 + ((i * 7) % 13) as f64)
         };
+        self.bar_opens = (0..bars).map(close).collect();
         self.bar_hlc = (0..bars)
             .map(|i| (close(i) + 1.0, close(i) - 1.0, close(i)))
             .collect();
@@ -669,6 +778,59 @@ impl BarFeedRust {
 
     pub fn overlay_series(&self) -> &[OverlaySeries] {
         &self.overlay_series
+    }
+
+    /// Read-only snapshot of one bar at `index` (0-based visible sequence).
+    /// Completed bars occupy `0..bar_times.len()`; if a forming bar exists, it sits at `bar_times.len()`.
+    /// Returns an invalid snapshot if the index is out of bounds or data is unavailable.
+    pub fn bar_snapshot(&self, index: i32) -> BarSnapshot {
+        if index < 0 {
+            return BarSnapshot::invalid();
+        }
+        let idx = index as usize;
+        let completed_len = self.bar_times.len();
+        if idx < completed_len {
+            let time = self.bar_times[idx];
+            let open = self.bar_opens.get(idx).copied().unwrap_or(0.0);
+            let (high, low, close) = self.bar_hlc.get(idx).copied().unwrap_or((0.0, 0.0, 0.0));
+            BarSnapshot {
+                valid: true,
+                index,
+                time,
+                time_text: format_bar_time(time),
+                open,
+                high,
+                low,
+                close,
+                open_text: format_feed_price(open),
+                high_text: format_feed_price(high),
+                low_text: format_feed_price(low),
+                close_text: format_feed_price(close),
+                forming: false,
+            }
+        } else if idx == completed_len {
+            if let Some((time, open, high, low, close)) = self.forming {
+                BarSnapshot {
+                    valid: true,
+                    index,
+                    time,
+                    time_text: format_bar_time(time),
+                    open,
+                    high,
+                    low,
+                    close,
+                    open_text: format_feed_price(open),
+                    high_text: format_feed_price(high),
+                    low_text: format_feed_price(low),
+                    close_text: format_feed_price(close),
+                    forming: true,
+                }
+            } else {
+                BarSnapshot::invalid()
+            }
+        } else {
+            BarSnapshot::invalid()
+        }
     }
 
     /// Applies a delivery stamped with the generation it was produced for. Returns false,
@@ -828,6 +990,7 @@ impl BarFeedRust {
             self.series_label = bars.label;
             self.series_vols = VolumeSet::from_bars(&bars);
             self.bar_times.extend_from_slice(&bars.time);
+            self.bar_opens.extend_from_slice(&bars.open);
             self.bar_hlc
                 .extend((0..bar_count).map(|i| (bars.high[i], bars.low[i], bars.close[i])));
             let _ = self.series.load_history(bars);
@@ -906,6 +1069,7 @@ impl BarFeedRust {
                 let count = bars.time.len() as i64;
                 let adapted = self.adapt_bars(bars);
                 let times = adapted.time.clone();
+                let opens = adapted.open.clone();
                 let (highs, lows, closes) = (
                     adapted.high.clone(),
                     adapted.low.clone(),
@@ -913,19 +1077,23 @@ impl BarFeedRust {
                 );
                 if self.series.ingest_completed(adapted).is_ok() {
                     for (i, t) in times.into_iter().enumerate() {
+                        let open = opens[i];
                         let hlc = (highs[i], lows[i], closes[i]);
                         match self.bar_times.last().copied() {
                             Some(last) if t > last => {
                                 self.bar_times.push(t);
+                                self.bar_opens.push(open);
                                 self.bar_hlc.push(hlc);
                             }
                             Some(last) if t == last => {
                                 *self.bar_times.last_mut().unwrap() = t;
+                                *self.bar_opens.last_mut().unwrap() = open;
                                 *self.bar_hlc.last_mut().unwrap() = hlc;
                             }
                             Some(_) => {}
                             None => {
                                 self.bar_times.push(t);
+                                self.bar_opens.push(open);
                                 self.bar_hlc.push(hlc);
                             }
                         }
@@ -1320,6 +1488,24 @@ impl ffi::BarFeed {
         }
     }
 
+    pub fn bar_snapshot_json(&self, index: i32) -> QString {
+        let snapshot = self.rust().bar_snapshot(index);
+        if !snapshot.valid {
+            return QString::from(r#"{"valid":false}"#);
+        }
+        QString::from(
+            serde_json::to_string(&snapshot).unwrap_or_else(|_| r#"{"valid":false}"#.to_string()),
+        )
+    }
+
+    pub fn bar_readout_json(&self, index: i32) -> QString {
+        self.bar_snapshot_json(index)
+    }
+
+    pub fn format_price(&self, price: f64) -> QString {
+        QString::from(format_feed_price(price))
+    }
+
     pub fn visible_range_json(&self, first_bar: i32, last_bar: i32) -> QString {
         let feed = self.rust();
         let first = first_bar.max(0) as usize;
@@ -1711,5 +1897,126 @@ mod tests {
 
         feed.update_counters(2, 3, 4, 12);
         assert_eq!(feed.rest_calls, 12);
+    }
+
+    #[test]
+    fn test_format_feed_price_exact_decimals() {
+        assert_eq!(format_feed_price(100.0), "100.00");
+        assert_eq!(format_feed_price(10.5), "10.50");
+        assert_eq!(format_feed_price(10.55), "10.55");
+        assert_eq!(format_feed_price(1.2345), "1.2345");
+        assert_eq!(format_feed_price(0.000125), "0.000125");
+        assert_eq!(format_feed_price(100.125), "100.125");
+        assert_eq!(format_feed_price(34.56789), "34.56789");
+        assert_eq!(format_feed_price(0.0), "0.00");
+    }
+
+    #[test]
+    fn test_bar_feed_snapshot_completed_and_invalid_indices() {
+        let mut feed = BarFeedRust::new("PETR4", "1m");
+        feed.history.open_gate();
+
+        feed.apply_delivery(BarDelivery::Completed(make_bar_columns(
+            60_000, 10.0, 11.5, 9.5, 11.0,
+        )));
+        feed.apply_delivery(BarDelivery::Completed(make_bar_columns(
+            120_000, 11.0, 12.25, 10.8, 12.0,
+        )));
+        feed.apply_delivery(BarDelivery::Completed(make_bar_columns(
+            180_000, 12.0, 13.125, 11.9, 12.5,
+        )));
+
+        let first = feed.bar_snapshot(0);
+        assert!(first.valid);
+        assert_eq!(first.index, 0);
+        assert_eq!(first.time, 60_000);
+        assert_eq!(first.open, 10.0);
+        assert_eq!(first.high, 11.5);
+        assert_eq!(first.low, 9.5);
+        assert_eq!(first.close, 11.0);
+        assert_eq!(first.open_text, "10.00");
+        assert_eq!(first.high_text, "11.50");
+        assert_eq!(first.low_text, "9.50");
+        assert_eq!(first.close_text, "11.00");
+        assert!(!first.forming);
+
+        let mid = feed.bar_snapshot(1);
+        assert!(mid.valid);
+        assert_eq!(mid.index, 1);
+        assert_eq!(mid.time, 120_000);
+        assert_eq!(mid.high_text, "12.25");
+        assert!(!mid.forming);
+
+        let last = feed.bar_snapshot(2);
+        assert!(last.valid);
+        assert_eq!(last.index, 2);
+        assert_eq!(last.time, 180_000);
+        assert_eq!(last.high, 13.125);
+        assert_eq!(last.high_text, "13.125");
+        assert!(!last.forming);
+
+        assert!(!feed.bar_snapshot(-1).valid);
+        assert!(!feed.bar_snapshot(3).valid);
+        assert!(!feed.bar_snapshot(99).valid);
+    }
+
+    #[test]
+    fn test_bar_feed_snapshot_forming_bar() {
+        let mut feed = BarFeedRust::new("PETR4", "1m");
+        feed.history.open_gate();
+
+        feed.apply_delivery(BarDelivery::Completed(make_bar_columns(
+            60_000, 10.0, 11.0, 9.0, 10.5,
+        )));
+        feed.apply_delivery(BarDelivery::Forming(make_bar_columns(
+            120_000, 10.5, 12.0, 10.2, 11.8,
+        )));
+
+        let b0 = feed.bar_snapshot(0);
+        assert!(b0.valid);
+        assert!(!b0.forming);
+
+        let b1 = feed.bar_snapshot(1);
+        assert!(b1.valid);
+        assert_eq!(b1.index, 1);
+        assert_eq!(b1.time, 120_000);
+        assert_eq!(b1.open, 10.5);
+        assert_eq!(b1.high, 12.0);
+        assert_eq!(b1.low, 10.2);
+        assert_eq!(b1.close, 11.8);
+        assert!(b1.forming);
+
+        assert!(!feed.bar_snapshot(2).valid);
+
+        feed.apply_delivery(BarDelivery::Forming(make_bar_columns(
+            120_000, 10.5, 12.5, 10.1, 12.2,
+        )));
+        let b1_updated = feed.bar_snapshot(1);
+        assert!(b1_updated.valid);
+        assert_eq!(b1_updated.high, 12.5);
+        assert_eq!(b1_updated.close, 12.2);
+        assert!(b1_updated.forming);
+
+        feed.apply_delivery(BarDelivery::Completed(make_bar_columns(
+            120_000, 10.5, 12.5, 10.1, 12.3,
+        )));
+        let b1_completed = feed.bar_snapshot(1);
+        assert!(b1_completed.valid);
+        assert!(!b1_completed.forming);
+        assert_eq!(b1_completed.close, 12.3);
+    }
+
+    #[test]
+    fn test_bar_feed_snapshot_target_reset() {
+        let mut feed = BarFeedRust::new("PETR4", "1m");
+        feed.history.open_gate();
+        feed.apply_delivery(BarDelivery::Completed(make_bar_columns(
+            60_000, 10.0, 11.0, 9.0, 10.5,
+        )));
+        assert!(feed.bar_snapshot(0).valid);
+
+        feed.reset_for_target("VALE3", "5m", 2);
+        assert!(!feed.bar_snapshot(0).valid);
+        assert!(!feed.bar_snapshot(1).valid);
     }
 }
