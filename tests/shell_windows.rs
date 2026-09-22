@@ -570,3 +570,43 @@ async fn windows_render_to_images() {
     assert_eq!(chart_bridge::shell_grab_windows(&dir_str), 2);
     assert!(dir.read_dir().unwrap().count() >= 2);
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn chart_target_commands_route_and_toggle_mode() {
+    let (_server, mut ctx) = start().await;
+    pump(200).await;
+
+    // Both chart commands are enabled
+    assert_eq!(ev(&mut ctx, "commandEnabled('chart.focus-symbol')"), "true");
+    assert_eq!(
+        ev(&mut ctx, "commandEnabled('chart.follow-deployment')"),
+        "true"
+    );
+
+    // Initial mode is following
+    assert_eq!(ev(&mut ctx, "activeChartContext.chart_mode"), "following");
+    assert_eq!(ev(&mut ctx, "activeChartContext.is_manual"), "false");
+
+    // Switching to manual target
+    let applied = ev(&mut ctx, "activeChartContext.request_target('VALE3', '5m')");
+    assert_eq!(applied, "true");
+    assert_eq!(ev(&mut ctx, "activeChartContext.chart_mode"), "manual");
+    assert_eq!(ev(&mut ctx, "activeChartContext.is_manual"), "true");
+    assert_eq!(ev(&mut ctx, "activeChartContext.active_symbol"), "VALE3");
+
+    // Running chart.follow-deployment command restores following mode
+    ev(
+        &mut ctx,
+        "runCommand('chart.follow-deployment', windowObjects()[0])",
+    );
+    pump(100).await;
+    assert_eq!(ev(&mut ctx, "activeChartContext.chart_mode"), "following");
+    assert_eq!(ev(&mut ctx, "activeChartContext.is_manual"), "false");
+
+    // Running chart.focus-symbol triggers without error
+    ev(
+        &mut ctx,
+        "runCommand('chart.focus-symbol', windowObjects()[0])",
+    );
+    pump(100).await;
+}

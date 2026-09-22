@@ -56,17 +56,19 @@ fn wire_execution(
         let mut pin = std::pin::Pin::new_unchecked(&mut *ffi_models);
         let mut rust = pin.as_mut().rust_mut();
         rust.bind_handle(handle.clone());
+        let targeter_for_target = targeter.clone();
         rust.on_target = Some(std::sync::Arc::new(move |dep| {
+            let is_manual = targeter_for_target.is_manual();
             if chart_ctx_addr != 0 {
                 chart_context::notify_target(
                     chart_ctx_addr as *mut chart_context::ffi::ChartContext,
                     dep.as_ref().map(|(_id, name, sym, tf)| {
-                        (name.as_str(), sym.as_str(), tf.as_str(), true)
+                        (name.as_str(), sym.as_str(), tf.as_str(), !is_manual)
                     }),
                     (&configured_sym, &configured_tf),
                 );
             }
-            let retargeted = targeter.select(dep);
+            let retargeted = targeter_for_target.select(dep);
             if chart_ctx_addr != 0 {
                 if let Some(target) = retargeted {
                     chart_context::notify_retarget(
@@ -77,12 +79,36 @@ fn wire_execution(
                 }
             }
         }));
+        let targeter_for_rows = targeter.clone();
         rust.on_rows = Some(std::sync::Arc::new(move |dec, fills| {
+            if targeter_for_rows.is_manual() {
+                return;
+            }
             chart_bridge::feed_set_execution_rows(
                 feed_addr as *mut chart_bridge::BarFeed,
                 &dec,
                 &fills,
             )
+        }));
+        let handle_for_restore = handle.clone();
+        let targeter_for_restore = targeter.clone();
+        targeter.set_on_restore_rows(std::sync::Arc::new(move || {
+            if let Some((id, _name, _sym, _tf)) = targeter_for_restore.following_target() {
+                let (dec, fills) = handle_for_restore.read(|s| {
+                    let d = s.data();
+                    let dec: Vec<_> = d.decisions.get(&id).into_iter().flatten().collect();
+                    let fills: Vec<_> = d.fills.get(&id).into_iter().flatten().collect();
+                    (
+                        serde_json::to_string(&dec).unwrap_or_else(|_| "[]".into()),
+                        serde_json::to_string(&fills).unwrap_or_else(|_| "[]".into()),
+                    )
+                });
+                chart_bridge::feed_set_execution_rows(
+                    feed_addr as *mut chart_bridge::BarFeed,
+                    &dec,
+                    &fills,
+                );
+            }
         }));
         rust.dirty.clone()
     };
@@ -171,6 +197,10 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
                             chart_ctx as *mut chart_context::ffi::ChartContext,
                             &cfg.symbol,
                             &cfg.timeframe,
+                        );
+                        chart_context::bind_targeter(
+                            chart_ctx as *mut chart_context::ffi::ChartContext,
+                            targeter.clone(),
                         );
                     }
                 }

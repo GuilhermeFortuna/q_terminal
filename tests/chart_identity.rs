@@ -125,3 +125,40 @@ fn chart_identity_probe_shows_configured_and_following_targets() {
         assert!(following.is_switching);
     }
 }
+
+#[test]
+fn chart_context_manual_target_validation_and_divergence() {
+    let mut ctx = ChartContextRust::default();
+    ctx.set_configured("PETR4", "1m");
+    assert_eq!(ctx.chart_mode.to_string(), "following");
+    assert!(!ctx.is_manual);
+    assert!(!ctx.is_diverged);
+
+    // Invalid target input is rejected and sets target_error without retargeting
+    assert!(!ctx.request_target("BAD SYM", "1m"));
+    assert!(ctx.target_error.to_string().contains("BAD SYM · 1m"));
+    assert_eq!(ctx.chart_mode.to_string(), "following");
+
+    // Valid manual target sets manual mode and clears error
+    assert!(ctx.request_target("VALE3", "5m"));
+    assert_eq!(ctx.target_error.to_string(), "");
+    assert_eq!(ctx.chart_mode.to_string(), "manual");
+    assert!(ctx.is_manual);
+    assert_eq!(ctx.active_symbol.to_string(), "VALE3");
+    assert_eq!(ctx.active_timeframe.to_string(), "5m");
+
+    // Selecting deployment while in manual mode shows divergence
+    ctx.on_target("momentum-alpha", "BBDC4", "15m", true);
+    assert!(ctx.is_diverged);
+    assert_eq!(ctx.source_label.to_string(), "Manual (diverged)");
+    assert!(ctx.source_tooltip.to_string().contains("momentum-alpha"));
+    // Target was NOT changed by deployment selection
+    assert_eq!(ctx.active_symbol.to_string(), "VALE3");
+
+    // follow_deployment restores following mode and targets selected deployment
+    ctx.follow_deployment();
+    assert_eq!(ctx.chart_mode.to_string(), "following");
+    assert!(!ctx.is_manual);
+    assert!(!ctx.is_diverged);
+    assert_eq!(ctx.source_label.to_string(), "Following: momentum-alpha");
+}
