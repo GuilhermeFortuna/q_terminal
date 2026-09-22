@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Controls
 import qml
 
 Item {
@@ -44,6 +45,76 @@ Item {
         return Math.floor(t);
     }
 
+    function testFocusCanvas() {
+        chartArea.forceActiveFocus();
+        return chartArea.activeFocus;
+    }
+
+    function ensureTargetPrompt(initialChar) {
+        if (initialChar && initialChar.length > 0) {
+            targetPromptLoader.pendingChar = initialChar.charAt(0);
+        }
+        if (!targetPromptLoader.active) {
+            targetPromptLoader.active = true;
+        }
+        var prompt = targetPromptLoader.item;
+        if (prompt && targetPromptLoader.pendingChar.length > 0 && !prompt.visible) {
+            prompt.openWith(targetPromptLoader.pendingChar);
+            targetPromptLoader.pendingChar = "";
+        }
+        return prompt;
+    }
+
+    function testCanvasTypeKey(text) {
+        if (!text || text.length === 0 || !chartArea.activeFocus) {
+            return false;
+        }
+        var prompt = ensureTargetPrompt(text.charAt(0));
+        if (!prompt) {
+            return targetPromptLoader.active;
+        }
+        if (!prompt.visible) {
+            if (text.length > 1) {
+                prompt.setDraftText(text);
+            }
+            return prompt.opened || prompt.visible;
+        }
+        prompt.setDraftText(prompt.draftText() + text);
+        return prompt.opened || prompt.visible;
+    }
+
+    function testTargetPromptOpen() {
+        var prompt = targetPromptLoader.item;
+        return prompt ? (prompt.opened || prompt.visible) : false;
+    }
+
+    function testSetTargetPromptDraft(text) {
+        var prompt = ensureTargetPrompt(text ? text.charAt(0) : "");
+        if (!prompt) {
+            return;
+        }
+        if (text && text.length > 0) {
+            prompt.setDraftText(text);
+        }
+    }
+
+    function testTargetPromptPreview() {
+        var prompt = targetPromptLoader.item;
+        return prompt ? prompt.previewLine : "";
+    }
+
+    function testSubmitTargetPrompt() {
+        if (targetPromptLoader.item) {
+            targetPromptLoader.item.submitDraft();
+        }
+    }
+
+    function testCancelTargetPrompt() {
+        if (targetPromptLoader.item) {
+            targetPromptLoader.item.close();
+        }
+    }
+
     function formatTime(t) {
         var ms = normalizeMs(t);
         if (ms <= 0) {
@@ -86,12 +157,66 @@ Item {
         priceMargin: root.priceMargin
     }
 
-    Item {
+    FocusScope {
         id: chartArea
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: priceAxis.left
         anchors.bottom: timeAxis.top
+
+        function isPrintableTargetKey(event) {
+            if (!event || event.modifiers !== Qt.NoModifier) {
+                return false;
+            }
+            if (event.key === Qt.Key_Backspace || event.key === Qt.Key_Delete) {
+                return false;
+            }
+            return event.text && event.text.length === 1 && /[a-zA-Z0-9]/.test(event.text);
+        }
+
+        TapHandler {
+            objectName: "chartCanvasTap"
+            target: chartArea
+            gesturePolicy: TapHandler.ReleaseWithinBounds
+            grabPermissions: PointerHandler.ApprovesTakeOverByAnything
+            onTapped: chartArea.forceActiveFocus()
+        }
+
+        Keys.onPressed: function(event) {
+            var prompt = targetPromptLoader.item;
+            if (prompt && prompt.opened) {
+                return;
+            }
+            if (!chartArea.isPrintableTargetKey(event)) {
+                return;
+            }
+            ensureTargetPrompt(event.text);
+            event.accepted = true;
+        }
+
+        Loader {
+            id: targetPromptLoader
+            objectName: "chartTargetPrompt"
+            active: false
+            property string pendingChar: ""
+            x: Spacing.size8
+            y: Spacing.size8
+            sourceComponent: ChartTargetPrompt {
+                context: root.context
+                onCancelled: chartArea.forceActiveFocus()
+                onClosed: {
+                    if (!opened) {
+                        chartArea.forceActiveFocus();
+                    }
+                }
+            }
+            onLoaded: {
+                if (pendingChar.length > 0 && item) {
+                    item.openWith(pendingChar);
+                    pendingChar = "";
+                }
+            }
+        }
 
         Repeater {
             model: 4
