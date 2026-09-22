@@ -202,6 +202,11 @@ pub mod ffi {
         #[qinvokable]
         fn bench_populate(self: Pin<&mut BarFeed>, bars: i64, markers: i64, overlays: i64);
 
+        /// Fills the feed with deterministic bars for gallery captures: `count` completed
+        /// bars and one forming bar, in whole cents.
+        #[qinvokable]
+        fn load_preview_bars(self: Pin<&mut BarFeed>, count: i32);
+
         #[qinvokable]
         fn target_generation(self: &BarFeed) -> i64;
 
@@ -289,28 +294,38 @@ pub fn parse_timeframe_ms(timeframe: &str) -> i64 {
     60_000
 }
 
-/// Value-preserving decimal display rule for prices.
+/// Most decimals a price is displayed with.
+pub const MAX_PRICE_DECIMALS: u32 = 8;
+/// Fewest decimals a price is displayed with.
+pub const MIN_PRICE_DECIMALS: u32 = 2;
+
+/// Smallest number of decimals (up to `MAX_PRICE_DECIMALS`) that represents `val` exactly.
+pub fn price_decimals_of(val: f64) -> u32 {
+    if !val.is_finite() {
+        return 0;
+    }
+    let tolerance = val.abs().mul_add(1e-12, 1e-12);
+    for decimals in 0..=MAX_PRICE_DECIMALS {
+        let scale = 10f64.powi(decimals as i32);
+        if ((val * scale).round() / scale - val).abs() <= tolerance {
+            return decimals;
+        }
+    }
+    MAX_PRICE_DECIMALS
+}
+
+/// Formats a price with the feed's display precision.
 ///
-/// Standard financial conventions format with at least two decimal places (e.g., "100.00", "10.50").
-/// For symbols with higher precision (e.g. crypto, forex, 3+ decimal contracts), exact decimals
-/// are preserved without truncation or rounding to two places (e.g., "1.2345", "0.000125", "100.125").
-pub fn format_feed_price(val: f64) -> String {
-    if val.is_nan() || val.is_infinite() {
+/// The precision is the number of decimals the feed's own prices need (see
+/// `BarFeedRust::price_decimals`), so every price of one symbol - bar values, axis labels
+/// and the pointer price - is shown with the same decimals, never truncated to two and
+/// never padded with floating-point noise.
+pub fn format_feed_price(val: f64, decimals: u32) -> String {
+    if !val.is_finite() {
         return "--".to_string();
     }
-    let s = format!("{:.8}", val);
-    if let Some(dot_pos) = s.find('.') {
-        let int_part = &s[..dot_pos];
-        let dec_part = &s[dot_pos + 1..];
-        let trimmed = dec_part.trim_end_matches('0');
-        if trimmed.len() < 2 {
-            format!("{}.{:0<2}", int_part, trimmed)
-        } else {
-            format!("{}.{}", int_part, trimmed)
-        }
-    } else {
-        format!("{}.00", s)
-    }
+    let decimals = decimals.clamp(MIN_PRICE_DECIMALS, MAX_PRICE_DECIMALS) as usize;
+    format!("{val:.decimals$}")
 }
 
 pub fn format_bar_time(time: i64) -> String {
@@ -436,6 +451,8 @@ pub struct BarFeedRust {
     pub bar_hlc: Vec<(f64, f64, f64)>,
     /// The forming bar is not part of `bar_hlc` until it completes.
     pub forming: Option<(i64, f64, f64, f64, f64)>,
+    /// Display decimals of this target's prices: the most any loaded price needs.
+    pub price_decimals: u32,
     decisions: Vec<ExecutionDecisionState>,
     fills: Vec<ExecutionFillEvent>,
     overlay_series: Vec<OverlaySeries>,
@@ -538,6 +555,7 @@ impl BarFeedRust {
             bar_opens: Vec::new(),
             bar_hlc: Vec::new(),
             forming: None,
+            price_decimals: MIN_PRICE_DECIMALS,
             decisions: Vec::new(),
             fills: Vec::new(),
             overlay_series: Vec::new(),
@@ -620,6 +638,7 @@ impl BarFeedRust {
         self.bar_opens.clear();
         self.bar_hlc.clear();
         self.forming = None;
+        self.price_decimals = MIN_PRICE_DECIMALS;
         self.overlay_series.clear();
         self.markers.clear();
         self.markers_key = None;
@@ -780,6 +799,28 @@ impl BarFeedRust {
         &self.overlay_series
     }
 
+    fn observe_price(&mut self, price: f64) {
+        self.price_decimals = self
+            .price_decimals
+            .max(price_decimals_of(price).min(MAX_PRICE_DECIMALS));
+    }
+
+    fn observe_prices(&mut self, bars: &BarColumns) {
+        for column in [&bars.open, &bars.high, &bars.low, &bars.close] {
+            for &price in column.iter() {
+                self.observe_price(price);
+            }
+        }
+    }
+
+    /// Drops the forming bar once the series no longer has one (it completed, or the
+    /// series was replaced).
+    fn sync_forming(&mut self) {
+        if !self.series.has_forming {
+            self.forming = None;
+        }
+    }
+
     /// Read-only snapshot of one bar at `index` (0-based visible sequence).
     /// Completed bars occupy `0..bar_times.len()`; if a forming bar exists, it sits at `bar_times.len()`.
     /// Returns an invalid snapshot if the index is out of bounds or data is unavailable.
@@ -802,10 +843,10 @@ impl BarFeedRust {
                 high,
                 low,
                 close,
-                open_text: format_feed_price(open),
-                high_text: format_feed_price(high),
-                low_text: format_feed_price(low),
-                close_text: format_feed_price(close),
+                open_text: format_feed_price(open, self.price_decimals),
+                high_text: format_feed_price(high, self.price_decimals),
+                low_text: format_feed_price(low, self.price_decimals),
+                close_text: format_feed_price(close, self.price_decimals),
                 forming: false,
             }
         } else if idx == completed_len {
@@ -819,10 +860,10 @@ impl BarFeedRust {
                     high,
                     low,
                     close,
-                    open_text: format_feed_price(open),
-                    high_text: format_feed_price(high),
-                    low_text: format_feed_price(low),
-                    close_text: format_feed_price(close),
+                    open_text: format_feed_price(open, self.price_decimals),
+                    high_text: format_feed_price(high, self.price_decimals),
+                    low_text: format_feed_price(low, self.price_decimals),
+                    close_text: format_feed_price(close, self.price_decimals),
                     forming: true,
                 }
             } else {
@@ -993,7 +1034,9 @@ impl BarFeedRust {
             self.bar_opens.extend_from_slice(&bars.open);
             self.bar_hlc
                 .extend((0..bar_count).map(|i| (bars.high[i], bars.low[i], bars.close[i])));
+            self.observe_prices(&bars);
             let _ = self.series.load_history(bars);
+            self.sync_forming();
         }
         self.history.finish_load(
             Loaded {
@@ -1065,9 +1108,9 @@ impl BarFeedRust {
     fn apply_delivery_now(&mut self, delivery: BarDelivery) {
         match delivery {
             BarDelivery::Completed(bars) => {
-                self.forming = None;
                 let count = bars.time.len() as i64;
                 let adapted = self.adapt_bars(bars);
+                self.observe_prices(&adapted);
                 let times = adapted.time.clone();
                 let opens = adapted.open.clone();
                 let (highs, lows, closes) = (
@@ -1098,6 +1141,7 @@ impl BarFeedRust {
                             }
                         }
                     }
+                    self.sync_forming();
                     self.applied += count;
                     self.last_applied_instant = Some(Instant::now());
                     self.data_age_ms = 0;
@@ -1107,17 +1151,29 @@ impl BarFeedRust {
                 }
             }
             BarDelivery::Forming(bars) => {
-                if let (Some(&time), Some(&open), Some(&high), Some(&low), Some(&close)) = (
+                let latest = match (
                     bars.time.first(),
                     bars.open.first(),
                     bars.high.first(),
                     bars.low.first(),
                     bars.close.first(),
                 ) {
-                    self.forming = Some((time, open, high, low, close));
-                }
+                    (Some(&time), Some(&open), Some(&high), Some(&low), Some(&close)) => {
+                        Some((time, open, high, low, close))
+                    }
+                    _ => None,
+                };
                 let adapted = self.adapt_bars(bars);
                 if self.series.ingest_forming(adapted).is_ok() {
+                    // Kept only when the series accepted it, so the readout never shows a
+                    // forming bar the chart does not draw.
+                    self.forming = latest;
+                    if let Some((_, open, high, low, close)) = latest {
+                        for price in [open, high, low, close] {
+                            self.observe_price(price);
+                        }
+                    }
+                    self.sync_forming();
                     self.applied += 1;
                     self.last_applied_instant = Some(Instant::now());
                     self.data_age_ms = 0;
@@ -1323,6 +1379,19 @@ impl ffi::BarFeed {
         QString::from(best.map_or("", |(_, h)| h.detail.as_str()))
     }
 
+    pub fn load_preview_bars(mut self: std::pin::Pin<&mut Self>, count: i32) {
+        let before = self.as_ref().rust().snapshot_props();
+        {
+            let rust = self.as_mut().rust_mut();
+            let rust = rust.get_mut();
+            rust.history.open_gate();
+            for delivery in preview_bars(count.max(0) as usize) {
+                rust.apply_delivery(delivery);
+            }
+        }
+        self.as_mut().notify_props(before);
+    }
+
     pub fn bench_populate(
         mut self: std::pin::Pin<&mut Self>,
         bars: i64,
@@ -1503,7 +1572,7 @@ impl ffi::BarFeed {
     }
 
     pub fn format_price(&self, price: f64) -> QString {
-        QString::from(format_feed_price(price))
+        QString::from(format_feed_price(price, self.rust().price_decimals))
     }
 
     pub fn visible_range_json(&self, first_bar: i32, last_bar: i32) -> QString {
@@ -1570,6 +1639,67 @@ fn delivery_first_time(delivery: &BarDelivery) -> Option<i64> {
     match delivery {
         BarDelivery::Completed(bars) | BarDelivery::Forming(bars) => bars.time.first().copied(),
     }
+}
+
+/// Deterministic one-minute bars in whole cents around 38.00; the last one is forming.
+pub fn preview_bars(count: usize) -> Vec<BarDelivery> {
+    let t0 = 1_789_725_600_000i64;
+    let cents = |i: usize| 3800 + ((i as f64 * 0.15).sin() * 120.0).round() as i64 + i as i64;
+    (0..=count)
+        .map(|i| {
+            let open = if i == 0 { cents(0) } else { cents(i - 1) };
+            let close = cents(i);
+            let high = open.max(close) + (i % 5) as i64 + 1;
+            let low = open.min(close) - ((i * 3) % 4) as i64 - 1;
+            let col = make_bar_columns(
+                t0 + i as i64 * 60_000,
+                open as f64 / 100.0,
+                high as f64 / 100.0,
+                low as f64 / 100.0,
+                close as f64 / 100.0,
+            );
+            if i == count {
+                BarDelivery::Forming(col)
+            } else {
+                BarDelivery::Completed(col)
+            }
+        })
+        .collect()
+}
+
+/// Applies one bar straight to the feed with the history gate open, so a headless test
+/// can put known prices on the chart.
+///
+/// # Safety
+/// `feed` must be a valid `BarFeed` pointer.
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn apply_test_bar(
+    feed: *mut ffi::BarFeed,
+    time: i64,
+    open: f64,
+    high: f64,
+    low: f64,
+    close: f64,
+    forming: bool,
+) {
+    if feed.is_null() {
+        return;
+    }
+    let mut pin = std::pin::Pin::new_unchecked(&mut *feed);
+    let before = pin.as_ref().rust().snapshot_props();
+    let col = make_bar_columns(time, open, high, low, close);
+    let delivery = if forming {
+        BarDelivery::Forming(col)
+    } else {
+        BarDelivery::Completed(col)
+    };
+    {
+        let rust = pin.as_mut().rust_mut();
+        let rust = rust.get_mut();
+        rust.history.open_gate();
+        rust.apply_delivery(delivery);
+    }
+    pin.notify_props(before);
 }
 
 pub fn make_bar_columns(t: i64, open: f64, high: f64, low: f64, close: f64) -> BarColumns {
@@ -1900,15 +2030,60 @@ mod tests {
     }
 
     #[test]
-    fn test_format_feed_price_exact_decimals() {
-        assert_eq!(format_feed_price(100.0), "100.00");
-        assert_eq!(format_feed_price(10.5), "10.50");
-        assert_eq!(format_feed_price(10.55), "10.55");
-        assert_eq!(format_feed_price(1.2345), "1.2345");
-        assert_eq!(format_feed_price(0.000125), "0.000125");
-        assert_eq!(format_feed_price(100.125), "100.125");
-        assert_eq!(format_feed_price(34.56789), "34.56789");
-        assert_eq!(format_feed_price(0.0), "0.00");
+    fn test_format_feed_price_uses_feed_precision() {
+        assert_eq!(format_feed_price(100.0, 2), "100.00");
+        assert_eq!(format_feed_price(10.5, 2), "10.50");
+        assert_eq!(format_feed_price(10.5, 3), "10.500");
+        assert_eq!(format_feed_price(1.2345, 4), "1.2345");
+        assert_eq!(format_feed_price(0.000125, 6), "0.000125");
+        assert_eq!(format_feed_price(0.0, 0), "0.00");
+        // Pixel-derived prices are rounded to the feed's decimals, not shown with noise.
+        assert_eq!(format_feed_price(10.748392117, 2), "10.75");
+        assert_eq!(format_feed_price(f64::NAN, 2), "--");
+    }
+
+    #[test]
+    fn test_price_decimals_of_ignores_float_noise() {
+        assert_eq!(price_decimals_of(100.0), 0);
+        assert_eq!(price_decimals_of(10.5), 1);
+        assert_eq!(price_decimals_of(0.1 + 0.2), 1);
+        assert_eq!(price_decimals_of(100.125), 3);
+        assert_eq!(price_decimals_of(0.000125), 6);
+        assert_eq!(price_decimals_of(1.0 / 3.0), MAX_PRICE_DECIMALS);
+    }
+
+    #[test]
+    fn test_bar_feed_price_decimals_follow_loaded_prices() {
+        let mut feed = BarFeedRust::new("PETR4", "1m");
+        feed.history.open_gate();
+        feed.apply_delivery(BarDelivery::Completed(make_bar_columns(
+            60_000, 10.0, 11.5, 9.5, 11.0,
+        )));
+        assert_eq!(feed.price_decimals, 2);
+        feed.apply_delivery(BarDelivery::Forming(make_bar_columns(
+            120_000, 11.0, 11.125, 10.5, 11.0,
+        )));
+        assert_eq!(feed.price_decimals, 3);
+        assert_eq!(feed.bar_snapshot(0).high_text, "11.500");
+        feed.reset_for_target("VALE3", "5m", 2);
+        assert_eq!(feed.price_decimals, MIN_PRICE_DECIMALS);
+    }
+
+    #[test]
+    fn test_bar_feed_forming_cleared_only_when_series_completes_it() {
+        let mut feed = BarFeedRust::new("PETR4", "1m");
+        feed.history.open_gate();
+        feed.apply_delivery(BarDelivery::Completed(make_bar_columns(
+            60_000, 10.0, 11.0, 9.0, 10.5,
+        )));
+        feed.apply_delivery(BarDelivery::Forming(make_bar_columns(
+            120_000, 10.5, 12.0, 10.2, 11.8,
+        )));
+        assert_eq!(feed.forming.is_some(), feed.series.has_forming);
+        feed.apply_delivery(BarDelivery::Completed(make_bar_columns(
+            120_000, 10.5, 12.0, 10.2, 11.9,
+        )));
+        assert_eq!(feed.forming.is_some(), feed.series.has_forming);
     }
 
     #[test]
@@ -1934,17 +2109,18 @@ mod tests {
         assert_eq!(first.high, 11.5);
         assert_eq!(first.low, 9.5);
         assert_eq!(first.close, 11.0);
-        assert_eq!(first.open_text, "10.00");
-        assert_eq!(first.high_text, "11.50");
-        assert_eq!(first.low_text, "9.50");
-        assert_eq!(first.close_text, "11.00");
+        // 13.125 needs three decimals, so every price of this feed shows three.
+        assert_eq!(first.open_text, "10.000");
+        assert_eq!(first.high_text, "11.500");
+        assert_eq!(first.low_text, "9.500");
+        assert_eq!(first.close_text, "11.000");
         assert!(!first.forming);
 
         let mid = feed.bar_snapshot(1);
         assert!(mid.valid);
         assert_eq!(mid.index, 1);
         assert_eq!(mid.time, 120_000);
-        assert_eq!(mid.high_text, "12.25");
+        assert_eq!(mid.high_text, "12.250");
         assert!(!mid.forming);
 
         let last = feed.bar_snapshot(2);
