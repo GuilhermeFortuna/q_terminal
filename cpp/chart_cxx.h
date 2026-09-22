@@ -59,6 +59,26 @@ public:
     rust::String target_prompt_preview() const;
     void submit_target_prompt();
     void cancel_target_prompt();
+    void hover_canvas(float x, float y);
+    void clear_hover();
+    void select_adjacent_bar(int delta);
+    void clear_selection();
+    bool crosshair_visible() const;
+    int active_bar_index() const;
+    rust::String readout_time() const;
+    rust::String readout_open() const;
+    rust::String readout_high() const;
+    rust::String readout_low() const;
+    rust::String readout_close() const;
+    bool readout_forming() const;
+    rust::String readout_pointer_price() const;
+    float crosshair_x() const;
+    float crosshair_y() const;
+    rust::String accessible_text() const;
+    rust::String marker_tooltip_text() const;
+    bool marker_tooltip_visible() const;
+    void pan_bars(int delta);
+    void zoom_at(double anchor, int direction);
     ChartPaneProbeResult result() const;
 
 private:
@@ -239,6 +259,7 @@ void post_feed_overlays(BarFeed* feed, std::int64_t generation, rust::Str json);
 void feed_set_execution_rows(BarFeed* feed, rust::Str decisions, rust::Str fills);
 std::int64_t feed_marker_count(BarFeed* feed);
 std::int64_t feed_rebuild_overlays(BarFeed* feed, int first_bar, int last_bar, double low, double high, float width, float height);
+void feed_populate_bench(BarFeed* feed, std::int64_t bars, std::int64_t markers, std::int64_t overlays);
 
 #include <cstdint>
 

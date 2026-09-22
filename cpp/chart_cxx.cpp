@@ -374,6 +374,32 @@ static void invokePaneVoid(QObject* pane, const char* method) {
     QMetaObject::invokeMethod(pane, method, Qt::DirectConnection);
 }
 
+static int invokePaneInt(QObject* pane, const char* method) {
+    if (!pane) {
+        return 0;
+    }
+    QVariant result;
+    const bool ok =
+        QMetaObject::invokeMethod(pane, method, Qt::DirectConnection, Q_RETURN_ARG(QVariant, result));
+    if (!ok) {
+        return 0;
+    }
+    return result.toInt();
+}
+
+static float invokePaneFloat(QObject* pane, const char* method) {
+    if (!pane) {
+        return 0.0f;
+    }
+    QVariant result;
+    const bool ok =
+        QMetaObject::invokeMethod(pane, method, Qt::DirectConnection, Q_RETURN_ARG(QVariant, result));
+    if (!ok) {
+        return 0.0f;
+    }
+    return result.toFloat();
+}
+
 static void invokePaneVoidArg(QObject* pane, const char* method, const QString& arg) {
     if (!pane) {
         return;
@@ -417,6 +443,110 @@ void ChartPaneProbe::submit_target_prompt() {
 void ChartPaneProbe::cancel_target_prompt() {
     invokePaneVoid(m_impl->pane, "testCancelTargetPrompt");
     process_events();
+}
+
+void ChartPaneProbe::hover_canvas(float x, float y) {
+    if (m_impl->pane) {
+        QMetaObject::invokeMethod(m_impl->pane, "testSetHover", Qt::DirectConnection,
+                                  Q_ARG(QVariant, x), Q_ARG(QVariant, y));
+        process_events();
+    }
+}
+
+void ChartPaneProbe::clear_hover() {
+    invokePaneVoid(m_impl->pane, "testClearHover");
+    process_events();
+}
+
+void ChartPaneProbe::select_adjacent_bar(int delta) {
+    if (m_impl->pane) {
+        QMetaObject::invokeMethod(m_impl->pane, "testSelectAdjacentBar", Qt::DirectConnection,
+                                  Q_ARG(QVariant, delta));
+        process_events();
+    }
+}
+
+void ChartPaneProbe::clear_selection() {
+    invokePaneVoid(m_impl->pane, "testClearSelection");
+    process_events();
+}
+
+bool ChartPaneProbe::crosshair_visible() const {
+    return invokePaneBool(m_impl->pane, "testCrosshairVisible");
+}
+
+int ChartPaneProbe::active_bar_index() const {
+    return invokePaneInt(m_impl->pane, "testActiveBarIndex");
+}
+
+rust::String ChartPaneProbe::readout_time() const {
+    return rust::String(invokePaneString(m_impl->pane, "testReadoutTime").toStdString());
+}
+
+rust::String ChartPaneProbe::readout_open() const {
+    return rust::String(invokePaneString(m_impl->pane, "testReadoutOpen").toStdString());
+}
+
+rust::String ChartPaneProbe::readout_high() const {
+    return rust::String(invokePaneString(m_impl->pane, "testReadoutHigh").toStdString());
+}
+
+rust::String ChartPaneProbe::readout_low() const {
+    return rust::String(invokePaneString(m_impl->pane, "testReadoutLow").toStdString());
+}
+
+rust::String ChartPaneProbe::readout_close() const {
+    return rust::String(invokePaneString(m_impl->pane, "testReadoutClose").toStdString());
+}
+
+bool ChartPaneProbe::readout_forming() const {
+    return invokePaneBool(m_impl->pane, "testReadoutForming");
+}
+
+rust::String ChartPaneProbe::readout_pointer_price() const {
+    return rust::String(invokePaneString(m_impl->pane, "testReadoutPointerPrice").toStdString());
+}
+
+float ChartPaneProbe::crosshair_x() const {
+    return invokePaneFloat(m_impl->pane, "testCrosshairX");
+}
+
+float ChartPaneProbe::crosshair_y() const {
+    return invokePaneFloat(m_impl->pane, "testCrosshairY");
+}
+
+rust::String ChartPaneProbe::accessible_text() const {
+    return rust::String(invokePaneString(m_impl->pane, "testAccessibleText").toStdString());
+}
+
+rust::String ChartPaneProbe::marker_tooltip_text() const {
+    return rust::String(invokePaneString(m_impl->pane, "testMarkerTooltipText").toStdString());
+}
+
+bool ChartPaneProbe::marker_tooltip_visible() const {
+    return invokePaneBool(m_impl->pane, "testMarkerTooltipVisible");
+}
+
+void ChartPaneProbe::pan_bars(int delta) {
+    if (m_impl->pane) {
+        QVariant vpVar = m_impl->pane->property("viewport");
+        QObject* vp = vpVar.value<QObject*>();
+        if (vp) {
+            QMetaObject::invokeMethod(vp, "panBars", Qt::DirectConnection, Q_ARG(QVariant, delta));
+            process_events();
+        }
+    }
+}
+
+void ChartPaneProbe::zoom_at(double anchor, int direction) {
+    if (m_impl->pane) {
+        QVariant vpVar = m_impl->pane->property("viewport");
+        QObject* vp = vpVar.value<QObject*>();
+        if (vp) {
+            QMetaObject::invokeMethod(vp, "zoomAt", Qt::DirectConnection, Q_ARG(QVariant, anchor), Q_ARG(QVariant, direction));
+            process_events();
+        }
+    }
 }
 
 void ChartPaneProbe::set_size(float width, float height) {
@@ -937,6 +1067,12 @@ std::int64_t feed_rebuild_overlays(BarFeed* feed, int first_bar, int last_bar, d
     if (!feed) return 0;
     feed->rebuild_overlays(first_bar, last_bar, low, high, width, height);
     return feed->overlay_layer_count();
+}
+
+void feed_populate_bench(BarFeed* feed, std::int64_t bars, std::int64_t markers, std::int64_t overlays) {
+    if (feed) {
+        feed->bench_populate(bars, markers, overlays);
+    }
 }
 
 std::uintptr_t find_window_ops_status(QQmlApplicationEngine& engine) {

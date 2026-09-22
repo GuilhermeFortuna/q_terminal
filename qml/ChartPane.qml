@@ -26,16 +26,139 @@ Item {
         }
     }
 
-    readonly property string topPriceLabel: viewport.empty ? "" : viewport.highPrice.toFixed(2)
-    readonly property string bottomPriceLabel: viewport.empty ? "" : viewport.lowPrice.toFixed(2)
+    readonly property string topPriceLabel: viewport.empty ? "" : (root.feed && root.feed.format_price ? root.feed.format_price(viewport.highPrice) : viewport.highPrice.toFixed(2))
+    readonly property string bottomPriceLabel: viewport.empty ? "" : (root.feed && root.feed.format_price ? root.feed.format_price(viewport.lowPrice) : viewport.lowPrice.toFixed(2))
+
+    property int keyboardSelectedBar: -1
+    property bool inspectionDismissed: false
+    property bool testHoverActive: false
+    property real testHoverX: 0.0
+    property real testHoverY: 0.0
+
+    readonly property bool effectiveHovered: (hover.hovered || testHoverActive)
+    readonly property real effectiveHoverX: testHoverActive ? testHoverX : hover.point.position.x
+    readonly property real effectiveHoverY: testHoverActive ? testHoverY : hover.point.position.y
+
+    readonly property bool isTargetSwitching: (root.context && root.context.is_switching) || (root.feed && root.feed.history_loading && viewport.empty)
+
+    readonly property int pointerBarIndex: {
+        if (!effectiveHovered || inspectionDismissed || viewport.empty || chartArea.width <= 0) {
+            return -1;
+        }
+        var span = Math.max(1, viewport.lastBar - viewport.firstBar);
+        var barWidth = chartArea.width / span;
+        if (barWidth <= 0) {
+            return -1;
+        }
+        var relX = Math.max(0, Math.min(chartArea.width - 1, effectiveHoverX));
+        var offset = Math.floor(relX / barWidth);
+        offset = Math.max(0, Math.min(span - 1, offset));
+        var idx = viewport.firstBar + offset;
+        return Math.max(0, Math.min(viewport.barCount - 1, idx));
+    }
+
+    readonly property int activeBarIndex: {
+        if (viewport.empty || isTargetSwitching) {
+            return -1;
+        }
+        if (pointerBarIndex >= 0) {
+            return pointerBarIndex;
+        }
+        if (keyboardSelectedBar >= 0 && !inspectionDismissed) {
+            return Math.max(viewport.firstBar, Math.min(Math.max(viewport.firstBar, viewport.lastBar - 1), keyboardSelectedBar));
+        }
+        return -1;
+    }
+
+    readonly property var barSnapshot: {
+        var rev = root.feed ? root.feed.revision : 0;
+        if (!root.feed || activeBarIndex < 0 || !root.feed.bar_snapshot_json || isTargetSwitching || viewport.empty) {
+            return ({ valid: false });
+        }
+        try {
+            return JSON.parse(root.feed.bar_snapshot_json(activeBarIndex));
+        } catch (error) {
+            return ({ valid: false });
+        }
+    }
+
+    readonly property bool crosshairVisible: !viewport.empty && !isTargetSwitching && activeBarIndex >= 0 && activeBarIndex >= viewport.firstBar && activeBarIndex < viewport.lastBar && barSnapshot.valid
+
+    readonly property real crosshairX: {
+        var span = Math.max(1, viewport.lastBar - viewport.firstBar);
+        var barWidth = chartArea.width / span;
+        var offset = activeBarIndex - viewport.firstBar;
+        return (offset + 0.5) * barWidth;
+    }
+
+    readonly property real crosshairY: {
+        if (effectiveHovered && !inspectionDismissed) {
+            return Math.max(0, Math.min(chartArea.height - 1, effectiveHoverY));
+        }
+        if (barSnapshot.valid && chartArea.height > 0) {
+            var span = viewport.highPrice - viewport.lowPrice;
+            if (span > 0) {
+                var fraction = (viewport.highPrice - barSnapshot.close) / span;
+                return Math.max(0, Math.min(chartArea.height - 1, fraction * chartArea.height));
+            }
+        }
+        return chartArea.height * 0.5;
+    }
+
+    readonly property string pointerPriceText: {
+        if (!root.feed || !effectiveHovered || inspectionDismissed || chartArea.height <= 0 || viewport.empty) {
+            return "";
+        }
+        var fraction = Math.max(0.0, Math.min(1.0, effectiveHoverY / chartArea.height));
+        var pVal = viewport.highPrice - fraction * (viewport.highPrice - viewport.lowPrice);
+        return root.feed.format_price ? root.feed.format_price(pVal) : pVal.toFixed(2);
+    }
+
+    readonly property string accessibleReadoutText: {
+        if (!barSnapshot.valid) {
+            return "";
+        }
+        var res = "Bar " + (barSnapshot.time_text || "") + (barSnapshot.forming ? " forming" : "") +
+                  " open " + (barSnapshot.open_text || "--") + " high " + (barSnapshot.high_text || "--") +
+                  " low " + (barSnapshot.low_text || "--") + " close " + (barSnapshot.close_text || "--");
+        if (pointerPriceText !== "") {
+            res += " pointer " + pointerPriceText;
+        }
+        return res;
+    }
+
+    function selectAdjacentBar(delta) {
+        if (viewport.empty) {
+            return;
+        }
+        inspectionDismissed = false;
+        var minIdx = viewport.firstBar;
+        var maxIdx = Math.max(viewport.firstBar, viewport.lastBar - 1);
+        if (keyboardSelectedBar < 0) {
+            if (delta < 0) {
+                keyboardSelectedBar = maxIdx;
+            } else {
+                keyboardSelectedBar = minIdx;
+            }
+        } else {
+            var next = keyboardSelectedBar + delta;
+            keyboardSelectedBar = Math.max(minIdx, Math.min(maxIdx, next));
+        }
+    }
+
+    function clearKeyboardSelection() {
+        keyboardSelectedBar = -1;
+        inspectionDismissed = true;
+    }
 
     function updateTip() {
-        if (!root.feed || !hover.hovered) {
+        if (!root.feed || !effectiveHovered) {
             tipText.text = "";
             return;
         }
-        tipText.text = root.feed.marker_detail_at(hover.point.position.x, hover.point.position.y, 10);
+        tipText.text = root.feed.marker_detail_at(effectiveHoverX, effectiveHoverY, 10);
     }
+
 
     function pad2(n) {
         return (n < 10 ? "0" : "") + n;
@@ -127,6 +250,88 @@ Item {
         }
     }
 
+    function testSelectAdjacentBar(delta) {
+        selectAdjacentBar(delta);
+    }
+
+    function testClearSelection() {
+        clearKeyboardSelection();
+    }
+
+    function testSetHover(x, y) {
+        testHoverActive = true;
+        testHoverX = x;
+        testHoverY = y;
+        inspectionDismissed = false;
+        updateTip();
+    }
+
+    function testClearHover() {
+        testHoverActive = false;
+        updateTip();
+    }
+
+    function testActiveBarIndex() {
+        return activeBarIndex;
+    }
+
+    function testCrosshairVisible() {
+        return crosshairVisible;
+    }
+
+    function testReadoutTime() {
+        return barSnapshot.time_text || "";
+    }
+
+    function testReadoutOpen() {
+        return barSnapshot.open_text || "";
+    }
+
+    function testReadoutHigh() {
+        return barSnapshot.high_text || "";
+    }
+
+    function testReadoutLow() {
+        return barSnapshot.low_text || "";
+    }
+
+    function testReadoutClose() {
+        return barSnapshot.close_text || "";
+    }
+
+    function testReadoutForming() {
+        return !!barSnapshot.forming;
+    }
+
+    function testReadoutPointerPrice() {
+        return pointerPriceText;
+    }
+
+    function testCrosshairX() {
+        return crosshairX;
+    }
+
+    function testCrosshairY() {
+        return crosshairY;
+    }
+
+    function testAccessibleText() {
+        return accessibleReadoutText;
+    }
+
+    function testMarkerTooltipText() {
+        return tipText.text;
+    }
+
+    function testMarkerTooltipVisible() {
+        return tip.visible;
+    }
+
+    function testKeyboardSelectedBar() {
+        return keyboardSelectedBar;
+    }
+
+
     function formatTime(t) {
         var ms = normalizeMs(t);
         if (ms <= 0) {
@@ -166,6 +371,7 @@ Item {
         revision: root.feed ? root.feed.revision : 0
         barsVisible: root.barsVisible
         priceMargin: root.priceMargin
+        onBarCountChanged: root.keyboardSelectedBar = -1
     }
 
     FocusScope {
@@ -174,6 +380,9 @@ Item {
         anchors.left: parent.left
         anchors.right: priceAxis.left
         anchors.bottom: timeAxis.top
+
+        Accessible.role: Accessible.Grouping
+        Accessible.name: root.accessibleReadoutText !== "" ? root.accessibleReadoutText : "Chart Canvas"
 
         function isPrintableTargetKey(event) {
             if (!event || event.modifiers !== Qt.NoModifier) {
@@ -205,6 +414,21 @@ Item {
             }
             if (event.key === Qt.Key_Minus) {
                 viewport.zoomAt(0.5, -1);
+                event.accepted = true;
+                return;
+            }
+            if (event.key === Qt.Key_Left) {
+                root.selectAdjacentBar(-1);
+                event.accepted = true;
+                return;
+            }
+            if (event.key === Qt.Key_Right) {
+                root.selectAdjacentBar(1);
+                event.accepted = true;
+                return;
+            }
+            if (event.key === Qt.Key_Escape) {
+                root.clearKeyboardSelection();
                 event.accepted = true;
                 return;
             }
@@ -292,9 +516,43 @@ Item {
                 highPrice: viewport.highPrice
             }
 
+            // Crosshair vertical line at nearest visible bar
+            Rectangle {
+                id: crosshairVertical
+                objectName: "crosshairVertical"
+                visible: root.crosshairVisible
+                x: Math.round(root.crosshairX)
+                y: 0
+                width: Spacing.size1
+                height: chartContainer.height
+                color: Theme.borderStrong
+                z: 1
+            }
+
+            // Crosshair horizontal line at pointer price
+            Rectangle {
+                id: crosshairHorizontal
+                objectName: "crosshairHorizontal"
+                visible: root.crosshairVisible
+                x: 0
+                y: Math.round(root.crosshairY)
+                width: chartContainer.width
+                height: Spacing.size1
+                color: Theme.borderStrong
+                z: 1
+            }
+
             HoverHandler {
                 id: hover
-                onPointChanged: root.updateTip()
+                onPointChanged: {
+                    root.inspectionDismissed = false;
+                    root.updateTip();
+                }
+                onHoveredChanged: {
+                    if (!hovered) {
+                        root.updateTip();
+                    }
+                }
             }
 
             DragHandler {
@@ -339,12 +597,13 @@ Item {
                 id: tip
                 objectName: "markerTooltip"
                 visible: tipText.text !== ""
-                x: Math.min(hover.point.position.x + 12, chartContainer.width - width)
-                y: Math.min(hover.point.position.y + 12, chartContainer.height - height)
-                width: tipText.implicitWidth + 12
-                height: tipText.implicitHeight + 8
+                x: Math.min(root.effectiveHoverX + Spacing.size12, chartContainer.width - width)
+                y: Math.min(root.effectiveHoverY + Spacing.size12, chartContainer.height - height)
+                width: tipText.implicitWidth + Spacing.size12
+                height: tipText.implicitHeight + Spacing.size8
                 color: Theme.surfaceElevated
                 border.color: Theme.borderStrong
+                z: 4
 
                 Text {
                     id: tipText
@@ -354,6 +613,7 @@ Item {
                 }
             }
         }
+
 
         ChartEmptyState {
             id: emptyState
@@ -366,6 +626,22 @@ Item {
 
         focus: true
         activeFocusOnTab: true
+    }
+
+    BarReadout {
+        id: barReadout
+        objectName: "barReadout"
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: navigationStatus.left
+        anchors.topMargin: Spacing.size4
+        anchors.leftMargin: Spacing.size8
+        anchors.rightMargin: Spacing.size8
+        z: 2
+        previewState: ""
+        snapshot: root.barSnapshot
+        pointerPrice: root.pointerPriceText
+        visible: root.crosshairVisible && !!root.barSnapshot.valid
     }
 
     Row {
@@ -443,6 +719,31 @@ Item {
             color: Theme.textTertiary
             font.pixelSize: Theme.typeBodySmall
             visible: !viewport.empty
+        }
+
+        Rectangle {
+            id: crosshairPriceBadge
+            objectName: "crosshairPriceBadge"
+            visible: root.crosshairVisible && root.pointerPriceText !== ""
+            anchors.left: parent.left
+            y: Math.max(0, Math.min(priceAxis.height - height, root.crosshairY - height / 2))
+            width: crosshairPriceText.implicitWidth + Spacing.size8
+            height: Spacing.badgeHeight
+            color: Theme.surfaceElevated
+            border.color: Theme.borderStrong
+            radius: Spacing.radiusSmall
+            z: 3
+
+            Text {
+                id: crosshairPriceText
+                objectName: "crosshairPriceText"
+                anchors.centerIn: parent
+                text: root.pointerPriceText
+                color: Theme.textPrimary
+                font.pixelSize: Theme.typeLabelSmall
+                font.family: Theme.numericFontFamily
+                font.features: { "tnum": 1 }
+            }
         }
     }
 
