@@ -193,6 +193,26 @@ pub mod chart {
         fn target_prompt_preview(self: &ChartPaneProbe) -> String;
         fn submit_target_prompt(self: Pin<&mut ChartPaneProbe>);
         fn cancel_target_prompt(self: Pin<&mut ChartPaneProbe>);
+        fn hover_canvas(self: Pin<&mut ChartPaneProbe>, x: f32, y: f32);
+        fn clear_hover(self: Pin<&mut ChartPaneProbe>);
+        fn select_adjacent_bar(self: Pin<&mut ChartPaneProbe>, delta: i32);
+        fn clear_selection(self: Pin<&mut ChartPaneProbe>);
+        fn crosshair_visible(self: &ChartPaneProbe) -> bool;
+        fn active_bar_index(self: &ChartPaneProbe) -> i32;
+        fn readout_time(self: &ChartPaneProbe) -> String;
+        fn readout_open(self: &ChartPaneProbe) -> String;
+        fn readout_high(self: &ChartPaneProbe) -> String;
+        fn readout_low(self: &ChartPaneProbe) -> String;
+        fn readout_close(self: &ChartPaneProbe) -> String;
+        fn readout_forming(self: &ChartPaneProbe) -> bool;
+        fn readout_pointer_price(self: &ChartPaneProbe) -> String;
+        fn crosshair_x(self: &ChartPaneProbe) -> f32;
+        fn crosshair_y(self: &ChartPaneProbe) -> f32;
+        fn accessible_text(self: &ChartPaneProbe) -> String;
+        fn marker_tooltip_text(self: &ChartPaneProbe) -> String;
+        fn marker_tooltip_visible(self: &ChartPaneProbe) -> bool;
+        fn pan_bars(self: Pin<&mut ChartPaneProbe>, delta: i32);
+        fn zoom_at(self: Pin<&mut ChartPaneProbe>, anchor: f64, direction: i32);
         fn result(self: &ChartPaneProbe) -> ChartPaneProbeResult;
 
         fn register_bar_chart_types();
@@ -280,6 +300,7 @@ pub mod chart {
             width: f32,
             height: f32,
         ) -> i64;
+        unsafe fn feed_populate_bench(feed: *mut BarFeed, bars: i64, markers: i64, overlays: i64);
 
         unsafe fn feed_bar_times_len(feed: *mut BarFeed) -> i32;
         unsafe fn feed_bar_time_at(feed: *mut BarFeed, index: i32) -> i64;
@@ -345,11 +366,11 @@ pub use chart::{
     execution_models_revision, execution_models_select_account, execution_models_select_deployment,
     execution_models_setup, execution_models_sync, feed_bar_count, feed_bar_time_at,
     feed_bar_times_len, feed_history_error, feed_history_loading, feed_history_source,
-    feed_marker_count, feed_rebuild_geometry, feed_rebuild_overlays, feed_rest_calls,
-    feed_retarget, feed_set_bar_count, feed_set_connection_state, feed_set_data_age_ms,
-    feed_set_execution_rows, feed_set_history, feed_set_last_error, feed_set_live_only,
-    feed_set_stale, feed_set_symbol, feed_set_timeframe, feed_setup_and_load, feed_stale_dropped,
-    feed_symbol, feed_target_generation, feed_vertex_at, feed_vertex_len,
+    feed_marker_count, feed_populate_bench, feed_rebuild_geometry, feed_rebuild_overlays,
+    feed_rest_calls, feed_retarget, feed_set_bar_count, feed_set_connection_state,
+    feed_set_data_age_ms, feed_set_execution_rows, feed_set_history, feed_set_last_error,
+    feed_set_live_only, feed_set_stale, feed_set_symbol, feed_set_timeframe, feed_setup_and_load,
+    feed_stale_dropped, feed_symbol, feed_target_generation, feed_vertex_at, feed_vertex_len,
     find_window_chart_context, find_window_execution_controls, find_window_execution_models,
     find_window_feed, find_window_ops_status, make_chart_identity_probe, make_chart_pane_probe,
     make_empty_state_probe, make_status_strip_probe, make_test_chart_context,

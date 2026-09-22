@@ -629,3 +629,169 @@ fn chart_pane_canvas_without_focus_does_not_open_prompt() {
         assert!(!pin.target_prompt_open());
     }
 }
+
+unsafe fn setup_chart_pane_with_bars(
+    probe: &mut cxx::UniquePtr<chart::ChartPaneProbe>,
+    bar_count: i64,
+    marker_count: i64,
+) -> (*mut chart::BarFeed, *mut chart_context::ffi::ChartContext) {
+    let feed = chart::make_test_feed();
+    chart::feed_set_symbol(feed, "PETR4");
+    chart::feed_set_timeframe(feed, "1m", 60_000);
+    chart::feed_populate_bench(feed, bar_count, marker_count, 0);
+
+    let ctx = chart::make_test_chart_context() as *mut chart_context::ffi::ChartContext;
+    chart_context::set_configured(ctx, "PETR4", "1m");
+    chart_context::sync_ptr(ctx);
+
+    let mut pin = probe.pin_mut();
+    pin.as_mut().set_size(640.0, 360.0);
+    pin.as_mut().set_feed(feed);
+    pin.as_mut().set_context(ctx as *mut chart::ChartContext);
+    chart::process_events();
+    chart::process_events();
+    (feed, ctx)
+}
+
+#[test]
+fn chart_pane_crosshair_and_readout_on_hover() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let (_feed, _ctx) = setup_chart_pane_with_bars(&mut probe, 20, 0);
+        let mut pin = probe.pin_mut();
+
+        assert!(!pin.crosshair_visible());
+        assert!(pin.readout_pointer_price().is_empty());
+
+        // Hover within canvas
+        pin.as_mut().hover_canvas(100.0, 150.0);
+        assert!(pin.crosshair_visible());
+        assert!(pin.active_bar_index() >= 0);
+        assert!(pin.readout_time().contains("UTC"));
+        assert!(!pin.readout_open().is_empty());
+        assert_ne!(pin.readout_open(), "--");
+        assert!(!pin.readout_high().is_empty());
+        assert!(!pin.readout_low().is_empty());
+        assert!(!pin.readout_close().is_empty());
+        assert!(!pin.readout_forming());
+        assert!(!pin.readout_pointer_price().is_empty());
+        assert!(pin.accessible_text().contains("Bar"));
+
+        // Clear hover hides crosshair
+        pin.as_mut().clear_hover();
+        assert!(!pin.crosshair_visible());
+    }
+}
+
+#[test]
+fn chart_pane_crosshair_tracks_pan_and_zoom() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let (_feed, _ctx) = setup_chart_pane_with_bars(&mut probe, 100, 0);
+        let mut pin = probe.pin_mut();
+        pin.as_mut().set_bars_visible(20);
+        chart::process_events();
+
+        pin.as_mut().hover_canvas(200.0, 100.0);
+        assert!(pin.crosshair_visible());
+        let initial_bar = pin.active_bar_index();
+
+        // Pan viewport left (negative delta moves viewport earlier in history)
+        pin.as_mut().pan_bars(-10);
+        chart::process_events();
+        let panned_bar = pin.active_bar_index();
+        assert_ne!(initial_bar, panned_bar);
+        assert!(pin.crosshair_visible());
+
+        // Zoom at anchor 0.5
+        pin.as_mut().zoom_at(0.5, 1);
+        chart::process_events();
+        assert!(pin.crosshair_visible());
+    }
+}
+
+#[test]
+fn chart_pane_empty_feed_hides_crosshair_and_readout() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let feed = chart::make_test_feed();
+        chart::feed_set_symbol(feed, "PETR4");
+        chart::feed_set_timeframe(feed, "1m", 60_000);
+        chart::feed_set_bar_count(feed, 0);
+
+        let ctx = chart::make_test_chart_context() as *mut chart_context::ffi::ChartContext;
+        chart_context::set_configured(ctx, "PETR4", "1m");
+        chart_context::sync_ptr(ctx);
+
+        let mut pin = probe.pin_mut();
+        pin.as_mut().set_size(640.0, 360.0);
+        pin.as_mut().set_feed(feed);
+        pin.as_mut().set_context(ctx as *mut chart::ChartContext);
+        chart::process_events();
+
+        // Hover over empty canvas
+        pin.as_mut().hover_canvas(100.0, 100.0);
+        assert!(!pin.crosshair_visible());
+        assert!(pin.readout_time().is_empty());
+    }
+}
+
+#[test]
+fn chart_pane_keyboard_navigation_and_priority() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let (_feed, _ctx) = setup_chart_pane_with_bars(&mut probe, 20, 0);
+        let mut pin = probe.pin_mut();
+
+        pin.as_mut().focus_canvas();
+        assert!(!pin.crosshair_visible());
+
+        // Right arrow selects adjacent bar
+        pin.as_mut().select_adjacent_bar(1);
+        chart::process_events();
+        assert!(pin.crosshair_visible());
+        let first_idx = pin.active_bar_index();
+
+        // Advance to next bar
+        pin.as_mut().select_adjacent_bar(1);
+        chart::process_events();
+        let next_idx = pin.active_bar_index();
+        assert_eq!(next_idx, first_idx + 1);
+
+        // Clamping to visible edge (e.g. repeated Left moves to first bar and clamps)
+        for _ in 0..30 {
+            pin.as_mut().select_adjacent_bar(-1);
+        }
+        chart::process_events();
+        assert_eq!(pin.active_bar_index(), 0);
+
+        // Escape clears selection
+        pin.as_mut().clear_selection();
+        chart::process_events();
+        assert!(!pin.crosshair_visible());
+
+        // Printable key still opens target prompt with priority
+        pin.as_mut().set_target_prompt_draft("V");
+        assert!(pin.target_prompt_preview().contains("V"));
+    }
+}
+
+#[test]
+fn chart_pane_marker_tooltip_coexists_with_crosshair() {
+    let _guard = setup();
+    unsafe {
+        let mut probe = chart::make_chart_pane_probe();
+        let (feed, _ctx) = setup_chart_pane_with_bars(&mut probe, 20, 5);
+        chart::feed_rebuild_overlays(feed, 0, 20, 80.0, 120.0, 640.0, 360.0);
+        chart::process_events();
+
+        let mut pin = probe.pin_mut();
+        pin.as_mut().hover_canvas(100.0, 150.0);
+        assert!(pin.crosshair_visible());
+        assert!(!pin.readout_open().is_empty());
+    }
+}
