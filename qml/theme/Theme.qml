@@ -78,6 +78,8 @@ QtObject {
     readonly property int metricHeight: Spacing.metricHeight
     readonly property int dialogWidth: Spacing.dialogWidth
     readonly property int priceAxisWidth: Spacing.priceAxisWidth
+    readonly property int chartMinimumVisibleBars: Spacing.chartMinimumVisibleBars
+    readonly property int chartMaximumVisibleBars: Spacing.chartMaximumVisibleBars
 
     readonly property int typeLabelSmall: 9
     readonly property int typeLabel: 10

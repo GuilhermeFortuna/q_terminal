@@ -35,6 +35,7 @@ Controls behaviour for focus, keyboard input and accessibility.
 | `AppComboBox` | Qaterial, Qt Quick Controls | QQC2 popup/list and keyboard selection structure | Desktop-density popup rows and Lucide chevron asset |
 | `ChartIdentity` | Quantower, Grafana, MuseScore 4 | Quantower's chart context line (symbol, timeframe, series type); Grafana's ranked freshness badge separate from transport health; MuseScore's compact two-line panel header | Target source and pending retarget stay distinct from the feed's committed symbol; long deployment names truncate with tooltip; condition never treats a connected socket alone as live |
 | `ChartTargetPicker` | Quantower, TradingView | Symbol direct entry and suggestions popup, timeframe selector, explicit apply button, and follow-deployment restoration | Single shared feed model across windows; suggestions categorized into Configured, Deployment, and Recent; keyboard navigation (Enter/Return, Esc, arrows) and inline recoverable error chip |
+| `Chart navigation` | Quantower chart navigation, Qt Quick pointer handlers | Bounded horizontal pan, pointer-anchored wheel zoom, keyboard `+`/`-`, and an explicit live-follow/history-inspection status | Navigation is local presentation state; loaded-history boundaries are visible, the first forming bar remains aligned with the same viewport, and Return to live is the only action that resumes automatic right-edge following |
 
 ## Asset and pipeline notes
 

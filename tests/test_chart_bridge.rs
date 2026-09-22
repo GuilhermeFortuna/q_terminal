@@ -233,6 +233,78 @@ fn viewport_ends_at_newest_bar_and_holds_bars_visible() {
 }
 
 #[test]
+fn viewport_navigation_clamps_pan_and_reports_history_mode() {
+    let _guard = setup();
+    let mut probe = chart::make_viewport_probe();
+    let mut pin = probe.pin_mut();
+    pin.as_mut().set_bars_visible(5);
+    pin.as_mut().update(20, 100.0, 200.0, 1);
+    assert_eq!(pin.result().first_bar, 15);
+    assert_eq!(pin.result().last_bar, 20);
+    assert_eq!(pin.result().mode, "following");
+
+    pin.as_mut().pan_bars(-3);
+    let inspected = pin.result();
+    assert_eq!((inspected.first_bar, inspected.last_bar), (12, 17));
+    assert_eq!(inspected.mode, "inspecting");
+
+    pin.as_mut().pan_bars(-100);
+    let left = pin.result();
+    assert_eq!((left.first_bar, left.last_bar), (0, 5));
+    pin.as_mut().pan_bars(100);
+    let right = pin.result();
+    assert_eq!((right.first_bar, right.last_bar), (15, 20));
+    assert_eq!(right.mode, "inspecting");
+}
+
+#[test]
+fn viewport_zoom_keeps_anchor_bar_and_return_to_live_resumes_following() {
+    let _guard = setup();
+    let mut probe = chart::make_viewport_probe();
+    let mut pin = probe.pin_mut();
+    pin.as_mut().set_bars_visible(10);
+    pin.as_mut().update(40, 100.0, 200.0, 1);
+
+    pin.as_mut().zoom_at(0.5, 1);
+    let zoomed = pin.result();
+    assert_eq!((zoomed.first_bar, zoomed.last_bar), (31, 39));
+    assert_eq!(zoomed.mode, "inspecting");
+
+    pin.as_mut().update(41, 100.0, 200.0, 2);
+    assert_eq!((pin.result().first_bar, pin.result().last_bar), (31, 39));
+
+    pin.as_mut().return_to_live();
+    let live = pin.result();
+    assert_eq!((live.first_bar, live.last_bar), (31, 41));
+    assert_eq!(live.mode, "following");
+
+    pin.as_mut().update(42, 100.0, 200.0, 3);
+    assert_eq!((pin.result().first_bar, pin.result().last_bar), (32, 42));
+}
+
+#[test]
+fn viewport_empty_singleton_and_target_reset_are_safe() {
+    let _guard = setup();
+    let mut probe = chart::make_viewport_probe();
+    let mut pin = probe.pin_mut();
+    pin.as_mut().set_bars_visible(10);
+    pin.as_mut().update(0, 0.0, 0.0, 0);
+    assert_eq!(pin.result().mode, "following");
+
+    pin.as_mut().update(1, 100.0, 100.0, 1);
+    assert_eq!((pin.result().first_bar, pin.result().last_bar), (0, 1));
+    pin.as_mut().pan_bars(-2);
+    assert_eq!((pin.result().first_bar, pin.result().last_bar), (0, 1));
+    pin.as_mut().zoom_at(0.0, 1);
+    assert_eq!((pin.result().first_bar, pin.result().last_bar), (0, 1));
+
+    pin.as_mut().reset_for_target();
+    let reset = pin.result();
+    assert_eq!((reset.first_bar, reset.last_bar), (0, 0));
+    assert_eq!(reset.mode, "following");
+}
+
+#[test]
 fn viewport_completed_bar_advances_by_one() {
     let _guard = setup();
     let mut probe = chart::make_viewport_probe();

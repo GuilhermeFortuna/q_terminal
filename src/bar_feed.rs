@@ -77,6 +77,7 @@ pub mod ffi {
         #[qproperty(QString, symbol)]
         #[qproperty(QString, timeframe)]
         #[qproperty(i64, bar_count)]
+        #[qproperty(bool, has_forming)]
         #[qproperty(i64, revision)]
         #[qproperty(f64, last_price)]
         #[qproperty(i64, first_time)]
@@ -229,6 +230,9 @@ pub mod ffi {
         fn bar_time_at(self: &BarFeed, index: i32) -> i64;
 
         #[qinvokable]
+        fn visible_range_json(self: &BarFeed, first_bar: i32, last_bar: i32) -> QString;
+
+        #[qinvokable]
         fn vertex_ptr(self: &BarFeed) -> i64;
 
         #[qinvokable]
@@ -302,6 +306,7 @@ pub struct BarFeedRust {
     pub symbol: QString,
     pub timeframe: QString,
     pub bar_count: i64,
+    pub has_forming: bool,
     pub revision: i64,
     pub last_price: f64,
     pub first_time: i64,
@@ -323,6 +328,8 @@ pub struct BarFeedRust {
     /// to a previous target and are dropped.
     /// High, low and close of each completed bar, indexed like `bar_times`.
     pub bar_hlc: Vec<(f64, f64, f64)>,
+    /// The forming bar is not part of `bar_hlc` until it completes.
+    pub forming: Option<(i64, f64, f64, f64, f64)>,
     decisions: Vec<ExecutionDecisionState>,
     fills: Vec<ExecutionFillEvent>,
     overlay_series: Vec<OverlaySeries>,
@@ -347,6 +354,7 @@ struct PropSnapshot {
     timeframe: QString,
     timeframe_ms: i64,
     bar_count: i64,
+    has_forming: bool,
     revision: i64,
     last_price: f64,
     first_time: i64,
@@ -398,6 +406,7 @@ impl BarFeedRust {
             symbol: QString::from(symbol),
             timeframe: QString::from(timeframe),
             bar_count: series.bar_count,
+            has_forming: series.has_forming,
             revision: series.revision,
             last_price: series.last_price,
             first_time: series.first_time,
@@ -421,6 +430,7 @@ impl BarFeedRust {
             stale_dropped: 0,
             overlay_revision: 0,
             bar_hlc: Vec::new(),
+            forming: None,
             decisions: Vec::new(),
             fills: Vec::new(),
             overlay_series: Vec::new(),
@@ -439,6 +449,7 @@ impl BarFeedRust {
             timeframe: self.timeframe.clone(),
             timeframe_ms: self.timeframe_ms,
             bar_count: self.bar_count,
+            has_forming: self.has_forming,
             revision: self.revision,
             last_price: self.last_price,
             first_time: self.first_time,
@@ -465,6 +476,7 @@ impl BarFeedRust {
         self.timeframe = p.timeframe;
         self.timeframe_ms = p.timeframe_ms;
         self.bar_count = p.bar_count;
+        self.has_forming = p.has_forming;
         self.revision = p.revision;
         self.last_price = p.last_price;
         self.first_time = p.first_time;
@@ -499,6 +511,7 @@ impl BarFeedRust {
         };
         self.bar_times.clear();
         self.bar_hlc.clear();
+        self.forming = None;
         self.overlay_series.clear();
         self.markers.clear();
         self.markers_key = None;
@@ -737,6 +750,7 @@ impl BarFeedRust {
         self.symbol = self.series.symbol.clone();
         self.timeframe = self.series.timeframe.clone();
         self.bar_count = self.series.bar_count;
+        self.has_forming = self.series.has_forming;
         self.revision = self.series.revision;
         self.last_price = self.series.last_price;
         self.first_time = self.series.first_time;
@@ -888,6 +902,7 @@ impl BarFeedRust {
     fn apply_delivery_now(&mut self, delivery: BarDelivery) {
         match delivery {
             BarDelivery::Completed(bars) => {
+                self.forming = None;
                 let count = bars.time.len() as i64;
                 let adapted = self.adapt_bars(bars);
                 let times = adapted.time.clone();
@@ -924,6 +939,15 @@ impl BarFeedRust {
                 }
             }
             BarDelivery::Forming(bars) => {
+                if let (Some(&time), Some(&open), Some(&high), Some(&low), Some(&close)) = (
+                    bars.time.first(),
+                    bars.open.first(),
+                    bars.high.first(),
+                    bars.low.first(),
+                    bars.close.first(),
+                ) {
+                    self.forming = Some((time, open, high, low, close));
+                }
                 let adapted = self.adapt_bars(bars);
                 if self.series.ingest_forming(adapted).is_ok() {
                     self.applied += 1;
@@ -958,6 +982,7 @@ impl ffi::BarFeed {
         self.as_mut().set_timeframe(after.timeframe);
         self.as_mut().set_timeframe_ms(after.timeframe_ms);
         self.as_mut().set_bar_count(after.bar_count);
+        self.as_mut().set_has_forming(after.has_forming);
         self.as_mut().set_last_price(after.last_price);
         self.as_mut().set_first_time(after.first_time);
         self.as_mut().set_last_time(after.last_time);
@@ -1288,9 +1313,52 @@ impl ffi::BarFeed {
     pub fn bar_time_at(&self, index: i32) -> i64 {
         if index >= 0 && (index as usize) < self.rust().bar_times.len() {
             self.rust().bar_times[index as usize]
+        } else if index == self.rust().bar_times.len() as i32 {
+            self.rust().forming.map(|bar| bar.0).unwrap_or(0)
         } else {
             0
         }
+    }
+
+    pub fn visible_range_json(&self, first_bar: i32, last_bar: i32) -> QString {
+        let feed = self.rust();
+        let first = first_bar.max(0) as usize;
+        let last = last_bar.max(0) as usize;
+        if first >= last || (first >= feed.bar_count.max(0) as usize && feed.forming.is_none()) {
+            return QString::from(r#"{"valid":false}"#);
+        }
+        let completed_last = last.min(feed.bar_hlc.len());
+        let mut low = f64::INFINITY;
+        let mut high = f64::NEG_INFINITY;
+        for (bar_high, bar_low, _) in &feed.bar_hlc[first.min(completed_last)..completed_last] {
+            low = low.min(*bar_low);
+            high = high.max(*bar_high);
+        }
+        if last > feed.bar_hlc.len() {
+            if let Some((_, _, forming_high, forming_low, _)) = feed.forming {
+                low = low.min(forming_low);
+                high = high.max(forming_high);
+            }
+        }
+        let first_time = feed
+            .bar_times
+            .get(first)
+            .copied()
+            .or_else(|| feed.forming.map(|bar| bar.0))
+            .unwrap_or(0);
+        let last_time = feed
+            .bar_times
+            .get(last - 1)
+            .copied()
+            .or_else(|| feed.forming.map(|bar| bar.0))
+            .unwrap_or(0);
+        if !low.is_finite() || !high.is_finite() || first_time == 0 || last_time == 0 {
+            return QString::from(r#"{"valid":false}"#);
+        }
+        QString::from(format!(
+            r#"{{"valid":true,"first_time":{},"last_time":{},"low":{},"high":{}}}"#,
+            first_time, last_time, low, high
+        ))
     }
 
     pub fn vertex_ptr(&self) -> i64 {
