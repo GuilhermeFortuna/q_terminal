@@ -15,17 +15,6 @@ Item {
     readonly property bool empty: viewport.empty
     readonly property bool inspectingHistory: viewport.inspectingHistory
     readonly property bool atLoadedHistoryBoundary: !viewport.empty && viewport.firstBar === 0
-    readonly property var visibleRange: {
-        if (!root.feed || viewport.empty || !root.feed.visible_range_json) {
-            return ({ valid: false });
-        }
-        try {
-            return JSON.parse(root.feed.visible_range_json(viewport.firstBar, viewport.lastBar));
-        } catch (error) {
-            return ({ valid: false });
-        }
-    }
-
     readonly property string topPriceLabel: viewport.empty ? "" : (root.feed && root.feed.format_price ? root.feed.format_price(viewport.highPrice) : viewport.highPrice.toFixed(2))
     readonly property string bottomPriceLabel: viewport.empty ? "" : (root.feed && root.feed.format_price ? root.feed.format_price(viewport.lowPrice) : viewport.lowPrice.toFixed(2))
 
@@ -64,8 +53,11 @@ Item {
         if (pointerBarIndex >= 0) {
             return pointerBarIndex;
         }
-        if (keyboardSelectedBar >= 0 && !inspectionDismissed) {
-            return Math.max(viewport.firstBar, Math.min(Math.max(viewport.firstBar, viewport.lastBar - 1), keyboardSelectedBar));
+        // A selected bar that scrolled out of view is hidden rather than clamped, so the
+        // readout never shows a bar other than the one selected.
+        if (keyboardSelectedBar >= viewport.firstBar && keyboardSelectedBar < viewport.lastBar
+                && !inspectionDismissed) {
+            return keyboardSelectedBar;
         }
         return -1;
     }
@@ -134,7 +126,7 @@ Item {
         inspectionDismissed = false;
         var minIdx = viewport.firstBar;
         var maxIdx = Math.max(viewport.firstBar, viewport.lastBar - 1);
-        if (keyboardSelectedBar < 0) {
+        if (keyboardSelectedBar < minIdx || keyboardSelectedBar > maxIdx) {
             if (delta < 0) {
                 keyboardSelectedBar = maxIdx;
             } else {
@@ -149,6 +141,19 @@ Item {
     function clearKeyboardSelection() {
         keyboardSelectedBar = -1;
         inspectionDismissed = true;
+    }
+
+    // A new symbol or timeframe starts from the live edge with nothing selected (Q-060).
+    function resetForTarget() {
+        keyboardSelectedBar = -1;
+        viewport.resetForTarget();
+    }
+
+    Connections {
+        target: root.feed
+        ignoreUnknownSignals: true
+        function onSymbolChanged() { root.resetForTarget(); }
+        function onTimeframeChanged() { root.resetForTarget(); }
     }
 
     function updateTip() {
@@ -366,12 +371,17 @@ Item {
         id: viewport
         barCount: root.feed ? root.feed.bar_count + (root.feed.has_forming ? 1 : 0) : 0
         lastBarTime: root.feed ? root.feed.last_time : 0
-        low: root.visibleRange.valid ? root.visibleRange.low : (root.feed ? root.feed.low : 0.0)
-        high: root.visibleRange.valid ? root.visibleRange.high : (root.feed ? root.feed.high : 0.0)
+        low: root.feed ? root.feed.low : 0.0
+        high: root.feed ? root.feed.high : 0.0
+        rangeSource: root.feed && root.feed.visible_range_json ? root.feed : null
         revision: root.feed ? root.feed.revision : 0
         barsVisible: root.barsVisible
         priceMargin: root.priceMargin
-        onBarCountChanged: root.keyboardSelectedBar = -1
+        onEmptyChanged: {
+            if (empty) {
+                root.keyboardSelectedBar = -1;
+            }
+        }
     }
 
     FocusScope {
@@ -385,7 +395,9 @@ Item {
         Accessible.name: root.accessibleReadoutText !== "" ? root.accessibleReadoutText : "Chart Canvas"
 
         function isPrintableTargetKey(event) {
-            if (!event || event.modifiers !== Qt.NoModifier) {
+            // Shift (capitals) and the keypad are ordinary typing; any other modifier is a
+            // shortcut and never opens the prompt.
+            if (!event || (event.modifiers & ~(Qt.ShiftModifier | Qt.KeypadModifier)) !== Qt.NoModifier) {
                 return false;
             }
             if (event.key === Qt.Key_Backspace || event.key === Qt.Key_Delete) {
@@ -583,12 +595,20 @@ Item {
             WheelHandler {
                 id: zoomHandler
                 acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                // One mouse notch is 120 angle units; touchpads send many smaller deltas,
+                // which accumulate so a gesture zooms as far as the same wheel travel.
+                readonly property int unitsPerStep: 120
+                property int pendingUnits: 0
                 onWheel: function(event) {
                     if (event.angleDelta.y === 0) {
                         return;
                     }
-                    viewport.zoomAt(event.position.x / Math.max(1, chartArea.width),
-                                    event.angleDelta.y > 0 ? 1 : -1);
+                    pendingUnits += event.angleDelta.y;
+                    var steps = Math.trunc(pendingUnits / unitsPerStep);
+                    if (steps !== 0) {
+                        pendingUnits -= steps * unitsPerStep;
+                        viewport.zoomAt(event.position.x / Math.max(1, chartArea.width), steps);
+                    }
                     event.accepted = true;
                 }
             }
@@ -628,15 +648,22 @@ Item {
         activeFocusOnTab: true
     }
 
+    // Beside the navigation status when both fit on one line; otherwise below it, wrapping
+    // within the plot width so no value is clipped at narrow panel sizes.
+    readonly property real readoutAvailableWidth: chartArea.width - 2 * Spacing.size8
+    readonly property bool readoutFitsBeside: barReadout.naturalRowWidth + Spacing.size16
+        + Spacing.size8 + navigationStatus.width <= root.readoutAvailableWidth
+
     BarReadout {
         id: barReadout
         objectName: "barReadout"
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: navigationStatus.left
-        anchors.topMargin: Spacing.size4
-        anchors.leftMargin: Spacing.size8
-        anchors.rightMargin: Spacing.size8
+        x: Spacing.size8
+        y: root.readoutFitsBeside ? Spacing.size4 : navigationStatus.y + navigationStatus.height + Spacing.size4
+        maximumWidth: root.readoutFitsBeside
+            ? root.readoutAvailableWidth - navigationStatus.width - Spacing.size8
+            : root.readoutAvailableWidth
+        width: implicitWidth
+        height: implicitHeight
         z: 2
         previewState: ""
         snapshot: root.barSnapshot
