@@ -26,6 +26,10 @@ public:
     void set_bars_visible(int count);
     void set_price_margin(double margin);
     void update(int bar_count, double low, double high, int revision);
+    void pan_bars(int delta);
+    void zoom_at(double anchor, int direction);
+    void return_to_live();
+    void reset_for_target();
     ViewportProbeResult result() const;
 
 private:

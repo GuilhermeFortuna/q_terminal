@@ -29,6 +29,7 @@ pub mod chart {
         pub low_price: f64,
         pub high_price: f64,
         pub empty: bool,
+        pub mode: String,
     }
 
     #[derive(Clone, Debug, PartialEq)]
@@ -172,6 +173,10 @@ pub mod chart {
             high: f64,
             revision: i32,
         );
+        fn pan_bars(self: Pin<&mut ViewportProbe>, delta: i32);
+        fn zoom_at(self: Pin<&mut ViewportProbe>, anchor: f64, direction: i32);
+        fn return_to_live(self: Pin<&mut ViewportProbe>);
+        fn reset_for_target(self: Pin<&mut ViewportProbe>);
         fn result(self: &ViewportProbe) -> ViewportProbeResult;
 
         fn make_chart_pane_probe() -> UniquePtr<ChartPaneProbe>;

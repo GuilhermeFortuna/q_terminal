@@ -47,6 +47,8 @@ QtObject {
 
     readonly property int deploymentPaneWidth: 320
     readonly property int chartMinimumHeight: 220
+    readonly property int chartMinimumVisibleBars: 5
+    readonly property int chartMaximumVisibleBars: 500
     readonly property int bannerHeight: 32
     readonly property int mainHeaderHeight: 48
     readonly property int actionHeight: 44

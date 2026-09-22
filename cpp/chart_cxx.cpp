@@ -17,6 +17,7 @@
 #include <QtCore/QThread>
 #include <QtCore/QTimer>
 #include <QtCore/QUrl>
+#include <QtCore/QVariant>
 #include <QtGui/QGuiApplication>
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQml/QQmlComponent>
@@ -232,6 +233,31 @@ void ViewportProbe::update(int bar_count, double low, double high, int revision)
     }
 }
 
+void ViewportProbe::pan_bars(int delta) {
+    if (m_impl->viewport) {
+        QMetaObject::invokeMethod(m_impl->viewport, "panBars", Q_ARG(QVariant, QVariant(delta)));
+    }
+}
+
+void ViewportProbe::zoom_at(double anchor, int direction) {
+    if (m_impl->viewport) {
+        QMetaObject::invokeMethod(m_impl->viewport, "zoomAt", Q_ARG(QVariant, QVariant(anchor)), Q_ARG(QVariant, QVariant(direction)));
+    }
+}
+
+void ViewportProbe::return_to_live() {
+    if (m_impl->viewport) {
+        QMetaObject::invokeMethod(m_impl->viewport, "returnToLive");
+    }
+}
+
+void ViewportProbe::reset_for_target() {
+    if (m_impl->viewport) {
+        m_impl->viewport->setProperty("barCount", 0);
+        QMetaObject::invokeMethod(m_impl->viewport, "resetForTarget");
+    }
+}
+
 ViewportProbeResult ViewportProbe::result() const {
     ViewportProbeResult out{};
     if (m_impl->viewport) {
@@ -240,6 +266,7 @@ ViewportProbeResult ViewportProbe::result() const {
         out.low_price = m_impl->viewport->property("lowPrice").toDouble();
         out.high_price = m_impl->viewport->property("highPrice").toDouble();
         out.empty = m_impl->viewport->property("empty").toBool();
+        out.mode = rust::String(m_impl->viewport->property("mode").toString().toStdString());
     }
     return out;
 }
