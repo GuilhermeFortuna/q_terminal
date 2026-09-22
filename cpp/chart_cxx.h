@@ -39,6 +39,8 @@ private:
 
 std::unique_ptr<ViewportProbe> make_viewport_probe();
 
+class ChartContext;
+
 class ChartPaneProbe {
 public:
     ChartPaneProbe();
@@ -46,9 +48,17 @@ public:
 
     void set_series(BarSeries* series);
     void set_feed(BarFeed* feed);
+    void set_context(ChartContext* context);
     void set_size(float width, float height);
     void set_bars_visible(int count);
     void set_price_margin(double margin);
+    void focus_canvas();
+    bool canvas_type_key(rust::Str text);
+    bool target_prompt_open() const;
+    void set_target_prompt_draft(rust::Str text);
+    rust::String target_prompt_preview() const;
+    void submit_target_prompt();
+    void cancel_target_prompt();
     ChartPaneProbeResult result() const;
 
 private:

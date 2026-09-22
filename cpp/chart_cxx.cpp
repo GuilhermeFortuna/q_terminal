@@ -22,6 +22,7 @@
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQml/QQmlComponent>
 #include <QtQml/QQmlEngine>
+#include <QtQml/QJSEngine>
 #include <QtQuick/QQuickWindow>
 
 #include "q_terminal/src/chart_bridge.cxx.h"
@@ -319,6 +320,103 @@ void ChartPaneProbe::set_feed(BarFeed* feed) {
     if (m_impl->pane) {
         m_impl->pane->setProperty("feed", QVariant::fromValue(static_cast<QObject*>(feed)));
     }
+}
+
+void ChartPaneProbe::set_context(ChartContext* context) {
+    if (m_impl->pane) {
+        m_impl->pane->setProperty("context", QVariant::fromValue(static_cast<QObject*>(context)));
+    }
+}
+
+static bool invokePaneBool(QObject* pane, const char* method) {
+    if (!pane) {
+        return false;
+    }
+    QVariant result;
+    const bool ok =
+        QMetaObject::invokeMethod(pane, method, Qt::DirectConnection, Q_RETURN_ARG(QVariant, result));
+    if (!ok) {
+        return false;
+    }
+    return result.toBool();
+}
+
+static bool invokePaneBoolArg(QObject* pane, const char* method, const QString& arg) {
+    if (!pane) {
+        return false;
+    }
+    QVariant result;
+    const bool ok = QMetaObject::invokeMethod(pane, method, Qt::DirectConnection,
+                                              Q_RETURN_ARG(QVariant, result), Q_ARG(QVariant, arg));
+    if (!ok) {
+        return false;
+    }
+    return result.toBool();
+}
+
+static QString invokePaneString(QObject* pane, const char* method) {
+    if (!pane) {
+        return {};
+    }
+    QVariant result;
+    const bool ok =
+        QMetaObject::invokeMethod(pane, method, Qt::DirectConnection, Q_RETURN_ARG(QVariant, result));
+    if (!ok) {
+        return {};
+    }
+    return result.toString();
+}
+
+static void invokePaneVoid(QObject* pane, const char* method) {
+    if (!pane) {
+        return;
+    }
+    QMetaObject::invokeMethod(pane, method, Qt::DirectConnection);
+}
+
+static void invokePaneVoidArg(QObject* pane, const char* method, const QString& arg) {
+    if (!pane) {
+        return;
+    }
+    QMetaObject::invokeMethod(pane, method, Qt::DirectConnection, Q_ARG(QVariant, arg));
+}
+
+void ChartPaneProbe::focus_canvas() {
+    invokePaneVoid(m_impl->pane, "testFocusCanvas");
+    process_events();
+}
+
+bool ChartPaneProbe::canvas_type_key(rust::Str text) {
+    const QString qtext = QString::fromUtf8(text.data(), static_cast<int>(text.size()));
+    const bool opened = invokePaneBoolArg(m_impl->pane, "testCanvasTypeKey", qtext);
+    process_events();
+    process_events();
+    return opened;
+}
+
+bool ChartPaneProbe::target_prompt_open() const {
+    return invokePaneBool(m_impl->pane, "testTargetPromptOpen");
+}
+
+void ChartPaneProbe::set_target_prompt_draft(rust::Str text) {
+    const QString qtext = QString::fromUtf8(text.data(), static_cast<int>(text.size()));
+    invokePaneVoidArg(m_impl->pane, "testSetTargetPromptDraft", qtext);
+    process_events();
+    process_events();
+}
+
+rust::String ChartPaneProbe::target_prompt_preview() const {
+    return rust::String(invokePaneString(m_impl->pane, "testTargetPromptPreview").toStdString());
+}
+
+void ChartPaneProbe::submit_target_prompt() {
+    invokePaneVoid(m_impl->pane, "testSubmitTargetPrompt");
+    process_events();
+}
+
+void ChartPaneProbe::cancel_target_prompt() {
+    invokePaneVoid(m_impl->pane, "testCancelTargetPrompt");
+    process_events();
 }
 
 void ChartPaneProbe::set_size(float width, float height) {
