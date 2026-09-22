@@ -4,8 +4,8 @@
 #![allow(clippy::await_holding_lock)]
 
 pub use q_terminal::{
-    bridge, chart_bridge, chart_target, config, contracts_stream, execution, execution_controls,
-    execution_models, history, ops_session, ops_status, startup, stream,
+    bridge, chart_bridge, chart_context, chart_target, config, contracts_stream, execution,
+    execution_controls, execution_models, history, ops_session, ops_status, startup, stream,
 };
 
 use std::time::Duration;
@@ -126,7 +126,12 @@ async fn switch_shows_only_the_new_symbol_even_mid_burst() {
             .await;
     }
     let target = targeter
-        .select(Some(("dep-2".into(), "VALE3".into(), "1m".into())))
+        .select(Some((
+            "dep-2".into(),
+            "dep-2".into(),
+            "VALE3".into(),
+            "1m".into(),
+        )))
         .expect("target changed");
     assert_eq!(target.generation as i64, gen_before + 1);
     assert_eq!(symbol(feed), "VALE3");
@@ -154,10 +159,34 @@ async fn switch_shows_only_the_new_symbol_even_mid_burst() {
 
     // Same target again changes nothing; None goes back to the configured symbol.
     assert!(targeter
-        .select(Some(("dep-2".into(), "VALE3".into(), "1m".into())))
+        .select(Some((
+            "dep-2".into(),
+            "dep-2".into(),
+            "VALE3".into(),
+            "1m".into()
+        )))
         .is_none());
     assert!(targeter.select(None).is_some());
     assert_eq!(symbol(feed), "PETR4");
     until("PETR4 back", || !feed_times(feed).is_empty()).await;
     assert!(feed_times(feed).iter().all(|t| *t < 9_000));
+}
+
+#[test]
+fn disconnect_keeps_bars_and_reports_disconnected_condition() {
+    let mut feed = BarFeedRust::new("PETR4", "1m");
+    feed.history_controller().open_gate();
+    assert!(feed.apply_stamped(
+        0,
+        BarDelivery::Completed(make_bar_columns(60, 1.0, 2.0, 0.5, 1.5))
+    ));
+    feed.set_connection_state("unavailable");
+    feed.last_time = 1_728_000_000;
+    let (label, role) = chart_context::compute_condition(&feed);
+    assert_eq!(
+        feed.series.bar_count, 1,
+        "last rendered candles stay visible"
+    );
+    assert_eq!(label, "Disconnected");
+    assert_eq!(role, "critical");
 }

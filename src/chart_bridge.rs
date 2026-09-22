@@ -55,6 +55,15 @@ pub mod chart {
         pub reason: String,
     }
 
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct ChartIdentityProbeResult {
+        pub symbol_line: String,
+        pub source_label: String,
+        pub condition_label: String,
+        pub last_bar_label: String,
+        pub is_switching: bool,
+    }
+
     #[derive(Default)]
     struct ProbeState {
         uploaded_revision: i64,
@@ -72,6 +81,8 @@ pub mod chart {
         type ChartPaneProbe;
         type StatusStripProbe;
         type EmptyStateProbe;
+        type ChartContext;
+        type ChartIdentityProbe;
 
         include!("cxx-qt-lib/qqmlapplicationengine.h");
         type QQmlApplicationEngine = cxx_qt_lib::QQmlApplicationEngine;
@@ -83,6 +94,16 @@ pub mod chart {
         fn make_empty_state_probe() -> UniquePtr<EmptyStateProbe>;
         unsafe fn set_feed(self: Pin<&mut EmptyStateProbe>, feed: *mut BarFeed);
         fn result(self: &EmptyStateProbe) -> EmptyStateProbeResult;
+
+        fn make_chart_identity_probe() -> UniquePtr<ChartIdentityProbe>;
+        unsafe fn set_context(self: Pin<&mut ChartIdentityProbe>, context: *mut ChartContext);
+        unsafe fn set_feed(self: Pin<&mut ChartIdentityProbe>, feed: *mut BarFeed);
+        fn result(self: &ChartIdentityProbe) -> ChartIdentityProbeResult;
+
+        unsafe fn find_window_chart_context(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> *mut ChartContext;
+        unsafe fn make_test_chart_context() -> *mut ChartContext;
 
         unsafe fn make_test_feed() -> *mut BarFeed;
         unsafe fn feed_set_connection_state(feed: *mut BarFeed, state: &str);
@@ -315,16 +336,18 @@ pub use chart::{
     feed_set_execution_rows, feed_set_history, feed_set_last_error, feed_set_live_only,
     feed_set_stale, feed_set_symbol, feed_set_timeframe, feed_setup_and_load, feed_stale_dropped,
     feed_symbol, feed_target_generation, feed_vertex_at, feed_vertex_len,
-    find_window_execution_controls, find_window_execution_models, find_window_feed,
-    find_window_ops_status, make_chart_pane_probe, make_empty_state_probe, make_status_strip_probe,
+    find_window_chart_context, find_window_execution_controls, find_window_execution_models,
+    find_window_feed, find_window_ops_status, make_chart_identity_probe, make_chart_pane_probe,
+    make_empty_state_probe, make_status_strip_probe, make_test_chart_context,
     make_test_execution_controls, make_test_execution_models, make_test_feed, make_viewport_probe,
     ops_status_apply_health, ops_status_apply_positions, ops_status_mark_api_offline,
     ops_status_mark_postgres_down, ops_status_set_stream, post_execution_models_sync,
     post_feed_completed_bar, post_feed_forming_bar, post_feed_overlays, post_feed_stream_state,
     process_events, setup_window_auto_close, setup_window_feed, shell_eval, shell_grab_windows,
-    shell_quit_on_last_window_closed, shell_visible_window_count, BarFeed, ChartPaneProbe,
-    ChartPaneProbeResult, EmptyStateProbe, EmptyStateProbeResult, ExecutionModels, ProbeResult,
-    ProbeVertex, StatusStripProbe, StatusStripProbeResult, ViewportProbe, ViewportProbeResult,
+    shell_quit_on_last_window_closed, shell_visible_window_count, BarFeed, ChartIdentityProbe,
+    ChartIdentityProbeResult, ChartPaneProbe, ChartPaneProbeResult, EmptyStateProbe,
+    EmptyStateProbeResult, ExecutionModels, ProbeResult, ProbeVertex, StatusStripProbe,
+    StatusStripProbeResult, ViewportProbe, ViewportProbeResult,
 };
 
 pub fn register_chart_types() {

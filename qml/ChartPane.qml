@@ -6,6 +6,7 @@ Item {
     id: root
 
     property var feed: null
+    property var context: null
     property int barsVisible: 100
     property real priceMargin: 0.05
 
@@ -176,6 +177,7 @@ Item {
             anchors.fill: chartArea
             visible: viewport.empty
             feed: root.feed
+            context: root.context
         }
     }
 

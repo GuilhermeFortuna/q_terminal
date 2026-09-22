@@ -56,6 +56,10 @@ std::unique_ptr<ChartPaneProbe> make_chart_pane_probe();
 
 struct StatusStripProbeResult;
 struct EmptyStateProbeResult;
+struct ChartIdentityProbeResult;
+
+class ChartContext;
+class ChartIdentityProbe;
 
 class StatusStripProbe {
 public:
@@ -86,6 +90,25 @@ private:
 };
 
 std::unique_ptr<EmptyStateProbe> make_empty_state_probe();
+
+class ChartIdentityProbe {
+public:
+    ChartIdentityProbe();
+    ~ChartIdentityProbe();
+
+    void set_context(ChartContext* context);
+    void set_feed(BarFeed* feed);
+    ChartIdentityProbeResult result() const;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
+};
+
+std::unique_ptr<ChartIdentityProbe> make_chart_identity_probe();
+
+ChartContext* find_window_chart_context(QQmlApplicationEngine& engine);
+ChartContext* make_test_chart_context();
 
 BarFeed* make_test_feed();
 void feed_set_connection_state(BarFeed* feed, rust::Str state);

@@ -5,6 +5,7 @@ use cxx_qt_lib::{QQmlApplicationEngine, QString, QUrl};
 use crate::bridge;
 use crate::bridge::bar_feed::parse_timeframe_ms;
 use crate::chart_bridge;
+use crate::chart_context;
 use crate::chart_target::{ChartTargeter, OverlayFetcher};
 use crate::config::{Config, ConfigError};
 use crate::execution::store::ExecutionHandle;
@@ -39,6 +40,8 @@ fn wire_execution(
     handle: ExecutionHandle,
     targeter: std::sync::Arc<ChartTargeter>,
     feed_ptr: *mut chart_bridge::BarFeed,
+    chart_ctx_addr: usize,
+    configured: (String, String),
 ) {
     let feed_addr = feed_ptr as usize;
     let models = chart_bridge::find_window_execution_models(engine);
@@ -47,12 +50,32 @@ fn wire_execution(
     }
     use cxx_qt::CxxQtType;
     let ffi_models = models as *mut crate::bridge::execution_models::ffi::ExecutionModels;
+    let configured_sym = configured.0.clone();
+    let configured_tf = configured.1.clone();
     let dirty = unsafe {
         let mut pin = std::pin::Pin::new_unchecked(&mut *ffi_models);
         let mut rust = pin.as_mut().rust_mut();
         rust.bind_handle(handle.clone());
         rust.on_target = Some(std::sync::Arc::new(move |dep| {
-            targeter.select(dep);
+            if chart_ctx_addr != 0 {
+                chart_context::notify_target(
+                    chart_ctx_addr as *mut chart_context::ffi::ChartContext,
+                    dep.as_ref().map(|(_id, name, sym, tf)| {
+                        (name.as_str(), sym.as_str(), tf.as_str(), true)
+                    }),
+                    (&configured_sym, &configured_tf),
+                );
+            }
+            let retargeted = targeter.select(dep);
+            if chart_ctx_addr != 0 {
+                if let Some(target) = retargeted {
+                    chart_context::notify_retarget(
+                        chart_ctx_addr as *mut chart_context::ffi::ChartContext,
+                        &target.symbol,
+                        &target.timeframe,
+                    );
+                }
+            }
         }));
         rust.on_rows = Some(std::sync::Arc::new(move |dec, fills| {
             chart_bridge::feed_set_execution_rows(
@@ -134,11 +157,30 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
                             fetcher.request(generation)
                         }));
                 }
+                let chart_ctx =
+                    unsafe { chart_bridge::find_window_chart_context(engine.as_mut().unwrap()) };
+                let chart_ctx_addr = chart_ctx as usize;
+                if chart_ctx_addr != 0 {
+                    unsafe {
+                        let feed_ffi = feed_ptr as *mut crate::bridge::bar_feed::ffi::BarFeed;
+                        chart_context::bind_feed(
+                            chart_ctx as *mut chart_context::ffi::ChartContext,
+                            feed_ffi,
+                        );
+                        chart_context::set_configured(
+                            chart_ctx as *mut chart_context::ffi::ChartContext,
+                            &cfg.symbol,
+                            &cfg.timeframe,
+                        );
+                    }
+                }
                 wire_execution(
                     engine.as_mut().unwrap(),
                     exec_handle,
                     targeter.clone(),
                     feed_ptr,
+                    chart_ctx_addr,
+                    (cfg.symbol.clone(), cfg.timeframe.clone()),
                 );
                 chart_targeter = Some(targeter);
 

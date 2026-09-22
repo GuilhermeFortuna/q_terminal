@@ -4,6 +4,7 @@ pub mod contracts_stream;
 
 pub mod bridge;
 pub mod chart_bridge;
+pub mod chart_context;
 pub mod chart_target;
 pub mod config;
 pub mod display;

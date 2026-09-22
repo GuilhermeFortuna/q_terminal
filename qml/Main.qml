@@ -12,6 +12,7 @@ Item {
 
     // Test seams: a harness may hand in fakes instead of the default stores.
     property var feed: null
+    property var chartContext: null
     property var executionModels: null
     property var opsStatus: null
     property var executionControls: null
@@ -19,6 +20,11 @@ Item {
     BarFeed {
         id: defaultFeed
         objectName: "barFeed"
+    }
+
+    ChartContext {
+        id: defaultChartContext
+        objectName: "chartContext"
     }
 
     ExecutionModels {
@@ -52,6 +58,7 @@ Item {
     }
 
     readonly property var activeFeed: shell.feed ? shell.feed : defaultFeed
+    readonly property var activeChartContext: shell.chartContext ? shell.chartContext : defaultChartContext
     readonly property var activeExecutionModels: shell.executionModels ? shell.executionModels : defaultExecutionModels
     readonly property var activeOpsStatus: shell.opsStatus ? shell.opsStatus : defaultOpsStatus
     readonly property var activeExecutionControls: shell.executionControls ? shell.executionControls : defaultExecutionControls

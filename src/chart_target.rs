@@ -111,10 +111,18 @@ impl ChartTargeter {
     /// retargets the feed and the stream when the symbol or timeframe changed, and fetches
     /// the deployment's overlays when the deployment changed. Returns the new target when
     /// it changed.
-    pub fn select(&self, deployment: Option<(String, String, String)>) -> Option<ChartTarget> {
-        let (id, symbol, timeframe) = match deployment {
-            Some((id, s, t)) => (Some(id), s, t),
-            None => (None, self.fallback.0.clone(), self.fallback.1.clone()),
+    pub fn select(
+        &self,
+        deployment: Option<(String, String, String, String)>,
+    ) -> Option<ChartTarget> {
+        let (id, _name, symbol, timeframe) = match deployment {
+            Some((id, _name, s, t)) => (Some(id), _name, s, t),
+            None => (
+                None,
+                String::new(),
+                self.fallback.0.clone(),
+                self.fallback.1.clone(),
+            ),
         };
         let deployment_changed = {
             let mut dep = self.fetcher.deployment.lock().unwrap();

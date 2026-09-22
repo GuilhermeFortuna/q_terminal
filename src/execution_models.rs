@@ -96,8 +96,8 @@ pub mod ffi {
     impl cxx_qt::Threading for ExecutionModels {}
 }
 
-/// A deployment's id, symbol and timeframe.
-pub type SelectedTarget = (String, String, String);
+/// A deployment's id, name, symbol and timeframe.
+pub type SelectedTarget = (String, String, String, String);
 
 pub struct ExecutionModelsRust {
     pub revision: i64,
@@ -250,10 +250,14 @@ impl ExecutionModelsRust {
         };
         let id = self.selected_deployment_id.to_string();
         let target = handle.read(|s| {
-            s.data()
-                .deployments
-                .get(&id)
-                .map(|d| (d.id.clone(), d.symbol.clone(), d.timeframe.clone()))
+            s.data().deployments.get(&id).map(|d| {
+                (
+                    d.id.clone(),
+                    d.name.clone(),
+                    d.symbol.clone(),
+                    d.timeframe.clone(),
+                )
+            })
         });
         if self.last_target.as_ref() != Some(&target) {
             self.last_target = Some(target.clone());
