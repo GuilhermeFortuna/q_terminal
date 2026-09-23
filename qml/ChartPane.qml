@@ -475,28 +475,6 @@ Item {
             }
         }
 
-        Repeater {
-            model: 4
-            Rectangle {
-                required property int index
-                width: chartArea.width
-                height: Spacing.size1
-                y: (index + 1) * chartArea.height / 5
-                color: Theme.borderSubtle
-            }
-        }
-
-        Repeater {
-            model: 4
-            Rectangle {
-                required property int index
-                width: Spacing.size1
-                height: chartArea.height
-                x: (index + 1) * chartArea.width / 5
-                color: Theme.borderSubtle
-            }
-        }
-
         Item {
             id: chartContainer
             anchors.fill: chartArea
