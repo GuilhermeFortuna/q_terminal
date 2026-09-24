@@ -60,7 +60,7 @@ The live chart slice provides a read-only, reactive candlestick chart window dis
 
 ### What It Shows
 
-- **Candlestick Chart (`BarChartItem`)**: GPU-accelerated custom Qt Quick scene-graph render node (`QSGRenderNode`) drawing completed bars and the active forming bar directly into vertex buffers.
+- **Candlestick Chart (`BarChartItem`)**: Custom Qt Quick item drawing completed bars and the active forming bar with batched `QSGGeometryNode` triangle geometry.
 - **Viewport (`Viewport.qml`)**: Reactive viewport tracking the newest bar on the right edge, maintaining sticky price bounds with vertical padding margins, and resizing dynamically.
 - **Chart Pane (`ChartPane.qml`)**: Integrates the candlestick item with time and price gridlines and axis tick labels mapped directly to viewport coordinates.
 - **Status Strip (`StatusStrip.qml`)**: Real-time status displaying:
@@ -179,7 +179,7 @@ q_terminal/
 ├── contracts/          # Vendored generated Rust wire types from q_contracts
 ├── cpp/                # C++ scene-graph render nodes and QML probes (buffer movement only)
 │   ├── bar_chart_item.h / .cpp   # QQuickItem hosting BarChartNode
-│   ├── bar_chart_node.h / .cpp   # QSGRenderNode moving vertices to GPU
+│   ├── bar_chart_node.h / .cpp   # QSGGeometryNode buffers for candle triangles
 │   ├── overlay_chart_item.h / .cpp # Marker glyph and overlay line layers (buffer movement only)
 │   ├── bar_chart_probe.cpp       # Headless vertex and scene graph inspection
 │   └── chart_cxx.h / .cpp        # CXX-Qt bridge helper functions and event pump

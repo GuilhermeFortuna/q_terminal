@@ -7,7 +7,7 @@
 ## Current-system context
 
 The chart is the Q-037 and Q-038 slice. `cpp/bar_chart_item.*` hosts
-`cpp/bar_chart_node.*`, a `QSGRenderNode` that uploads bar vertices
+`cpp/bar_chart_node.*`, a `QSGNode` containing `QSGGeometryNode` candle buffers that upload bar vertices
 (`bar_vertex.h`) from a `q_core` `BarSeries`. `qml/Viewport.qml` owns the
 live-edge and sticky-price policy, and `qml/ChartPane.qml` draws the axes and
 grid. `src/bar_feed.rs` (`BarFeed`) binds the series, history and stream
@@ -50,9 +50,7 @@ pub struct OverlayFetcher;   // on bars.completed for the selected target: one G
 ```
 
 ```
-cpp/marker_node.h/.cpp        new: QSGRenderNode drawing marker glyph quads from a vertex buffer (buffer movement only)
-cpp/line_series_node.h/.cpp   new: QSGRenderNode drawing overlay polylines from a vertex buffer
-cpp/marker_chart_item.*, cpp/overlay_chart_item.*   QQuickItems sharing the Viewport transform with BarChartItem
+cpp/overlay_chart_item.*      QQuickItem with QSGGeometryNode layers for marker glyphs and overlay lines, sharing the Viewport transform with BarChartItem
 qml/ChartPane.qml             stacks bars, overlays and markers; oscillator pane below when present; hover tooltip
 tests/chart_target.rs         new: criterion 1 (including switch mid-load)
 tests/markers.rs              new: criterion 2 (vectors ported from liveChartMarkers.ts), criterion 3
