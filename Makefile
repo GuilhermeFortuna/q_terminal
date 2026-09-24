@@ -68,7 +68,7 @@ gallery-shot:
 	QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software cargo run --features gallery -- --gallery-shot
 
 bench-frames:
-	cargo run -- --bench-frames --buckets $${BENCH_BUCKETS:-2000} --bars $${BENCH_BARS:-500000} --duration-ms $${BENCH_DURATION_MS:-300000} --execution-rows $${BENCH_EXECUTION_ROWS:-0} --markers $${BENCH_MARKERS:-0} --overlays $${BENCH_OVERLAYS:-0}
+	cargo run --features bench-allocations -- --bench-frames --scenario $${BENCH_SCENARIO:-historical} --buckets $${BENCH_BUCKETS:-2000} --bars $${BENCH_BARS:-500000} --duration-ms $${BENCH_DURATION_MS:-300000} --execution-rows $${BENCH_EXECUTION_ROWS:-0} --markers $${BENCH_MARKERS:-0} --overlays $${BENCH_OVERLAYS:-0}
 
 contracts:
 	contracts_tmp="$$(mktemp -d)"; \

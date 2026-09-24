@@ -5,6 +5,14 @@
 
 #include <vector>
 
+struct BarChartFrameStats {
+    long long syncs = 0;
+    long long completedVertices = 0;
+    long long formingVertices = 0;
+    long long rendererAllocations = 0;
+    long long geometryPrepNs = 0;
+};
+
 #include <QtGui/QColor>
 #include <QtQuick/QSGGeometryNode>
 #include <QtQuick/QSGNode>
@@ -32,6 +40,7 @@ public:
     int uploadCount() const { return m_uploadCount; }
     int takeFrameUploads();
     int geometryAllocationCount() const;
+    BarChartFrameStats takeFrameStats();
 
     int risingVertexCount() const { return m_risingCount; }
     int fallingVertexCount() const { return m_fallingCount; }
@@ -52,5 +61,8 @@ private:
     int m_fallingCount = 0;
     int m_formingCount = 0;
     int m_frameUploads = 0;
+    int m_frameCompletedVertices = 0;
+    int m_frameFormingVertices = 0;
+    int m_frameRendererAllocations = 0;
     std::vector<BarVertex> m_lastUploadedVertices;
 };

@@ -2,6 +2,7 @@
 #[path = "../contracts/stream.rs"]
 pub mod contracts_stream;
 
+pub mod bench_allocator;
 pub mod bridge;
 pub mod chart_bridge;
 pub mod chart_context;
@@ -89,14 +90,19 @@ pub fn run_bench_frames(
     execution_rows: i32,
     markers: i32,
     overlays: i32,
+    scenario: &str,
 ) -> i32 {
-    let _ = (visible_buckets, bar_count);
     startup::run_slice_opts(
-        config::Config::load(),
+        // The benchmark owns its synthetic feed and must remain reproducible
+        // without a configured or running backend.
+        Err(config::ConfigError::MissingField("benchmark mode".into())),
         true,
         duration_ms as u64,
         execution_rows,
         markers,
         overlays,
+        visible_buckets,
+        bar_count,
+        scenario,
     )
 }

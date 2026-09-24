@@ -4,6 +4,7 @@
 #include "overlay_chart_item.h"
 
 #include <mutex>
+#include <QtCore/QElapsedTimer>
 #include <QtQml/qqml.h>
 
 #include "q-qt/src/bar_series.cxxqt.h"
@@ -127,6 +128,8 @@ QSGNode* BarChartItem::updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData* da
 }
 
 QSGNode* BarChartItem::testUpdatePaintNode(QSGNode* oldNode) {
+    QElapsedTimer geometryTimer;
+    geometryTimer.start();
     m_paintNodeCallCount++;
     auto* node = static_cast<BarChartNode*>(oldNode);
     if (node == nullptr) {
@@ -141,6 +144,7 @@ QSGNode* BarChartItem::testUpdatePaintNode(QSGNode* oldNode) {
         long long rev = barFeed ? barFeed->geometry_revision() : (barSeries ? barSeries->geometry_revision() : 0);
         BarVertexView emptyView{nullptr, 0, rev};
         node->sync(emptyView, m_risingColor, m_fallingColor, m_formingColor);
+        m_frameGeometryPrepNs += geometryTimer.nsecsElapsed();
         return node;
     }
 
@@ -159,6 +163,7 @@ QSGNode* BarChartItem::testUpdatePaintNode(QSGNode* oldNode) {
         BarVertexView view{source, static_cast<std::size_t>(barFeed->vertex_len()),
                            compositeRevision(barFeed->geometry_revision(), m_firstBar, m_lastBar, m_updateRequestCount)};
         node->sync(view, m_risingColor, m_fallingColor, m_formingColor);
+        m_frameGeometryPrepNs += geometryTimer.nsecsElapsed();
         return node;
     }
 
@@ -170,6 +175,7 @@ QSGNode* BarChartItem::testUpdatePaintNode(QSGNode* oldNode) {
     BarVertexView view{source, barSeries->vertex_len(),
                        compositeRevision(barSeries->geometry_revision(), m_firstBar, m_lastBar, m_updateRequestCount)};
     node->sync(view, m_risingColor, m_fallingColor, m_formingColor);
+    m_frameGeometryPrepNs += geometryTimer.nsecsElapsed();
     return node;
 }
 
@@ -178,6 +184,16 @@ int BarChartItem::takeFrameUploads() {
         return 0;
     }
     return m_chartNode->takeFrameUploads();
+}
+
+BarChartFrameStats BarChartItem::takeFrameStats() {
+    if (m_chartNode == nullptr) {
+        return {};
+    }
+    BarChartFrameStats stats = m_chartNode->takeFrameStats();
+    stats.geometryPrepNs = m_frameGeometryPrepNs;
+    m_frameGeometryPrepNs = 0;
+    return stats;
 }
 
 void register_bar_chart_types() {

@@ -1,23 +1,32 @@
 #include "frame_bench.h"
 
 #include "bar_chart_item.h"
+#include "bar_chart_node.h"
 #include "overlay_chart_item.h"
 #include "q_terminal/src/bar_feed.cxxqt.h"
 
 #include <algorithm>
+#include <cmath>
 #include <iostream>
+#include <numeric>
+#include <string>
 #include <vector>
 
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QMetaObject>
 #include <QtGui/QGuiApplication>
 #include <QtCore/QTimer>
+#include <QtCore/QSysInfo>
+#include <QtGui/QScreen>
 #include <QtQuick/QQuickWindow>
 #include <QtQuick/QSGRendererInterface>
 #include "q-qt/src/bar_series.cxxqt.h"
 
 #include "table_model.h"
 #include "q_terminal/src/execution_models.cxxqt.h"
+
+extern "C" void q_terminal_bench_allocations_start();
+extern "C" unsigned long long q_terminal_bench_allocations_stop();
 
 namespace {
 
@@ -49,12 +58,14 @@ namespace {
 struct WindowStats {
     QQuickWindow* window;
     std::vector<double> frame_ms;
-    std::vector<int> uploads;
+    std::vector<BarChartFrameStats> frame_stats;
     QElapsedTimer timer;
+    QElapsedTimer runtime;
+    bool chart_window = false;
 };
 
 void print_stats(const WindowStats& stats, int visible_buckets, int execution_rows, int markers,
-                 int overlays) {
+                 int overlays, const QString& scenario, unsigned long long rust_allocations) {
     const QString name = stats.window->title();
     if (stats.frame_ms.empty()) {
         std::cout << "frame_bench window=\"" << name.toStdString() << "\" buckets="
@@ -67,27 +78,46 @@ void print_stats(const WindowStats& stats, int visible_buckets, int execution_ro
     auto pct = [&](double q) {
         return sorted[static_cast<std::size_t>(q * static_cast<double>(sorted.size() - 1))];
     };
-    double upload_sum = 0.0;
-    for (int uploads : stats.uploads) {
-        upload_sum += static_cast<double>(uploads);
+    BarChartFrameStats totals;
+    long long max_forming_vertices = 0;
+    for (const auto& sample : stats.frame_stats) {
+        totals.syncs += sample.syncs;
+        totals.completedVertices += sample.completedVertices;
+        totals.formingVertices += sample.formingVertices;
+        totals.rendererAllocations += sample.rendererAllocations;
+        totals.geometryPrepNs += sample.geometryPrepNs;
+        max_forming_vertices = std::max(max_forming_vertices, sample.formingVertices);
     }
-    const double avg_uploads =
-        stats.uploads.empty() ? 0.0 : upload_sum / static_cast<double>(stats.uploads.size());
+    const double frames = static_cast<double>(stats.frame_stats.size());
     QSGRendererInterface* rif = stats.window->rendererInterface();
     const QSGRendererInterface::GraphicsApi api =
         rif ? rif->graphicsApi() : stats.window->graphicsApi();
-    std::cout << "frame_bench window=\"" << name.toStdString() << "\" buckets=" << visible_buckets
+    const QSize window_size = stats.window->size();
+    std::cout << "frame_bench window=\"" << name.toStdString() << "\" scenario="
+              << scenario.toStdString() << " buckets=" << visible_buckets
               << " execution_rows=" << execution_rows << " markers=" << markers
               << " overlays=" << overlays << " frames=" << sorted.size() << " p50_ms=" << pct(0.50)
               << " p95_ms=" << pct(0.95) << " p99_ms=" << pct(0.99) << " max_ms=" << sorted.back()
-              << " avg_uploads_per_frame=" << avg_uploads
-              << " graphics_api=" << graphics_api_name(api) << std::endl;
+              << " scene_syncs=" << totals.syncs
+              << " avg_completed_vertices_per_frame=" << totals.completedVertices / frames
+              << " avg_forming_vertices_per_frame=" << totals.formingVertices / frames
+              << " avg_renderer_allocations_per_frame=" << totals.rendererAllocations / frames
+              << " avg_geometry_prep_us=" << totals.geometryPrepNs / (frames * 1000.0)
+              << " forming_visible=" << (max_forming_vertices > 0 ? "true" : "false")
+              << " rust_process_allocations=" << rust_allocations
+              << " avg_rust_process_allocations_per_frame=" << rust_allocations / frames
+              << " gpu_transfers=not_measured"
+              << " graphics_api=" << graphics_api_name(api)
+              << " window_size=" << window_size.width() << "x" << window_size.height()
+              << " machine=\"" << QSysInfo::machineHostName().toStdString() << "\""
+              << " os=\"" << QSysInfo::prettyProductName().toStdString() << "\"" << std::endl;
 }
 
 }  // namespace
 
 void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar_count,
-                     int duration_ms, int execution_rows, int markers, int overlays) {
+                     int duration_ms, int execution_rows, int markers, int overlays,
+                     const QString& scenario) {
     // The shell root is not a window. With Q_BENCH_WINDOWS=both both compositions are
     // opened, so the chart and the tables render in separate windows.
     QObject* root = engine.rootObjects().isEmpty() ? nullptr : engine.rootObjects().first();
@@ -99,30 +129,54 @@ void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar
                                   Q_ARG(QVariant, QStringLiteral("operations")));
     }
 
-    BarChartItem* chart = root ? root->findChild<BarChartItem*>("benchChart") : nullptr;
-    if (chart == nullptr && root != nullptr) {
-        chart = root->findChild<BarChartItem*>();
+    BarChartItem* chart_template = root ? root->findChild<BarChartItem*>("benchChart") : nullptr;
+    if (chart_template == nullptr && root != nullptr) {
+        chart_template = root->findChild<BarChartItem*>();
     }
-    QQuickWindow* window = chart ? chart->window() : nullptr;
-    BarSeries* series = nullptr;
-    if (chart != nullptr) {
-        if (auto* s = qobject_cast<BarSeries*>(chart->series())) {
-            series = s;
-        } else {
-            series = new BarSeries(chart);
-            chart->setSeries(series);
-        }
-    }
-
-    if (window == nullptr || chart == nullptr || series == nullptr) {
+    QQuickWindow* window = chart_template ? chart_template->window() : nullptr;
+    if (window == nullptr) {
         std::cerr << "frame bench: chart scene not found" << std::endl;
         return;
     }
-    series->load_history_sample(bar_count);
-    chart->setFirstBar(0);
-    chart->setLastBar(visible_buckets);
-    chart->setLowPrice(series->getLow());
-    chart->setHighPrice(series->getHigh());
+    // Use the same renderer item in a direct scene-graph host. ChartPane's production
+    // visibility depends on the live BarFeed, which the synthetic benchmark does not own.
+    auto* chart = new BarChartItem(window->contentItem());
+    chart->setObjectName(QStringLiteral("benchChartRenderer"));
+    chart->setSize(QSizeF(window->size()));
+    chart->setPosition(QPointF(0.0, 0.0));
+    chart->setZ(1000.0);
+    chart->setVisible(true);
+    window->contentItem()->setVisible(true);
+    auto* series = new BarSeries(chart);
+    chart->setSeries(series);
+    const int safe_bars = std::max(1, bar_count);
+    const int safe_buckets = std::max(1, visible_buckets);
+    const bool live_edge = scenario != QStringLiteral("historical");
+    if (scenario != QStringLiteral("historical") && scenario != QStringLiteral("live-edge") &&
+        scenario != QStringLiteral("pan-zoom") && scenario != QStringLiteral("completion") &&
+        scenario != QStringLiteral("price-expansion")) {
+        std::cerr << "frame bench: unknown scenario '" << scenario.toStdString() << "'" << std::endl;
+        return;
+    }
+    series->load_history_sample(safe_bars);
+    const int first_bar = live_edge ? std::max(0, safe_bars - safe_buckets) : 0;
+    const int last_bar = live_edge ? safe_bars + 1 : safe_buckets;
+    chart->setFirstBar(first_bar);
+    chart->setLastBar(last_bar);
+    double low_price = series->getLow();
+    double high_price = series->getHigh();
+    if (live_edge) {
+        const double last_price = series->getLast_price();
+        low_price = last_price - 8.0;
+        high_price = last_price + 8.0;
+    }
+    chart->setLowPrice(low_price);
+    chart->setHighPrice(high_price);
+
+    const qint64 forming_time = series->getLast_time() + 60;
+    const double forming_open = series->getLast_price();
+    series->ingest_forming_bar(forming_time, forming_open, forming_open + 1.0,
+                               forming_open - 1.0, forming_open + 0.25, 1.0);
 
     if (execution_rows > 0) {
         auto* models = root->findChild<ExecutionModels*>("executionModels");
@@ -172,55 +226,105 @@ void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar
     }
 
     BarFeed* overlayFeed = nullptr;
+    OverlayChartItem* overlay_item = nullptr;
     if (markers > 0 || overlays > 0) {
         // Markers and overlays sit on their own feed and item, over the bar chart.
         overlayFeed = new BarFeed(window);
-        overlayFeed->bench_populate(visible_buckets, markers, overlays);
-        auto* item = new OverlayChartItem(chart->parentItem());
-        item->setParentItem(chart->parentItem());
-        item->setSize(chart->size());
-        QObject::connect(chart, &QQuickItem::widthChanged, item, [chart, item]() { item->setWidth(chart->width()); });
-        QObject::connect(chart, &QQuickItem::heightChanged, item, [chart, item]() { item->setHeight(chart->height()); });
-        item->setSeries(overlayFeed);
-        item->setFirstBar(0);
-        item->setLastBar(visible_buckets);
-        item->setLowPrice(overlayFeed->getLow() - 1.0);
-        item->setHighPrice(overlayFeed->getHigh() + 1.0);
+        overlayFeed->bench_populate(live_edge ? safe_bars : safe_buckets, markers, overlays);
+        overlay_item = new OverlayChartItem(chart->parentItem());
+        overlay_item->setParentItem(chart->parentItem());
+        overlay_item->setSize(chart->size());
+        QObject::connect(chart, &QQuickItem::widthChanged, overlay_item, [chart, overlay_item]() { overlay_item->setWidth(chart->width()); });
+        QObject::connect(chart, &QQuickItem::heightChanged, overlay_item, [chart, overlay_item]() { overlay_item->setHeight(chart->height()); });
+        overlay_item->setSeries(overlayFeed);
+        overlay_item->setFirstBar(first_bar);
+        overlay_item->setLastBar(last_bar);
+        overlay_item->setLowPrice(overlayFeed->getLow() - 1.0);
+        overlay_item->setHighPrice(overlayFeed->getHigh() + 1.0);
     }
 
     // One frame series per visible window: a second window costs a second render loop.
     auto* all = new std::vector<WindowStats*>();
+    auto* allocation_started = new bool(false);
     for (QWindow* w : QGuiApplication::topLevelWindows()) {
         auto* quick = qobject_cast<QQuickWindow*>(w);
         if (quick == nullptr || !quick->isVisible()) {
             continue;
         }
-        auto* stats = new WindowStats{quick, {}, {}, {}};
+        auto* stats = new WindowStats{quick, {}, {}, {}, {}, quick == window};
         stats->timer.start();
+        stats->runtime.start();
         all->push_back(stats);
-        QObject::connect(quick, &QQuickWindow::afterRendering, quick, [stats, chart]() {
-            stats->frame_ms.push_back(static_cast<double>(stats->timer.nsecsElapsed()) / 1'000'000.0);
-            stats->uploads.push_back(stats->window == chart->window() ? chart->takeFrameUploads() : 0);
+        QObject::connect(quick, &QQuickWindow::afterRendering, quick,
+                         [stats, chart, allocation_started]() {
+            const double frame_ms = static_cast<double>(stats->timer.nsecsElapsed()) / 1'000'000.0;
+            const BarChartFrameStats frame_stats = stats->chart_window ? chart->takeFrameStats() : BarChartFrameStats{};
+            // Ignore startup and initial buffer allocations; count only warmed-up frames.
+            if (stats->runtime.elapsed() >= 1000) {
+                if (!*allocation_started) {
+                    q_terminal_bench_allocations_start();
+                    *allocation_started = true;
+                }
+                stats->frame_ms.push_back(frame_ms);
+                stats->frame_stats.push_back(frame_stats);
+            }
             stats->timer.restart();
         });
     }
 
-    QObject::connect(window, &QQuickWindow::beforeRendering, window, [series, overlayFeed]() {
+    auto* tick = new int(0);
+    auto* current_forming_time = new qint64(forming_time);
+    QObject::connect(window, &QQuickWindow::beforeRendering, window,
+                     [series, overlayFeed, overlay_item, chart, tick, scenario, forming_open,
+                      current_forming_time, safe_bars, safe_buckets, low_price, high_price]() mutable {
+        ++*tick;
         if (overlayFeed != nullptr) {
             // Worst case: the overlay buffers are rebuilt and uploaded every frame.
             overlayFeed->setOverlay_revision(overlayFeed->getOverlay_revision() + 1);
         }
-        series->ingest_forming_bar(series->getLast_time() + 60, series->getLast_price(),
-                                   series->getLast_price() + 1.0, series->getLast_price() - 1.0,
-                                   series->getLast_price() + 0.5, 1.0);
+        const double delta = std::sin(static_cast<double>(*tick) * 0.07) * 0.7;
+        const double close = forming_open + delta;
+        qint64 time = *current_forming_time;
+        double high = std::max(forming_open, close) + 1.0;
+        double low = std::min(forming_open, close) - 1.0;
+        if (scenario == QStringLiteral("historical")) {
+            time = series->getLast_time() + 60;
+        } else if (scenario == QStringLiteral("price-expansion")) {
+            high += static_cast<double>(*tick) * 0.002;
+            chart->setHighPrice(high_price + static_cast<double>(*tick) * 0.002);
+        } else if (scenario == QStringLiteral("pan-zoom")) {
+            const int span = std::max(2, safe_buckets - ((*tick / 90) % std::max(1, safe_buckets / 4)));
+            const int first = std::max(0, safe_bars - span + ((*tick / 30) % 15));
+            chart->setFirstBar(first);
+            chart->setLastBar(std::min(safe_bars + 1, first + span));
+            chart->setLowPrice(low_price - (span % 7));
+            chart->setHighPrice(high_price + (span % 7));
+            if (overlay_item != nullptr) {
+                // Keep the marker/overlay layer on the same scripted viewport.
+                overlay_item->setFirstBar(chart->firstBar());
+                overlay_item->setLastBar(chart->lastBar());
+                overlay_item->setLowPrice(chart->lowPrice());
+                overlay_item->setHighPrice(chart->highPrice());
+            }
+        } else if (scenario == QStringLiteral("completion") && *tick % 120 == 0) {
+            series->ingest_completed_bar(time, forming_open, high, low, close, 1.0);
+            *current_forming_time += 60;
+            time = *current_forming_time;
+        }
+        series->ingest_forming_bar(time, forming_open, high, low, close, 1.0);
+        chart->update();
     });
 
     QTimer* stopTimer = new QTimer(window);
     stopTimer->setSingleShot(true);
     QObject::connect(stopTimer, &QTimer::timeout, window,
-                     [all, visible_buckets, execution_rows, markers, overlays]() {
+                     [all, allocation_started, visible_buckets, execution_rows, markers, overlays,
+                      scenario]() {
+                         const unsigned long long rust_allocations =
+                             *allocation_started ? q_terminal_bench_allocations_stop() : 0;
                          for (WindowStats* stats : *all) {
-                             print_stats(*stats, visible_buckets, execution_rows, markers, overlays);
+                             print_stats(*stats, visible_buckets, execution_rows, markers, overlays,
+                                         scenario, rust_allocations);
                          }
                          const auto windows = QGuiApplication::topLevelWindows();
                          for (QWindow* w : windows) {

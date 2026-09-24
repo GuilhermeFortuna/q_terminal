@@ -41,6 +41,7 @@ fn main() {
         let execution_rows = read_arg_i32(&args, "--execution-rows", 0);
         let markers = read_arg_i32(&args, "--markers", 0);
         let overlays = read_arg_i32(&args, "--overlays", 0);
+        let scenario = read_arg_string(&args, "--scenario", "historical");
         std::process::exit(q_terminal::run_bench_frames(
             visible_buckets,
             bar_count,
@@ -48,6 +49,7 @@ fn main() {
             execution_rows,
             markers,
             overlays,
+            scenario,
         ));
     }
     let auto_close_ms = read_arg_i32(&args, "--auto-close-ms", 0);
@@ -58,6 +60,9 @@ fn main() {
         0,
         0,
         0,
+        2000,
+        500_000,
+        "historical",
     ));
 }
 
@@ -66,5 +71,13 @@ fn read_arg_i32(args: &[String], flag: &str, default: i32) -> i32 {
         .position(|arg| arg == flag)
         .and_then(|index| args.get(index + 1))
         .and_then(|value| value.parse().ok())
+        .unwrap_or(default)
+}
+
+fn read_arg_string<'a>(args: &'a [String], flag: &str, default: &'a str) -> &'a str {
+    args.iter()
+        .position(|arg| arg == flag)
+        .and_then(|index| args.get(index + 1))
+        .map(String::as_str)
         .unwrap_or(default)
 }

@@ -36,6 +36,7 @@ void BucketGeometryNode::syncVertices(const BarVertex* vertices, int count,
                 new QSGGeometry(QSGGeometry::defaultAttributes_Point2D(), 0);
             geom->setDrawingMode(QSGGeometry::DrawTriangles);
             setGeometry(geom);
+            m_allocationCount++;
         }
         static_cast<QSGFlatColorMaterial*>(material())->setColor(color);
         markDirty(QSGNode::DirtyGeometry | QSGNode::DirtyMaterial);
@@ -85,6 +86,8 @@ void BarChartNode::sync(const BarVertexView& view, const QColor& rising,
         risingVerts.reserve(view.count);
         fallingVerts.reserve(view.count);
         formingVerts.reserve(view.count);
+        // Each reserve allocates a full-view scratch buffer in the baseline renderer.
+        m_frameRendererAllocations += 3;
 
         for (size_t i = 0; i < view.count; ++i) {
             const BarVertex& vertex = view.data[i];
@@ -102,9 +105,14 @@ void BarChartNode::sync(const BarVertexView& view, const QColor& rising,
     m_fallingCount = static_cast<int>(fallingVerts.size());
     m_formingCount = static_cast<int>(formingVerts.size());
 
+    m_frameCompletedVertices += m_risingCount + m_fallingCount;
+    m_frameFormingVertices += m_formingCount;
+    const int allocationsBefore = geometryAllocationCount();
+
     m_rising->syncVertices(risingVerts.data(), m_risingCount, rising);
     m_falling->syncVertices(fallingVerts.data(), m_fallingCount, falling);
     m_forming->syncVertices(formingVerts.data(), m_formingCount, forming);
+    m_frameRendererAllocations += geometryAllocationCount() - allocationsBefore;
 }
 
 int BarChartNode::geometryAllocationCount() const {
@@ -147,4 +155,16 @@ int BarChartNode::takeFrameUploads() {
     const int uploads = m_frameUploads;
     m_frameUploads = 0;
     return uploads;
+}
+
+BarChartFrameStats BarChartNode::takeFrameStats() {
+    BarChartFrameStats stats;
+    stats.syncs = takeFrameUploads();
+    stats.completedVertices = m_frameCompletedVertices;
+    stats.formingVertices = m_frameFormingVertices;
+    stats.rendererAllocations = m_frameRendererAllocations;
+    m_frameCompletedVertices = 0;
+    m_frameFormingVertices = 0;
+    m_frameRendererAllocations = 0;
+    return stats;
 }

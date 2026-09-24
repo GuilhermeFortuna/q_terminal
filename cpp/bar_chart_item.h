@@ -6,6 +6,7 @@
 #include <QtQuick/QSGNode>
 
 class BarChartNode;
+struct BarChartFrameStats;
 
 class BarChartItem : public QQuickItem {
     Q_OBJECT
@@ -50,6 +51,7 @@ public:
     int paintNodeCallCount() const { return m_paintNodeCallCount; }
     int updateRequestCount() const { return m_updateRequestCount; }
     int takeFrameUploads();
+    BarChartFrameStats takeFrameStats();
 
     QSGNode* updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData* data) override;
 
@@ -79,6 +81,7 @@ private:
     QColor m_formingColor = QColor(255, 165, 0);
     int m_paintNodeCallCount = 0;
     int m_updateRequestCount = 0;
+    long long m_frameGeometryPrepNs = 0;
     BarChartNode* m_chartNode = nullptr;
 
     void scheduleUpdate();

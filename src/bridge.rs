@@ -34,6 +34,7 @@ pub mod ffi {
         fn verify_design_fonts() -> bool;
 
         include!("frame_bench.h");
+        #[allow(clippy::too_many_arguments)]
         fn run_frame_bench(
             engine: Pin<&mut QQmlApplicationEngine>,
             visible_buckets: i32,
@@ -42,6 +43,7 @@ pub mod ffi {
             execution_rows: i32,
             markers: i32,
             overlays: i32,
+            scenario: &QString,
         );
     }
 

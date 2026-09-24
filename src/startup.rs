@@ -287,9 +287,10 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
 /// Opens the window whatever the API's state: configuration failures are shown
 /// in the scene, not printed to a terminal the user is not reading.
 pub fn run_slice(config: Result<Config, ConfigError>) -> i32 {
-    run_slice_opts(config, false, 0, 0, 0, 0)
+    run_slice_opts(config, false, 0, 0, 0, 0, 2000, 500_000, "historical")
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn run_slice_opts(
     config: Result<Config, ConfigError>,
     bench: bool,
@@ -297,17 +298,21 @@ pub fn run_slice_opts(
     execution_rows: i32,
     markers: i32,
     overlays: i32,
+    visible_buckets: i32,
+    bar_count: i32,
+    scenario: &str,
 ) -> i32 {
     let mut ctx = setup_slice(&config);
     if bench {
         bridge::ffi::run_frame_bench(
             ctx.engine.as_mut().unwrap(),
-            2000,
-            500_000,
+            visible_buckets,
+            bar_count,
             auto_close_ms as i32,
             execution_rows,
             markers,
             overlays,
+            &cxx_qt_lib::QString::from(scenario),
         );
     } else if auto_close_ms > 0 {
         chart_bridge::setup_window_auto_close(ctx.engine.as_mut().unwrap(), auto_close_ms as i32);

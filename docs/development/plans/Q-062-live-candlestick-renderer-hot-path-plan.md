@@ -31,7 +31,7 @@ or changes a board status outside `./work`.
 
 ## Ordered required implementation
 
-- [ ] **1. Establish a trustworthy benchmark baseline.** Extend
+- [x] **1. Establish a trustworthy benchmark baseline.** Extend
   `cpp/frame_bench.cpp`, its bridge in `src/bridge.rs`, the CLI in `src/main.rs`,
   and `Makefile` so the existing benchmark can run at the live edge, with the
   forming candle visible and a stable timestamp whose high/low/close change.
@@ -44,6 +44,29 @@ or changes a board status outside `./work`.
   transfers. Capture repeated 500k-bar baseline runs at 500, 2,000, and 8,000
   buckets, with and without the existing overlays/markers, on one machine.
   Verify the live-edge mode actually contains a forming candle.
+
+  Baseline captured on Arch Linux (`archlinux`, 800x800, Qt software scene
+  graph, offscreen), with 500,000 synthetic bars, 2.2 s runs and the first
+  second excluded. Each cell is the median of two runs; values are p50/p95/p99
+  frame milliseconds:
+
+  | Visible buckets | Load | p50 / p95 / p99 (ms) |
+  |---:|---|---:|
+  | 500 | Plain | 9.74 / 10.11 / 10.66 |
+  | 500 | 10 markers + 2 overlays | 10.05 / 10.45 / 10.76 |
+  | 2,000 | Plain | 9.99 / 10.29 / 11.18 |
+  | 2,000 | 10 markers + 2 overlays | 11.27 / 11.81 / 12.73 |
+  | 8,000 | Plain | 10.05 / 10.53 / 11.16 |
+  | 8,000 | 10 markers + 2 overlays | 15.39 / 15.75 / 15.94 |
+
+  The live-edge runs all reported `forming_visible=true`, 12 forming
+  vertices/frame, and 3 renderer allocations/frame. The renderer reports
+  requested Qt submissions; `gpu_transfers=not_measured`. Rust allocation
+  figures are explicitly process-wide. Historical mode retained the forming
+  bar offscreen (`forming_visible=false`). Pan/zoom, completion and price
+  expansion stress runs also completed; p95 was 12.96, 10.31 and 10.27 ms,
+  respectively (500 buckets, stress overlays/markers). These are software
+  renderer measurements and are not hardware GPU transfer measurements.
 
 - [ ] **2. Split packing in `q_core` while preserving output.** In
   `crates/q-buffers/src/geometry.rs`, expose a way to pack one forming bucket

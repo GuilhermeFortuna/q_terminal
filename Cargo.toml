@@ -11,6 +11,7 @@ crate-type = ["staticlib", "rlib"]
 [features]
 default = []
 gallery = []
+bench-allocations = []
 
 [dependencies]
 cxx = "1.0.142"
