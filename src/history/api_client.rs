@@ -1,6 +1,10 @@
 use serde::Deserialize;
+use std::time::Duration;
 
 use crate::history::catalog::DatasetManifest;
+
+/// Keep a stalled history endpoint from leaving the chart in its loading state forever.
+const HISTORY_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct DatasetListResponse {
@@ -45,7 +49,12 @@ impl ApiClient {
             "{}/api/v1/catalog/datasets?kind=bars&symbol={}&timeframe={}",
             self.base, symbol, timeframe
         );
-        let response = self.client.get(url).send().await?;
+        let response = self
+            .client
+            .get(url)
+            .timeout(HISTORY_REQUEST_TIMEOUT)
+            .send()
+            .await?;
         response.error_for_status()?.json().await
     }
 
@@ -60,7 +69,12 @@ impl ApiClient {
             "{}/api/v1/market/ohlcv/{}?timeframe={}&count={}",
             self.base, symbol, timeframe, capped
         );
-        let response = self.client.get(url).send().await?;
+        let response = self
+            .client
+            .get(url)
+            .timeout(HISTORY_REQUEST_TIMEOUT)
+            .send()
+            .await?;
         response.error_for_status()?.json().await
     }
 }
