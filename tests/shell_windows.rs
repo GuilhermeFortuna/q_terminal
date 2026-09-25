@@ -648,6 +648,7 @@ async fn windows_render_to_images() {
     // The detached window is drawn again over its own image, banner included.
     assert_eq!(chart_bridge::shell_grab_windows(&dir_str), 2);
     assert!(dir.read_dir().unwrap().count() >= 2);
+    pump(200).await;
 }
 
 #[tokio::test(flavor = "current_thread")]

@@ -1319,8 +1319,18 @@ std::int32_t shell_grab_windows(rust::Str dir) {
             window->update();
         }
         const QImage image = window->grabWindow();
-        QString name = window->title();
-        name.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9]+")), QStringLiteral("-"));
+        QString name;
+        name.reserve(window->title().size());
+        bool lastDash = false;
+        for (const QChar& ch : window->title()) {
+            if (ch.isLetterOrNumber()) {
+                name.append(ch);
+                lastDash = false;
+            } else if (!lastDash) {
+                name.append(u'-');
+                lastDash = true;
+            }
+        }
         if (!image.isNull() && image.save(base + QStringLiteral("/") + name + QStringLiteral(".png"), "PNG")) {
             ++written;
         }

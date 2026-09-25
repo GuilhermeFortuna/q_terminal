@@ -45,7 +45,7 @@ panel objects and shared stores serve every arrangement.
   diagnostic detail. Add the critical OpsStatus chip when Operations is hidden; clicking
   it reveals that group. Update gallery examples for healthy, stale, disconnected,
   worker unavailable, unknown orders, kill switch, and empty Tape states.
-- [ ] **5. Review and handoff.** Record the Quantower, MuseScore, and Grafana adaptations
+- [x] **5. Review and handoff.** Record the Quantower, MuseScore, and Grafana adaptations
   in `docs/design/components.md`. Inspect captured windows and gallery states at both
   workstation sizes and a narrow width. Run
   `env -u WAYLAND_DISPLAY -u DISPLAY make check`; check the chart and split-pane frame

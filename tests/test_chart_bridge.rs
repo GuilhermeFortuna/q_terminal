@@ -687,7 +687,7 @@ fn status_strip_and_empty_state_show_live_only() {
         let mut empty_probe = chart::make_empty_state_probe();
         empty_probe.pin_mut().set_feed(feed);
         let empty_res = empty_probe.result();
-        assert_eq!(empty_res.message, "Waiting for live bars (live only)...");
+        assert_eq!(empty_res.message, "Waiting for bars · Live stream active");
     }
 }
 
@@ -702,7 +702,7 @@ fn empty_state_shows_retrying_when_api_down() {
         let mut empty_probe = chart::make_empty_state_probe();
         empty_probe.pin_mut().set_feed(feed);
         let empty_res = empty_probe.result();
-        assert_eq!(empty_res.message, "API unreachable, retrying...");
+        assert_eq!(empty_res.message, "API unreachable · Retrying");
         assert_eq!(empty_res.reason, "connection refused");
     }
 }

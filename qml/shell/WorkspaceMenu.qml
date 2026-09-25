@@ -61,8 +61,8 @@ RowLayout {
         id: commandsButton
         text: "Commands"
         implicitWidth: Spacing.size100
-        toolTip: "Ctrl+K"
-        Accessible.name: "Open command palette (Ctrl+K)"
+        toolTip: "Ctrl+Shift+P"
+        Accessible.name: "Open command palette (Ctrl+Shift+P)"
         onClicked: root.window.openPalette()
     }
 
@@ -74,9 +74,23 @@ RowLayout {
         implicitWidth: alertRow.implicitWidth + Spacing.size16
         radius: Theme.radiusMedium
         color: Theme.criticalSurface
-        border.color: Theme.criticalStrong
-        border.width: Theme.borderWidth
+        border.color: opsAlertChip.activeFocus ? Theme.accent : Theme.criticalStrong
+        border.width: opsAlertChip.activeFocus ? Theme.focusBorderWidth : Theme.borderWidth
         Layout.alignment: Qt.AlignVCenter
+        activeFocusOnTab: true
+        focus: true
+
+        Accessible.role: Accessible.Button
+        Accessible.name: "Alert: " + opsAlertChip.criticalOpsCause + ". Activate to open Operations."
+
+        Keys.onReturnPressed: function(event) {
+            opsAlertChip.openOperations();
+            event.accepted = true;
+        }
+        Keys.onSpacePressed: function(event) {
+            opsAlertChip.openOperations();
+            event.accepted = true;
+        }
 
         readonly property var opsStatus: root.shell.activeOpsStatus
         readonly property bool workerUnavailable: opsStatus ? (opsStatus.api_status !== "unknown" && (!opsStatus.worker_heartbeat_known || opsStatus.worker_status !== "active" || opsStatus.worker_heartbeat_age_s > 30.0)) : false
@@ -100,9 +114,10 @@ RowLayout {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            Accessible.role: Accessible.Button
-            Accessible.name: "Alert: " + opsAlertChip.criticalOpsCause + ". Click to open Operations."
-            onClicked: opsAlertChip.openOperations()
+            onClicked: {
+                opsAlertChip.forceActiveFocus();
+                opsAlertChip.openOperations();
+            }
         }
 
         RowLayout {
@@ -127,8 +142,8 @@ RowLayout {
             }
         }
 
-        ToolTip.visible: alertMouse.containsMouse && opsAlertChip.criticalOpsCause !== ""
-        ToolTip.text: "Click to open Operations and address " + opsAlertChip.criticalOpsCause
+        ToolTip.visible: (alertMouse.containsMouse || opsAlertChip.activeFocus) && opsAlertChip.criticalOpsCause !== ""
+        ToolTip.text: "Activate to open Operations and address " + opsAlertChip.criticalOpsCause
     }
 
     AppButton {
