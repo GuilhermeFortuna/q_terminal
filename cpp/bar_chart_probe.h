@@ -19,6 +19,8 @@ struct InternalProbeResult {
     long long revision = 0;
     int uploads = 0;
     int geometryAllocations = 0;
+    int completedLayerUpdates = 0;
+    int formingLayerUpdates = 0;
     int risingVertexCount = 0;
     int fallingVertexCount = 0;
     int formingVertexCount = 0;

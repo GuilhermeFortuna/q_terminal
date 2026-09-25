@@ -7,11 +7,6 @@
 
 namespace {
 
-long long compositeRevision(BarSeries* series, int firstBar, int lastBar) {
-    return (series->geometry_revision() << 32) ^ (static_cast<long long>(firstBar) << 16) ^
-           static_cast<long long>(lastBar) ^ static_cast<long long>(series->vertex_len());
-}
-
 BarChartNode& probeNode() {
     thread_local BarChartNode node;
     return node;
@@ -22,6 +17,8 @@ InternalProbeResult makeProbeResult(BarChartNode* node, BarSeries* series) {
     result.revision = series->geometry_revision();
     result.uploads = node->uploadCount();
     result.geometryAllocations = node->geometryAllocationCount();
+    result.completedLayerUpdates = node->completedLayerUpdateCount();
+    result.formingLayerUpdates = node->formingLayerUpdateCount();
     result.risingVertexCount = node->risingVertexCount();
     result.fallingVertexCount = node->fallingVertexCount();
     result.formingVertexCount = node->formingVertexCount();
@@ -46,19 +43,31 @@ InternalProbeResult probe_sync(BarSeries* series, int firstBar, int lastBar, dou
     series->set_viewport(firstBar, lastBar, low, high);
     series->set_surface(widthPx, heightPx);
     series->rebuild_geometry();
+    const BarVertex* combined = series->vertex_ptr();
+    const size_t combinedCount = series->vertex_len();
+    series->rebuild_split_geometry();
 
     BarChartNode& node = probeNode();
+    node.setProbeCaptureEnabled(true);
     const int uploadsBefore = node.uploadCount();
     const int allocationsBefore = node.geometryAllocationCount();
+    const int completedBefore = node.completedLayerUpdateCount();
+    const int formingBefore = node.formingLayerUpdateCount();
 
-    const BarVertex* source = series->vertex_ptr();
-    BarVertexView view{source, series->vertex_len(),
-                       compositeRevision(series, firstBar, lastBar)};
-    node.sync(view, QColor(0, 180, 0), QColor(220, 0, 0), QColor(255, 165, 0));
+    const BarVertexView completed{series->completed_vertex_ptr(), series->completed_vertex_len(),
+                                  series->completed_geometry_revision()};
+    const BarVertexView forming{series->forming_vertex_ptr(), series->forming_vertex_len(),
+                                series->forming_geometry_revision()};
+    const BarChartSourceKey key{series, 0, firstBar, lastBar, low, high, widthPx, heightPx};
+    node.sync(completed, forming, key, QColor(0, 180, 0), QColor(220, 0, 0),
+              QColor(255, 165, 0));
+    node.captureProbeVertices(combined, combinedCount);
 
     InternalProbeResult result = makeProbeResult(&node, series);
     result.uploads = node.uploadCount() - uploadsBefore;
     result.geometryAllocations = node.geometryAllocationCount() - allocationsBefore;
+    result.completedLayerUpdates = node.completedLayerUpdateCount() - completedBefore;
+    result.formingLayerUpdates = node.formingLayerUpdateCount() - formingBefore;
     if (state != nullptr) {
         state->uploadedRevision = node.uploadedRevision();
         state->uploadCount = node.uploadCount();
@@ -68,6 +77,7 @@ InternalProbeResult probe_sync(BarSeries* series, int firstBar, int lastBar, dou
 }
 
 InternalProbeResult probe_item_paint(BarChartItem* item, int frames) {
+    item->enableProbeCapture();
     QSGNode* node = nullptr;
     for (int frame = 0; frame < frames; ++frame) {
         node = item->testUpdatePaintNode(node);
@@ -95,5 +105,6 @@ InternalProbeResult probe_item_paint(BarChartItem* item, int frames) {
 }
 
 void reset_probe_node() {
+    probeNode().setProbeCaptureEnabled(true);
     probeNode().resetForTests();
 }

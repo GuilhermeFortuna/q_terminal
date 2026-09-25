@@ -69,6 +69,137 @@ fn upload_rules_first_uploads_unchanged_revision_skips_mutation_uploads_once() {
 }
 
 #[test]
+fn forming_tick_updates_only_the_forming_scene_graph_layer() {
+    let _guard = setup();
+    unsafe {
+        let series = make_test_series(4);
+        let low = chart::chart_series_low(series);
+        let high = chart::chart_series_high(series);
+        let mut state = ProbeState::default();
+
+        let initial = sync_series(series, 0, 5, low, high, 400.0, 200.0, &mut state);
+        assert_eq!(initial.completed_layer_updates, 1);
+        assert_eq!(initial.forming_layer_updates, 0);
+
+        chart::chart_series_ingest_forming(series, 1_000_000_240, 100.0, 103.0, 98.0, 101.0, 10.0);
+        let first_forming = sync_series(series, 0, 5, low, high, 400.0, 200.0, &mut state);
+        assert_eq!(first_forming.completed_layer_updates, 0);
+        assert_eq!(first_forming.forming_layer_updates, 1);
+
+        chart::chart_series_ingest_forming(series, 1_000_000_240, 100.0, 104.0, 97.0, 102.0, 10.0);
+        let forming_tick = sync_series(series, 0, 5, low, high, 400.0, 200.0, &mut state);
+        assert_eq!(forming_tick.completed_layer_updates, 0);
+        assert_eq!(forming_tick.forming_layer_updates, 1);
+    }
+}
+
+#[test]
+fn completed_bar_transition_invalidates_completed_and_forming_layers() {
+    let _guard = setup();
+    unsafe {
+        let series = make_test_series(4);
+        let low = chart::chart_series_low(series);
+        let high = chart::chart_series_high(series);
+        chart::chart_series_ingest_forming(series, 1_000_000_240, 100.0, 103.0, 98.0, 101.0, 10.0);
+        let mut state = ProbeState::default();
+        sync_series(series, 0, 5, low, high, 400.0, 200.0, &mut state);
+
+        chart::chart_series_ingest_completed(
+            series,
+            1_000_000_240,
+            100.0,
+            103.0,
+            98.0,
+            101.0,
+            10.0,
+        );
+        let completed = sync_series(series, 0, 5, low, high, 400.0, 200.0, &mut state);
+        assert_eq!(completed.completed_layer_updates, 1);
+        assert_eq!(completed.forming_layer_updates, 1);
+        assert_eq!(completed.forming_vertex_count, 0);
+    }
+}
+
+#[test]
+fn viewport_price_and_surface_changes_invalidate_both_layers() {
+    let _guard = setup();
+    unsafe {
+        let series = make_test_series(4);
+        let low = chart::chart_series_low(series);
+        let high = chart::chart_series_high(series);
+        chart::chart_series_ingest_forming(series, 1_000_000_240, 100.0, 103.0, 98.0, 101.0, 10.0);
+        let mut state = ProbeState::default();
+        sync_series(series, 0, 5, low, high, 400.0, 200.0, &mut state);
+
+        let panned = sync_series(series, 1, 5, low, high, 400.0, 200.0, &mut state);
+        assert_eq!(panned.completed_layer_updates, 1);
+        assert_eq!(panned.forming_layer_updates, 1);
+
+        let expanded = sync_series(
+            series,
+            1,
+            5,
+            low - 5.0,
+            high + 5.0,
+            400.0,
+            200.0,
+            &mut state,
+        );
+        assert_eq!(expanded.completed_layer_updates, 1);
+        assert_eq!(expanded.forming_layer_updates, 1);
+
+        let resized = sync_series(
+            series,
+            1,
+            5,
+            low - 5.0,
+            high + 5.0,
+            320.0,
+            160.0,
+            &mut state,
+        );
+        assert_eq!(resized.completed_layer_updates, 1);
+        assert_eq!(resized.forming_layer_updates, 1);
+    }
+}
+
+#[test]
+fn offscreen_forming_tick_does_not_update_scene_graph_geometry() {
+    let _guard = setup();
+    unsafe {
+        let series = make_test_series(4);
+        let low = chart::chart_series_low(series);
+        let high = chart::chart_series_high(series);
+        let mut state = ProbeState::default();
+        let initial = sync_series(series, 0, 4, low, high, 400.0, 200.0, &mut state);
+        assert_eq!(initial.forming_vertex_count, 0);
+
+        chart::chart_series_ingest_forming(series, 1_000_000_240, 100.0, 103.0, 98.0, 101.0, 10.0);
+        let offscreen_tick = sync_series(series, 0, 4, low, high, 400.0, 200.0, &mut state);
+        assert_eq!(offscreen_tick.completed_layer_updates, 0);
+        assert_eq!(offscreen_tick.forming_layer_updates, 0);
+        assert_eq!(offscreen_tick.forming_vertex_count, 0);
+    }
+}
+
+#[test]
+fn source_identity_change_rebuilds_completed_layer() {
+    let _guard = setup();
+    unsafe {
+        let first_series = make_test_series(4);
+        let second_series = make_test_series(4);
+        let low = chart::chart_series_low(first_series);
+        let high = chart::chart_series_high(first_series);
+        let mut state = ProbeState::default();
+        sync_series(first_series, 0, 4, low, high, 400.0, 200.0, &mut state);
+
+        let retargeted = sync_series(second_series, 0, 4, low, high, 400.0, 200.0, &mut state);
+        assert_eq!(retargeted.completed_layer_updates, 1);
+        assert_eq!(retargeted.forming_layer_updates, 0);
+    }
+}
+
+#[test]
 fn ten_mutations_between_two_frames_produce_one_upload() {
     let _guard = setup();
     unsafe {

@@ -1,7 +1,6 @@
 #include "bar_chart_node.h"
 
 #include <QtQuick/QSGFlatColorMaterial>
-#include <QtQuick/QSGGeometry>
 
 namespace {
 
@@ -15,9 +14,11 @@ void copyPoint2D(QSGGeometry* geometry, const BarVertex* vertices, int count) {
 
 } // namespace
 
-BucketGeometryNode::BucketGeometryNode() {
+BucketGeometryNode::BucketGeometryNode(QSGGeometry::DataPattern pattern)
+    : m_pattern(pattern) {
     auto* geom = new QSGGeometry(QSGGeometry::defaultAttributes_Point2D(), 0);
     geom->setDrawingMode(QSGGeometry::DrawTriangles);
+    geom->setVertexDataPattern(m_pattern);
     setGeometry(geom);
     setMaterial(new QSGFlatColorMaterial());
     setFlag(QSGNode::OwnedByParent, true);
@@ -27,97 +28,148 @@ BucketGeometryNode::~BucketGeometryNode() {
     delete geometry();
 }
 
-void BucketGeometryNode::syncVertices(const BarVertex* vertices, int count,
-                                      const QColor& color) {
+bool BucketGeometryNode::setColor(const QColor& color) {
+    auto* flat = static_cast<QSGFlatColorMaterial*>(material());
+    if (flat->color() == color) {
+        return false;
+    }
+    flat->setColor(color);
+    markDirty(QSGNode::DirtyMaterial);
+    return true;
+}
+
+void BucketGeometryNode::syncVertices(const BarVertex* vertices, int count) {
     if (count <= 0) {
-        if (geometry() == nullptr || geometry()->vertexCount() != 0) {
+        if (geometry() != nullptr && geometry()->vertexCount() != 0) {
             delete geometry();
-            auto* geom =
-                new QSGGeometry(QSGGeometry::defaultAttributes_Point2D(), 0);
+            auto* geom = new QSGGeometry(QSGGeometry::defaultAttributes_Point2D(), 0);
             geom->setDrawingMode(QSGGeometry::DrawTriangles);
+            geom->setVertexDataPattern(m_pattern);
             setGeometry(geom);
             m_allocationCount++;
+            markDirty(QSGNode::DirtyGeometry);
         }
-        static_cast<QSGFlatColorMaterial*>(material())->setColor(color);
-        markDirty(QSGNode::DirtyGeometry | QSGNode::DirtyMaterial);
         return;
     }
 
     if (geometry() == nullptr || geometry()->vertexCount() != count) {
         delete geometry();
-        auto* geom =
-            new QSGGeometry(QSGGeometry::defaultAttributes_Point2D(), count);
+        auto* geom = new QSGGeometry(QSGGeometry::defaultAttributes_Point2D(), count);
         geom->setDrawingMode(QSGGeometry::DrawTriangles);
+        geom->setVertexDataPattern(m_pattern);
         setGeometry(geom);
         m_allocationCount++;
     }
 
     copyPoint2D(geometry(), vertices, count);
-    static_cast<QSGFlatColorMaterial*>(material())->setColor(color);
-    markDirty(QSGNode::DirtyGeometry | QSGNode::DirtyMaterial);
+    markDirty(QSGNode::DirtyGeometry);
+}
+
+void BucketGeometryNode::syncVertices(const BarVertex* vertices, int count,
+                                      const QColor& color) {
+    setColor(color);
+    syncVertices(vertices, count);
 }
 
 BarChartNode::BarChartNode() {
-    m_rising = new BucketGeometryNode();
-    m_falling = new BucketGeometryNode();
-    m_forming = new BucketGeometryNode();
+    m_rising = new BucketGeometryNode(QSGGeometry::StaticPattern);
+    m_falling = new BucketGeometryNode(QSGGeometry::StaticPattern);
+    m_forming = new BucketGeometryNode(QSGGeometry::StreamPattern);
     appendChildNode(m_rising);
     appendChildNode(m_falling);
     appendChildNode(m_forming);
 }
 
-void BarChartNode::sync(const BarVertexView& view, const QColor& rising,
-                        const QColor& falling, const QColor& forming) {
-    if (view.revision == m_uploadedRevision) {
-        return;
-    }
+void BarChartNode::sync(const BarVertexView& completed, const BarVertexView& forming,
+                        const BarChartSourceKey& sourceKey, const QColor& rising,
+                        const QColor& falling, const QColor& formingColor) {
+    const bool sourceChanged = !m_hasSourceKey || sourceKey != m_sourceKey;
+    const bool completedChanged = completed.revision != m_completedRevision ||
+                                  (sourceChanged &&
+                                   (completed.count > 0 || m_risingCount > 0 || m_fallingCount > 0));
+    const bool formingChanged = forming.revision != m_formingRevision ||
+                                (sourceChanged && (forming.count > 0 || m_formingCount > 0));
+    const int allocationsBefore = geometryAllocationCount();
+    bool changed = false;
 
-    m_uploadCount++;
-    m_frameUploads++;
-    m_uploadedRevision = view.revision;
-
-    std::vector<BarVertex> risingVerts;
-    std::vector<BarVertex> fallingVerts;
-    std::vector<BarVertex> formingVerts;
-
-    m_lastUploadedVertices.clear();
-    if (view.data != nullptr && view.count > 0) {
-        m_lastUploadedVertices.assign(view.data, view.data + view.count);
-        risingVerts.reserve(view.count);
-        fallingVerts.reserve(view.count);
-        formingVerts.reserve(view.count);
-        // Each reserve allocates a full-view scratch buffer in the baseline renderer.
-        m_frameRendererAllocations += 3;
-
-        for (size_t i = 0; i < view.count; ++i) {
-            const BarVertex& vertex = view.data[i];
-            if (vertex.forming >= 0.5f) {
-                formingVerts.push_back(vertex);
-            } else if (vertex.direction >= 0.0f) {
-                risingVerts.push_back(vertex);
+    if (completedChanged) {
+        size_t risingCount = 0;
+        size_t fallingCount = 0;
+        for (size_t i = 0; completed.data != nullptr && i < completed.count; ++i) {
+            if (completed.data[i].direction >= 0.0f) {
+                ++risingCount;
             } else {
-                fallingVerts.push_back(vertex);
+                ++fallingCount;
             }
         }
+        const size_t risingCapacity = m_risingScratch.capacity();
+        const size_t fallingCapacity = m_fallingScratch.capacity();
+        m_risingScratch.resize(risingCount);
+        m_fallingScratch.resize(fallingCount);
+        if (m_risingScratch.capacity() != risingCapacity) {
+            ++m_frameRendererAllocations;
+        }
+        if (m_fallingScratch.capacity() != fallingCapacity) {
+            ++m_frameRendererAllocations;
+        }
+
+        size_t risingIndex = 0;
+        size_t fallingIndex = 0;
+        for (size_t i = 0; completed.data != nullptr && i < completed.count; ++i) {
+            const BarVertex& vertex = completed.data[i];
+            if (vertex.direction >= 0.0f) {
+                m_risingScratch[risingIndex++] = vertex;
+            } else {
+                m_fallingScratch[fallingIndex++] = vertex;
+            }
+        }
+
+        m_risingCount = static_cast<int>(risingCount);
+        m_fallingCount = static_cast<int>(fallingCount);
+        m_rising->syncVertices(m_risingScratch.data(), m_risingCount);
+        m_falling->syncVertices(m_fallingScratch.data(), m_fallingCount);
+        m_completedRevision = completed.revision;
+        m_completedLayerUpdateCount++;
+        m_frameCompletedVertices += m_risingCount + m_fallingCount;
+        changed = true;
     }
 
-    m_risingCount = static_cast<int>(risingVerts.size());
-    m_fallingCount = static_cast<int>(fallingVerts.size());
-    m_formingCount = static_cast<int>(formingVerts.size());
+    if (formingChanged) {
+        m_formingCount = static_cast<int>(forming.count);
+        m_forming->syncVertices(forming.data, m_formingCount);
+        m_formingRevision = forming.revision;
+        m_formingLayerUpdateCount++;
+        m_frameFormingVertices += m_formingCount;
+        changed = true;
+    }
 
-    m_frameCompletedVertices += m_risingCount + m_fallingCount;
-    m_frameFormingVertices += m_formingCount;
-    const int allocationsBefore = geometryAllocationCount();
+    changed |= m_rising->setColor(rising);
+    changed |= m_falling->setColor(falling);
+    changed |= m_forming->setColor(formingColor);
+    m_sourceKey = sourceKey;
+    m_hasSourceKey = true;
 
-    m_rising->syncVertices(risingVerts.data(), m_risingCount, rising);
-    m_falling->syncVertices(fallingVerts.data(), m_fallingCount, falling);
-    m_forming->syncVertices(formingVerts.data(), m_formingCount, forming);
     m_frameRendererAllocations += geometryAllocationCount() - allocationsBefore;
+    if (changed) {
+        ++m_uploadCount;
+        ++m_frameUploads;
+        ++m_uploadedRevision;
+    }
 }
 
 int BarChartNode::geometryAllocationCount() const {
     return m_rising->allocationCount() + m_falling->allocationCount() +
            m_forming->allocationCount();
+}
+
+void BarChartNode::captureProbeVertices(const BarVertex* vertices, size_t count) {
+    if (!m_probeCaptureEnabled) {
+        return;
+    }
+    m_lastUploadedVertices.clear();
+    if (vertices != nullptr && count > 0) {
+        m_lastUploadedVertices.assign(vertices, vertices + count);
+    }
 }
 
 void BarChartNode::collectVertices(std::vector<BarVertex>& out) const {
@@ -140,11 +192,20 @@ void BarChartNode::collectVertices(std::vector<BarVertex>& out) const {
 }
 
 void BarChartNode::resetForTests() {
-    m_uploadedRevision = -1;
+    m_uploadedRevision = 0;
+    m_completedRevision = 0;
+    m_formingRevision = 0;
+    m_hasSourceKey = false;
     m_uploadCount = 0;
     m_risingCount = 0;
     m_fallingCount = 0;
     m_formingCount = 0;
+    m_frameUploads = 0;
+    m_completedLayerUpdateCount = 0;
+    m_formingLayerUpdateCount = 0;
+    m_frameCompletedVertices = 0;
+    m_frameFormingVertices = 0;
+    m_frameRendererAllocations = 0;
     m_lastUploadedVertices.clear();
     m_rising->syncVertices(nullptr, 0, QColor(0, 180, 0));
     m_falling->syncVertices(nullptr, 0, QColor(220, 0, 0));

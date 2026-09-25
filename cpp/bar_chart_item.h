@@ -52,6 +52,7 @@ public:
     int updateRequestCount() const { return m_updateRequestCount; }
     int takeFrameUploads();
     BarChartFrameStats takeFrameStats();
+    void enableProbeCapture() { m_captureProbeVertices = true; }
 
     QSGNode* updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData* data) override;
 
@@ -82,6 +83,7 @@ private:
     int m_paintNodeCallCount = 0;
     int m_updateRequestCount = 0;
     long long m_frameGeometryPrepNs = 0;
+    bool m_captureProbeVertices = false;
     BarChartNode* m_chartNode = nullptr;
 
     void scheduleUpdate();

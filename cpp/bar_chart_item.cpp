@@ -115,9 +115,10 @@ void BarChartItem::geometryChange(const QRectF& newGeometry, const QRectF& oldGe
 
 namespace {
 
-long long compositeRevision(long long geometryRevision, int firstBar, int lastBar, int syncGeneration) {
-    return (geometryRevision << 32) ^ (static_cast<long long>(firstBar) << 16) ^
-           static_cast<long long>(lastBar) ^ static_cast<long long>(syncGeneration);
+BarChartSourceKey sourceKey(QObject* source, long long generation, int firstBar, int lastBar,
+                            double lowPrice, double highPrice, float width, float height) {
+    return BarChartSourceKey{source, generation, firstBar, lastBar, lowPrice, highPrice, width,
+                             height};
 }
 
 } // namespace
@@ -140,41 +141,75 @@ QSGNode* BarChartItem::testUpdatePaintNode(QSGNode* oldNode) {
     auto* barFeed = qobject_cast<BarFeed*>(m_series);
     auto* barSeries = qobject_cast<BarSeries*>(m_series);
 
-    if ((barFeed == nullptr && barSeries == nullptr) || width() <= 0.0 || height() <= 0.0) {
-        long long rev = barFeed ? barFeed->geometry_revision() : (barSeries ? barSeries->geometry_revision() : 0);
-        BarVertexView emptyView{nullptr, 0, rev};
-        node->sync(emptyView, m_risingColor, m_fallingColor, m_formingColor);
-        m_frameGeometryPrepNs += geometryTimer.nsecsElapsed();
-        return node;
-    }
-
     // The surface is set on every paint, not only on resize: a newly assigned series, or
     // the fresh series a feed makes on retarget, would otherwise keep a zero surface and
     // draw nothing until the item is resized.
     const auto surfaceWidth = static_cast<float>(width());
     const auto surfaceHeight = static_cast<float>(height());
 
+    auto captureCombinedProbeGeometry = [this, node, barFeed, barSeries]() {
+        if (!m_captureProbeVertices) {
+            return;
+        }
+        if (barFeed != nullptr) {
+            barFeed->rebuild_geometry();
+            node->captureProbeVertices(
+                reinterpret_cast<const BarVertex*>(barFeed->vertex_ptr()),
+                static_cast<size_t>(barFeed->vertex_len()));
+        } else if (barSeries != nullptr) {
+            barSeries->rebuild_geometry();
+            node->captureProbeVertices(barSeries->vertex_ptr(), barSeries->vertex_len());
+        } else {
+            node->captureProbeVertices(nullptr, 0);
+        }
+    };
+
     if (barFeed != nullptr) {
         barFeed->set_surface(surfaceWidth, surfaceHeight);
         barFeed->set_viewport(m_firstBar, m_lastBar, m_lowPrice, m_highPrice);
-        barFeed->rebuild_geometry();
+        barFeed->rebuild_split_geometry();
 
-        const auto* source = reinterpret_cast<const BarVertex*>(barFeed->vertex_ptr());
-        BarVertexView view{source, static_cast<std::size_t>(barFeed->vertex_len()),
-                           compositeRevision(barFeed->geometry_revision(), m_firstBar, m_lastBar, m_updateRequestCount)};
-        node->sync(view, m_risingColor, m_fallingColor, m_formingColor);
+        const auto* completed = reinterpret_cast<const BarVertex*>(barFeed->completed_vertex_ptr());
+        const auto* forming = reinterpret_cast<const BarVertex*>(barFeed->forming_vertex_ptr());
+        const BarVertexView completedView{completed,
+                                          static_cast<size_t>(barFeed->completed_vertex_len()),
+                                          barFeed->completed_geometry_revision()};
+        const BarVertexView formingView{forming,
+                                        static_cast<size_t>(barFeed->forming_vertex_len()),
+                                        barFeed->forming_geometry_revision()};
+        const auto key = sourceKey(m_series, barFeed->target_generation(), m_firstBar, m_lastBar,
+                                   m_lowPrice, m_highPrice, surfaceWidth, surfaceHeight);
+        node->sync(completedView, formingView, key, m_risingColor, m_fallingColor,
+                   m_formingColor);
+        captureCombinedProbeGeometry();
         m_frameGeometryPrepNs += geometryTimer.nsecsElapsed();
         return node;
     }
 
-    barSeries->set_surface(surfaceWidth, surfaceHeight);
-    barSeries->set_viewport(m_firstBar, m_lastBar, m_lowPrice, m_highPrice);
-    barSeries->rebuild_geometry();
+    if (barSeries != nullptr) {
+        barSeries->set_surface(surfaceWidth, surfaceHeight);
+        barSeries->set_viewport(m_firstBar, m_lastBar, m_lowPrice, m_highPrice);
+        barSeries->rebuild_split_geometry();
 
-    const BarVertex* source = barSeries->vertex_ptr();
-    BarVertexView view{source, barSeries->vertex_len(),
-                       compositeRevision(barSeries->geometry_revision(), m_firstBar, m_lastBar, m_updateRequestCount)};
-    node->sync(view, m_risingColor, m_fallingColor, m_formingColor);
+        const BarVertexView completedView{
+            barSeries->completed_vertex_ptr(), barSeries->completed_vertex_len(),
+            barSeries->completed_geometry_revision()};
+        const BarVertexView formingView{
+            barSeries->forming_vertex_ptr(), barSeries->forming_vertex_len(),
+            barSeries->forming_geometry_revision()};
+        const auto key = sourceKey(m_series, 0, m_firstBar, m_lastBar, m_lowPrice, m_highPrice,
+                                   surfaceWidth, surfaceHeight);
+        node->sync(completedView, formingView, key, m_risingColor, m_fallingColor,
+                   m_formingColor);
+    } else {
+        const auto key = sourceKey(nullptr, 0, m_firstBar, m_lastBar, m_lowPrice, m_highPrice,
+                                   surfaceWidth, surfaceHeight);
+        const BarVertexView emptyCompleted{nullptr, 0, 0};
+        const BarVertexView emptyForming{nullptr, 0, 0};
+        node->sync(emptyCompleted, emptyForming, key, m_risingColor, m_fallingColor,
+                   m_formingColor);
+    }
+    captureCombinedProbeGeometry();
     m_frameGeometryPrepNs += geometryTimer.nsecsElapsed();
     return node;
 }

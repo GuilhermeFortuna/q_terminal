@@ -68,7 +68,36 @@ or changes a board status outside `./work`.
   respectively (500 buckets, stress overlays/markers). These are software
   renderer measurements and are not hardware GPU transfer measurements.
 
-- [ ] **2. Split packing in `q_core` while preserving output.** In
+  Changed renderer runs used the same machine and Qt Software offscreen
+  backend at 800x800, with 500,000 bars and a 2.2 s measurement window in the
+  `cargo run` dev profile. The 2,000-bucket live-edge cells are medians of two
+  runs; all other changed cells are one run. Baseline cells above are medians
+  of two runs.
+
+  | Visible buckets | Load | Runs | p50 / p95 / p99 (ms) | Completed / forming vertices per frame | Renderer allocations per frame |
+  |---:|---|---:|---:|---:|---:|
+  | 500 | Plain | 1 | 9.53 / 9.98 / 11.57 | 0 / 12 | 0 |
+  | 500 | 10 markers + 2 overlays | 1 | 9.54 / 9.88 / 10.29 | 0 / 12 | 0 |
+  | 2,000 | Plain | 2 | 9.52 / 10.08 / 10.93 | 0 / 12 | 0 |
+  | 2,000 | 10 markers + 2 overlays | 2 | 10.53 / 10.94 / 11.07 | 0 / 12 | 0 |
+  | 8,000 | Plain | 1 | 9.54 / 9.90 / 10.08 | 0 / 12 | 0 |
+  | 8,000 | 10 markers + 2 overlays | 1 | 14.53 / 14.88 / 15.53 | 0 / 12 | 0 |
+
+  The 2,000-bucket historical/offscreen case reported
+  `forming_visible=false`, zero scene syncs, and zero submitted vertices.
+  Pan/zoom (500 buckets, markers and overlays) measured 9.72 / 10.13 / 10.45
+  ms and averaged 202 completed plus 12 forming vertices per frame; occasional
+  LOD buffer resizing produced 0.043 renderer allocations per frame.
+  Completion measured 9.51 / 9.86 / 10.03 ms, and price expansion measured
+  9.84 / 10.12 / 10.35 ms. These stress scenarios used one run each. Every
+  changed p95 was below 16 ms. The repeated 2,000-bucket cells improved on
+  their baseline medians; one-run cells were below baseline medians, with
+  variation not characterized for those cells. Process-wide Rust allocations
+  averaged about 5/frame without overlays and 29–37/frame with markers and
+  overlays; these are not renderer-specific. Qt submission counters do not
+  measure hardware GPU transfers.
+
+- [x] **2. Split packing in `q_core` while preserving output.** In
   `crates/q-buffers/src/geometry.rs`, expose a way to pack one forming bucket
   with the same coordinate and flag rules as a full pack. In
   `crates/q-qt/src/bar_series.rs`, retain separate reusable completed and
@@ -81,14 +110,14 @@ or changes a board status outside `./work`.
   and new geometry, LOD boundaries, tick reuse, completion, empty/flat bars,
   view changes, and zero-size surfaces. Run `q_core`'s canonical `make check`.
 
-- [ ] **3. Release `q_core` and update the terminal pin.** After the separate
+- [x] **3. Release `q_core` and update the terminal pin.** After the separate
   core task is In Review, the human uses `./work finish` to produce the pushed
   date tag. Update every `q_core` tag in `q_terminal/Cargo.toml`, refresh
   `Cargo.lock`, and verify the resolved commit is the released one. Do not
   copy or hand-edit generated CXX or vendored contract code. Build the terminal
   before replacing its renderer calls.
 
-- [ ] **4. Integrate separate scene graph layers.** Forward the two views from
+- [x] **4. Integrate separate scene graph layers.** Forward the two views from
   `src/bar_feed.rs`. In `cpp/bar_chart_item.*`, compare explicit source identity
   (including feed target generation), viewport range, price range, and surface
   dimensions; do not use the current packed composite revision as the sole
@@ -102,7 +131,7 @@ or changes a board status outside `./work`.
   Validate an unchanged tick, a new extreme, completion, retarget, and resize
   with the headless probe before proceeding.
 
-- [ ] **5. Remove avoidable production copies.** Fill completed rising/falling
+- [x] **5. Remove avoidable production copies.** Fill completed rising/falling
   `QSGGeometry` buffers in a count-and-fill pass over Rust vertices or a
   retained scratch allocation; do not allocate three size-`view.count`
   vectors per update. Make `m_lastUploadedVertices` capture opt-in for probes
@@ -112,7 +141,7 @@ or changes a board status outside `./work`.
   verified ABI-safe replacement justify changing it. Confirm warmed-up
   forming ticks allocate neither Rust nor C++ renderer storage.
 
-- [ ] **6. Verify behavior and performance.** Extend
+- [x] **6. Verify behavior and performance.** Extend
   `tests/test_chart_bridge.rs`, `tests/chart_alignment.rs`, and relevant Rust
   tests for exact geometry, single-layer tick updates, ten ticks coalesced to
   one sync, completed-bar transition, offscreen forming ticks, price expansion,
