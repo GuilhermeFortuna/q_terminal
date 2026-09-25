@@ -369,6 +369,8 @@ async fn a_moved_panel_keeps_its_identity_and_state() {
 #[tokio::test(flavor = "current_thread")]
 async fn a_detached_window_holds_its_own_selection() {
     let (server, mut ctx, _config_home) = start().await;
+    ev(&mut ctx, "switchWorkspace('Trading')");
+    pump(300).await;
     server
         .exec_publish("deployments", fx::deployment(DEP, "running"))
         .await;
@@ -376,7 +378,7 @@ async fn a_detached_window_holds_its_own_selection() {
         .exec_publish("deployments", fx::deployment(DEP2, "paused"))
         .await;
     let w1 = ev(&mut ctx, "windowObjects()[0].windowId");
-    let w2 = ev(&mut ctx, "openWindow('market')");
+    let w2 = ev(&mut ctx, "openWindow('operations')");
     pump(300).await;
 
     ev(&mut ctx, &format!("selectDeployment('{w1}', '{DEP}')"));
@@ -804,4 +806,27 @@ async fn multi_window_operations_toggle_hides_remote_window() {
     // Remote window held only operations, so it closed cleanly
     assert_eq!(windows(&mut ctx), 1);
     assert_eq!(ev(&mut ctx, "windowObjects()[0].windowId"), market);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn closing_extra_groups_returns_focus_to_chart() {
+    let (_server, mut ctx, _config_home) = start().await;
+    let w0 = ev(&mut ctx, "windowObjects()[0].windowId");
+
+    // Open operations
+    ev(
+        &mut ctx,
+        &format!("runCommand('operations.toggle', windowObject('{w0}'))"),
+    );
+    pump(200).await;
+    assert_eq!(ev(&mut ctx, "controller.is_operations_visible()"), "true");
+
+    // Close operations -> returns focus to chart
+    ev(
+        &mut ctx,
+        &format!("runCommand('operations.toggle', windowObject('{w0}'))"),
+    );
+    pump(200).await;
+    assert_eq!(ev(&mut ctx, "controller.is_operations_visible()"), "false");
+    assert_eq!(ev(&mut ctx, "panelItem('chart').testFocusCanvas()"), "true");
 }

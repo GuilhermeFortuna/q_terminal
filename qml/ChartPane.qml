@@ -185,6 +185,10 @@ Item {
         return Math.floor(t);
     }
 
+    function focusCanvas() {
+        chartArea.forceActiveFocus();
+    }
+
     function testFocusCanvas() {
         chartArea.forceActiveFocus();
         return chartArea.activeFocus;

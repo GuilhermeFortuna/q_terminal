@@ -12,6 +12,14 @@ PanelFrame {
         }
     }
 
+    function focusCanvas() {
+        chart.focusCanvas();
+    }
+
+    function testFocusCanvas() {
+        return chart.testFocusCanvas();
+    }
+
     Column {
         anchors.fill: parent
         spacing: Spacing.none

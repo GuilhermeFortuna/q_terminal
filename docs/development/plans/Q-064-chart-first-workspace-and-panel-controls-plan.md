@@ -30,7 +30,7 @@ panel objects and shared stores serve every arrangement.
   invoking window. Have execution commands reveal hidden Operations before forwarding.
   Test command uniqueness, docking weights, repeated toggles, existing multi-window
   layouts, save/restore, and panel identity in `tests/shell_windows.rs`.
-- [ ] **3. Compact shell chrome.** Replace the top `PlacementNotice` row in
+- [x] **3. Compact shell chrome.** Replace the top `PlacementNotice` row in
   `qml/shell/ShellWindow.qml` with a focused `WorkspaceMenu.qml` toolbar: persistent
   workspace, Operations, Tape, and palette controls; secondary menu for workspace,
   window, selection, placement, and diagnostics actions. Preserve compositor export,
