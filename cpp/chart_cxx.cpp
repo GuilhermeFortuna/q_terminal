@@ -37,6 +37,8 @@ ProbeResult toProbeResult(const InternalProbeResult& result) {
     out.revision = result.revision;
     out.uploads = result.uploads;
     out.geometry_allocations = result.geometryAllocations;
+    out.completed_layer_updates = result.completedLayerUpdates;
+    out.forming_layer_updates = result.formingLayerUpdates;
     out.rising_vertex_count = result.risingVertexCount;
     out.falling_vertex_count = result.fallingVertexCount;
     out.forming_vertex_count = result.formingVertexCount;
@@ -77,6 +79,7 @@ ProbeResult chart_probe_item_paint(BarChartItem* item, int frames) {
 BarChartItem* make_test_chart_item(BarSeries* series, int first_bar, int last_bar, double low,
                                    double high, float width_px, float height_px) {
     auto* item = new BarChartItem();
+    item->enableProbeCapture();
     item->setSeries(series);
     item->setFirstBar(first_bar);
     item->setLastBar(last_bar);

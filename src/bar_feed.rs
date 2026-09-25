@@ -229,6 +229,9 @@ pub mod ffi {
         fn rebuild_geometry(self: Pin<&mut BarFeed>);
 
         #[qinvokable]
+        fn rebuild_split_geometry(self: Pin<&mut BarFeed>);
+
+        #[qinvokable]
         fn bar_times_len(self: &BarFeed) -> i32;
 
         #[qinvokable]
@@ -254,6 +257,18 @@ pub mod ffi {
 
         #[qinvokable]
         fn geometry_revision(self: &BarFeed) -> i64;
+
+        fn completed_vertex_ptr(self: &BarFeed) -> i64;
+
+        fn completed_vertex_len(self: &BarFeed) -> i64;
+
+        fn completed_geometry_revision(self: &BarFeed) -> i64;
+
+        fn forming_vertex_ptr(self: &BarFeed) -> i64;
+
+        fn forming_vertex_len(self: &BarFeed) -> i64;
+
+        fn forming_geometry_revision(self: &BarFeed) -> i64;
     }
 
     impl cxx_qt::Threading for BarFeed {}
@@ -1543,6 +1558,10 @@ impl ffi::BarFeed {
         self.as_mut().rust_mut().series.rebuild_geometry();
     }
 
+    pub fn rebuild_split_geometry(mut self: std::pin::Pin<&mut Self>) {
+        self.as_mut().rust_mut().series.rebuild_split_geometry();
+    }
+
     pub fn bar_times_len(&self) -> i32 {
         self.rust().bar_times.len() as i32
     }
@@ -1626,6 +1645,30 @@ impl ffi::BarFeed {
 
     pub fn geometry_revision(&self) -> i64 {
         self.rust().series.geometry_revision()
+    }
+
+    pub fn completed_vertex_ptr(&self) -> i64 {
+        self.rust().series.completed_vertex_ptr() as usize as i64
+    }
+
+    pub fn completed_vertex_len(&self) -> i64 {
+        self.rust().series.completed_vertex_len() as i64
+    }
+
+    pub fn completed_geometry_revision(&self) -> i64 {
+        self.rust().series.completed_geometry_revision()
+    }
+
+    pub fn forming_vertex_ptr(&self) -> i64 {
+        self.rust().series.forming_vertex_ptr() as usize as i64
+    }
+
+    pub fn forming_vertex_len(&self) -> i64 {
+        self.rust().series.forming_vertex_len() as i64
+    }
+
+    pub fn forming_geometry_revision(&self) -> i64 {
+        self.rust().series.forming_geometry_revision()
     }
 }
 

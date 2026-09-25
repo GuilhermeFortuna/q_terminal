@@ -15,6 +15,8 @@ pub mod chart {
         revision: i64,
         uploads: i32,
         geometry_allocations: i32,
+        completed_layer_updates: i32,
+        forming_layer_updates: i32,
         rising_vertex_count: i32,
         falling_vertex_count: i32,
         forming_vertex_count: i32,

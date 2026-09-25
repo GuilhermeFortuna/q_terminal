@@ -17,9 +17,9 @@ bench-allocations = []
 cxx = "1.0.142"
 cxx-qt = "0.10.0"
 cxx-qt-lib = { version = "0.10.0", features = ["qt_gui", "qt_qml"] }
-q-qt = { git = "https://github.com/GuilhermeFortuna/q_core.git", tag = "v2026.09.16", package = "q-qt" }
-q-buffers = { git = "https://github.com/GuilhermeFortuna/q_core.git", tag = "v2026.09.16", package = "q-buffers" }
-q-io = { git = "https://github.com/GuilhermeFortuna/q_core.git", tag = "v2026.09.16", package = "q-io" }
+q-qt = { git = "https://github.com/GuilhermeFortuna/q_core.git", tag = "v2026.09.24", package = "q-qt" }
+q-buffers = { git = "https://github.com/GuilhermeFortuna/q_core.git", tag = "v2026.09.24", package = "q-buffers" }
+q-io = { git = "https://github.com/GuilhermeFortuna/q_core.git", tag = "v2026.09.24", package = "q-io" }
 tokio = { version = "1.43", default-features = false, features = ["rt-multi-thread", "macros", "sync", "time", "net", "io-util"] }
 tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
@@ -39,7 +39,7 @@ parquet = { version = "60.0.0", default-features = false, features = ["arrow", "
 cxx-qt-build = { version = "0.10.0", features = ["link_qt_object_files"] }
 qt-build-utils = { version = "0.10.0", features = ["qt_minimal"] }
 qt-version = { version = "0.1.5", features = ["qt_version_at_least_6_5"] }
-q-qt = { git = "https://github.com/GuilhermeFortuna/q_core.git", tag = "v2026.09.16", package = "q-qt" }
+q-qt = { git = "https://github.com/GuilhermeFortuna/q_core.git", tag = "v2026.09.24", package = "q-qt" }
 
 
 [lints.clippy]
