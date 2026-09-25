@@ -550,6 +550,8 @@ async fn merging_keeps_every_panel_and_splitting_restores_the_arrangement() {
 #[tokio::test(flavor = "current_thread")]
 async fn merged_workstation_prioritizes_chart_and_restores_legacy_window_tree() {
     let (_server, mut ctx, _config_home) = start().await;
+    ev(&mut ctx, "switchWorkspace('Single monitor')");
+    pump(300).await;
 
     let layout: serde_json::Value = serde_json::from_str(&ev(
         &mut ctx,
@@ -684,4 +686,122 @@ async fn chart_target_commands_route_and_toggle_mode() {
         "runCommand('chart.focus-symbol', windowObjects()[0])",
     );
     pump(100).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn operations_and_tape_toggles_and_docking_weights() {
+    let (_server, mut ctx, _config_home) = start().await;
+    let w0 = ev(&mut ctx, "windowObjects()[0].windowId");
+
+    // Initially in Chart workspace: neither is visible
+    assert_eq!(ev(&mut ctx, "controller.is_operations_visible()"), "false");
+    assert_eq!(ev(&mut ctx, "controller.is_tape_visible()"), "false");
+    assert_eq!(ev(&mut ctx, "controller.operations_visible"), "false");
+    assert_eq!(ev(&mut ctx, "controller.tape_visible"), "false");
+
+    // Toggle Operations on via command
+    ev(
+        &mut ctx,
+        "runCommand('operations.toggle', windowObjects()[0])",
+    );
+    pump(200).await;
+    assert_eq!(ev(&mut ctx, "controller.is_operations_visible()"), "true");
+    assert_eq!(ev(&mut ctx, "controller.operations_visible"), "true");
+
+    let layout: serde_json::Value =
+        serde_json::from_str(&ev(&mut ctx, &format!("controller.window_layout('{w0}')"))).unwrap();
+    let root = &layout["root"];
+    assert_eq!(root["type"], "split");
+    assert_eq!(root["orientation"], "vertical");
+    assert_eq!(root["weights"], serde_json::json!([0.75, 0.25]));
+
+    // Toggle Tape on via command
+    ev(&mut ctx, "runCommand('tape.toggle', windowObjects()[0])");
+    pump(200).await;
+    assert_eq!(ev(&mut ctx, "controller.is_tape_visible()"), "true");
+    assert_eq!(ev(&mut ctx, "controller.tape_visible"), "true");
+
+    let layout_both: serde_json::Value =
+        serde_json::from_str(&ev(&mut ctx, &format!("controller.window_layout('{w0}')"))).unwrap();
+    let root_both = &layout_both["root"];
+    assert_eq!(root_both["type"], "split");
+    assert_eq!(root_both["orientation"], "horizontal");
+    assert_eq!(root_both["weights"], serde_json::json!([0.80, 0.20]));
+    assert_eq!(
+        root_both["children"][1]["panels"],
+        serde_json::json!(["tape"])
+    );
+
+    // Toggle Operations off
+    ev(
+        &mut ctx,
+        "runCommand('operations.toggle', windowObjects()[0])",
+    );
+    pump(200).await;
+    assert_eq!(ev(&mut ctx, "controller.is_operations_visible()"), "false");
+    assert_eq!(ev(&mut ctx, "controller.is_tape_visible()"), "true");
+
+    // Toggle Tape off -> collapses back to single chart
+    ev(&mut ctx, "runCommand('tape.toggle', windowObjects()[0])");
+    pump(200).await;
+    assert_eq!(ev(&mut ctx, "controller.is_tape_visible()"), "false");
+    assert_eq!(
+        ev(&mut ctx, "JSON.parse(controller.panel_ids()).join(',')"),
+        "chart"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn execution_command_reveals_hidden_operations() {
+    let (_server, mut ctx, _config_home) = start().await;
+
+    // Start with operations hidden
+    assert_eq!(ev(&mut ctx, "controller.is_operations_visible()"), "false");
+
+    // Forwarding an execution command (e.g. account.create) reveals operations
+    ev(&mut ctx, "runCommand('account.create', windowObjects()[0])");
+    pump(200).await;
+    assert_eq!(ev(&mut ctx, "controller.is_operations_visible()"), "true");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn repeated_toggles_preserve_panel_identity() {
+    let (_server, mut ctx, _config_home) = start().await;
+    let detail_before = ev(&mut ctx, "String(panelItem('detail'))");
+    let status_before = ev(&mut ctx, "String(panelItem('status'))");
+
+    for _ in 0..3 {
+        ev(
+            &mut ctx,
+            "runCommand('operations.toggle', windowObjects()[0])",
+        );
+        pump(100).await;
+        ev(&mut ctx, "runCommand('tape.toggle', windowObjects()[0])");
+        pump(100).await;
+    }
+
+    assert_eq!(ev(&mut ctx, "String(panelItem('detail'))"), detail_before);
+    assert_eq!(ev(&mut ctx, "String(panelItem('status'))"), status_before);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn multi_window_operations_toggle_hides_remote_window() {
+    let (_server, mut ctx, _config_home) = start().await;
+    ev(&mut ctx, "openWindow('market')");
+    let _ops = ev(&mut ctx, "openWindow('operations')");
+    pump(200).await;
+    assert_eq!(windows(&mut ctx), 2);
+    assert_eq!(ev(&mut ctx, "controller.is_operations_visible()"), "true");
+
+    let market = ev(&mut ctx, "controller.panel_window('chart')");
+    // Pressing operations.toggle in market window hides operations from remote window
+    ev(
+        &mut ctx,
+        &format!("runCommand('operations.toggle', windowObject('{market}'))"),
+    );
+    pump(200).await;
+    assert_eq!(ev(&mut ctx, "controller.is_operations_visible()"), "false");
+    // Remote window held only operations, so it closed cleanly
+    assert_eq!(windows(&mut ctx), 1);
+    assert_eq!(ev(&mut ctx, "windowObjects()[0].windowId"), market);
 }

@@ -21,7 +21,7 @@ panel objects and shared stores serve every arrangement.
   Cover fresh config, recorded last-used layout, unreadable last-used fallback, and
   workspace round-trip in `tests/workspaces.rs` and store tests. Confirm old workspace
   files restore unchanged.
-- [ ] **2. Group visibility and commands.** Add shell layout operations that insert or
+- [x] **2. Group visibility and commands.** Add shell layout operations that insert or
   remove the three Operations IDs as one group below the chart and `tape` at the right;
   prune empty splits without dropping any other panel. Expose toggle and visible-state
   methods through `src/shell_controller.rs`. Register `operations.toggle` on

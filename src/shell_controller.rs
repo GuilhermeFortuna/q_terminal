@@ -28,6 +28,8 @@ pub mod ffi {
         #[qproperty(QString, window_ids)]
         /// Bumped whenever any window's selection or detach state changes.
         #[qproperty(i32, selection_revision)]
+        #[qproperty(bool, operations_visible)]
+        #[qproperty(bool, tape_visible)]
         type ShellController = super::ShellControllerRust;
 
         #[qinvokable]
@@ -68,6 +70,16 @@ pub mod ffi {
         fn panel_registry(self: &ShellController) -> QString;
         #[qinvokable]
         fn is_merged(self: &ShellController, window: QString) -> bool;
+        #[qinvokable]
+        fn toggle_operations(self: Pin<&mut ShellController>, window: QString);
+        #[qinvokable]
+        fn toggle_tape(self: Pin<&mut ShellController>, window: QString);
+        #[qinvokable]
+        fn is_operations_visible(self: &ShellController) -> bool;
+        #[qinvokable]
+        fn is_tape_visible(self: &ShellController) -> bool;
+        #[qinvokable]
+        fn ensure_operations_visible(self: Pin<&mut ShellController>, window: QString) -> bool;
 
         #[qinvokable]
         fn select_deployment(
@@ -107,6 +119,8 @@ pub struct ShellControllerRust {
     pub window_count: i32,
     pub window_ids: QString,
     pub selection_revision: i32,
+    pub operations_visible: bool,
+    pub tape_visible: bool,
     layout: Layout,
     context: SelectionContext,
 }
@@ -120,6 +134,8 @@ impl Default for ShellControllerRust {
             window_count: 0,
             window_ids: QString::from("[]"),
             selection_revision: 0,
+            operations_visible: false,
+            tape_visible: false,
             layout: Layout::default(),
             context: SelectionContext::default(),
         }
@@ -137,9 +153,13 @@ impl ffi::ShellController {
             .collect();
         let count = ids.len() as i32;
         let json = serde_json::to_string(&ids).unwrap_or_else(|_| "[]".into());
+        let ops_vis = self.rust().layout.is_operations_visible();
+        let tape_vis = self.rust().layout.is_tape_visible();
         let rev = self.rust().revision + 1;
         self.as_mut().set_window_ids(QString::from(json));
         self.as_mut().set_window_count(count);
+        self.as_mut().set_operations_visible(ops_vis);
+        self.as_mut().set_tape_visible(tape_vis);
         self.as_mut().set_revision(rev);
     }
 
@@ -303,6 +323,40 @@ impl ffi::ShellController {
 
     pub fn is_merged(&self, window: QString) -> bool {
         self.rust().layout.is_merged(&window.to_string())
+    }
+
+    pub fn toggle_operations(mut self: std::pin::Pin<&mut Self>, window: QString) {
+        let win = window.to_string();
+        let _ = self.as_mut().rust_mut().layout.toggle_operations(&win);
+        self.publish();
+    }
+
+    pub fn toggle_tape(mut self: std::pin::Pin<&mut Self>, window: QString) {
+        let win = window.to_string();
+        let _ = self.as_mut().rust_mut().layout.toggle_tape(&win);
+        self.publish();
+    }
+
+    pub fn is_operations_visible(&self) -> bool {
+        self.rust().layout.is_operations_visible()
+    }
+
+    pub fn is_tape_visible(&self) -> bool {
+        self.rust().layout.is_tape_visible()
+    }
+
+    pub fn ensure_operations_visible(mut self: std::pin::Pin<&mut Self>, window: QString) -> bool {
+        if self.rust().layout.is_operations_visible() {
+            return false;
+        }
+        let win = window.to_string();
+        let r = self.as_mut().rust_mut().layout.show_operations(&win);
+        if r.is_ok() {
+            self.publish();
+            true
+        } else {
+            false
+        }
     }
 
     /// Returns whether the *global* selection changed, i.e. whether the shared execution

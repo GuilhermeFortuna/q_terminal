@@ -624,6 +624,135 @@ impl Layout {
         self.merge_into(&target)?;
         Ok(())
     }
+
+    pub fn is_operations_visible(&self) -> bool {
+        self.all_panels()
+            .iter()
+            .any(|p| *p == "status" || *p == "deployments" || *p == "detail")
+    }
+
+    pub fn is_tape_visible(&self) -> bool {
+        self.all_panels().contains(&"tape")
+    }
+
+    pub fn hide_operations(&mut self) {
+        for p in ["status", "deployments", "detail"] {
+            for w in &mut self.windows {
+                w.root.remove(p);
+            }
+        }
+        self.windows.retain(|w| !w.root.is_empty());
+        let live: Vec<String> = self.windows.iter().map(|w| w.id.clone()).collect();
+        self.merges.retain(|m| live.contains(&m.target));
+    }
+
+    pub fn hide_tape(&mut self) {
+        for w in &mut self.windows {
+            w.root.remove("tape");
+        }
+        self.windows.retain(|w| !w.root.is_empty());
+        let live: Vec<String> = self.windows.iter().map(|w| w.id.clone()).collect();
+        self.merges.retain(|m| live.contains(&m.target));
+    }
+
+    pub fn show_operations(&mut self, window_id: &str) -> Result<(), LayoutError> {
+        self.hide_operations();
+        let target_id = if self.window(window_id).is_some() {
+            window_id.to_string()
+        } else if let Some(first) = self.windows.first() {
+            first.id.clone()
+        } else {
+            return Err(LayoutError::UnknownWindow(window_id.into()));
+        };
+
+        let ops_node = composition("operations").unwrap_or_else(|| {
+            Node::split(
+                Orientation::Vertical,
+                &[0.16, 0.84],
+                vec![
+                    Node::tabs(&["status"]),
+                    Node::split(
+                        Orientation::Horizontal,
+                        &[0.3, 0.7],
+                        vec![Node::tabs(&["deployments"]), Node::tabs(&["detail"])],
+                    ),
+                ],
+            )
+        });
+
+        let target = self.window_mut(&target_id)?;
+        if !Self::insert_below_chart(&mut target.root, ops_node.clone()) {
+            let old_root = std::mem::replace(&mut target.root, Node::tabs(&[]));
+            target.root = Node::split(
+                Orientation::Vertical,
+                &[0.75, 0.25],
+                vec![old_root, ops_node],
+            );
+        }
+        Ok(())
+    }
+
+    fn insert_below_chart(node: &mut Node, group: Node) -> bool {
+        match node {
+            Node::Tabs { panels, .. } => {
+                if panels.iter().any(|p| p == "chart") {
+                    let old = std::mem::replace(node, Node::tabs(&[]));
+                    *node = Node::split(Orientation::Vertical, &[0.75, 0.25], vec![old, group]);
+                    true
+                } else {
+                    false
+                }
+            }
+            Node::Split { children, .. } => {
+                for child in children.iter_mut() {
+                    if child.contains("chart") {
+                        return Self::insert_below_chart(child, group);
+                    }
+                }
+                false
+            }
+        }
+    }
+
+    pub fn show_tape(&mut self, window_id: &str) -> Result<(), LayoutError> {
+        self.hide_tape();
+        let target_id = if self.window(window_id).is_some() {
+            window_id.to_string()
+        } else if let Some(first) = self.windows.first() {
+            first.id.clone()
+        } else {
+            return Err(LayoutError::UnknownWindow(window_id.into()));
+        };
+
+        let target = self.window_mut(&target_id)?;
+        let old_root = std::mem::replace(&mut target.root, Node::tabs(&[]));
+        target.root = Node::split(
+            Orientation::Horizontal,
+            &[0.80, 0.20],
+            vec![old_root, Node::tabs(&["tape"])],
+        );
+        Ok(())
+    }
+
+    pub fn toggle_operations(&mut self, window_id: &str) -> Result<bool, LayoutError> {
+        if self.is_operations_visible() {
+            self.hide_operations();
+            Ok(false)
+        } else {
+            self.show_operations(window_id)?;
+            Ok(true)
+        }
+    }
+
+    pub fn toggle_tape(&mut self, window_id: &str) -> Result<bool, LayoutError> {
+        if self.is_tape_visible() {
+            self.hide_tape();
+            Ok(false)
+        } else {
+            self.show_tape(window_id)?;
+            Ok(true)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -802,5 +931,80 @@ mod tests {
         assert_eq!(v["composition"], "market");
         let root: Node = serde_json::from_value(v["root"].clone()).unwrap();
         assert_eq!(&root, &l.window(&m).unwrap().root);
+    }
+
+    #[test]
+    fn operations_and_tape_toggles_manage_visibility_and_docking_weights() {
+        let mut l = Layout::default();
+        let w = l.open("market").unwrap();
+        // Clear and set single chart
+        l.window_mut(&w).unwrap().root = Node::tabs(&["chart"]);
+
+        assert!(!l.is_operations_visible());
+        assert!(!l.is_tape_visible());
+
+        // Toggle Operations on
+        let shown = l.toggle_operations(&w).unwrap();
+        assert!(shown);
+        assert!(l.is_operations_visible());
+        match &l.window(&w).unwrap().root {
+            Node::Split {
+                orientation,
+                weights,
+                children,
+            } => {
+                assert_eq!(*orientation, Orientation::Vertical);
+                assert_eq!(weights, &vec![0.75, 0.25]);
+                assert_eq!(children[0].panels(), vec!["chart"]);
+                assert_eq!(
+                    children[1].panels(),
+                    vec!["status", "deployments", "detail"]
+                );
+            }
+            other => panic!("expected vertical split, got {other:?}"),
+        }
+
+        // Toggle Tape on while Operations is visible
+        let shown_tape = l.toggle_tape(&w).unwrap();
+        assert!(shown_tape);
+        assert!(l.is_tape_visible());
+        match &l.window(&w).unwrap().root {
+            Node::Split {
+                orientation,
+                weights,
+                children,
+            } => {
+                assert_eq!(*orientation, Orientation::Horizontal);
+                assert_eq!(weights, &vec![0.80, 0.20]);
+                assert_eq!(children[1].panels(), vec!["tape"]);
+            }
+            other => panic!("expected horizontal split, got {other:?}"),
+        }
+
+        // Toggle Operations off: removes ops, collapses split
+        let shown_ops2 = l.toggle_operations(&w).unwrap();
+        assert!(!shown_ops2);
+        assert!(!l.is_operations_visible());
+        assert!(l.is_tape_visible());
+        match &l.window(&w).unwrap().root {
+            Node::Split {
+                orientation,
+                weights,
+                children,
+            } => {
+                assert_eq!(*orientation, Orientation::Horizontal);
+                assert_eq!(weights, &vec![0.80, 0.20]);
+                assert_eq!(children[0].panels(), vec!["chart"]);
+                assert_eq!(children[1].panels(), vec!["tape"]);
+            }
+            other => panic!("expected horizontal split, got {other:?}"),
+        }
+
+        // Toggle Tape off: collapses to single chart
+        let shown_tape2 = l.toggle_tape(&w).unwrap();
+        assert!(!shown_tape2);
+        assert!(!l.is_tape_visible());
+        assert_eq!(l.window(&w).unwrap().root.panels(), vec!["chart"]);
+        assert!(matches!(l.window(&w).unwrap().root, Node::Tabs { .. }));
     }
 }
