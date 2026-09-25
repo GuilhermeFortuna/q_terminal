@@ -9,7 +9,9 @@ use std::time::Duration;
 use config::Config;
 use startup::SliceContext;
 use stream::fake_server::FakeServer;
-use workspace::schema::{default_trading, parse_workspace, serialize_workspace};
+use workspace::schema::{
+    default_chart, default_single, default_trading, parse_workspace, serialize_workspace,
+};
 use workspace::store::WorkspaceStore;
 
 fn temp_dir(name: &str) -> std::path::PathBuf {
@@ -136,5 +138,80 @@ fn defaults_are_created_once_and_not_overwritten() {
     assert!(second.contains("Trading edited"));
     let single = store2.load("Single monitor").unwrap();
     assert_eq!(single.windows[0].composition, "merged");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn workspace_chart_round_trips_through_toml() {
+    let file = default_chart();
+    let text = serialize_workspace(&file);
+    let loaded = parse_workspace(&text).unwrap();
+    assert_eq!(loaded, file);
+    assert_eq!(loaded.windows.len(), 1);
+    assert_eq!(loaded.windows[0].root.panels(), vec!["chart"]);
+}
+
+#[test]
+fn fresh_config_loads_chart_workspace_with_single_chart_panel() {
+    let dir = temp_dir("fresh_chart_test");
+    let mut store = WorkspaceStore::open_dir(dir.clone());
+    let (file, fallback) = store.load_last_or_default();
+    assert_eq!(file.name, "Chart");
+    assert!(!fallback);
+    assert_eq!(file.windows.len(), 1);
+    assert_eq!(file.windows[0].root.panels(), vec!["chart"]);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn recorded_last_used_restores_saved_workspace() {
+    let dir = temp_dir("recorded_last_used");
+    let store = WorkspaceStore::open_dir(dir.clone());
+    store.set_last_used("Single monitor").unwrap();
+
+    let mut store2 = WorkspaceStore::open_dir(dir.clone());
+    let (file, fallback) = store2.load_last_or_default();
+    assert_eq!(file.name, "Single monitor");
+    assert!(!fallback);
+    assert_eq!(file.windows[0].composition, "merged");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn unreadable_last_used_falls_back_to_chart_with_report() {
+    let dir = temp_dir("unreadable_fallback");
+    let store = WorkspaceStore::open_dir(dir.clone());
+    store.set_last_used("Broken").unwrap();
+    std::fs::write(store.path_for("Broken"), "bad toml [[").unwrap();
+
+    let mut store2 = WorkspaceStore::open_dir(dir.clone());
+    let (file, fallback) = store2.load_last_or_default();
+    assert_eq!(file.name, "Chart");
+    assert!(fallback);
+    assert!(store2.reports().iter().any(|r| r.name == "Broken"));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn old_workspace_files_restore_unchanged() {
+    let dir = temp_dir("old_workspaces");
+    let trading = default_trading();
+    let single = default_single();
+    std::fs::write(dir.join("trading.toml"), serialize_workspace(&trading)).unwrap();
+    std::fs::write(
+        dir.join("single-monitor.toml"),
+        serialize_workspace(&single),
+    )
+    .unwrap();
+    std::fs::write(dir.join("state.toml"), "last_workspace = \"Trading\"\n").unwrap();
+
+    let mut store = WorkspaceStore::open_dir(dir.clone());
+    let (file, fallback) = store.load_last_or_default();
+    assert_eq!(file.name, "Trading");
+    assert!(!fallback);
+    assert_eq!(file.windows.len(), 2);
+    assert!(store.path_for("Chart").exists());
+    let reloaded_trading = store.load("Trading").unwrap();
+    assert_eq!(reloaded_trading, trading);
     let _ = std::fs::remove_dir_all(dir);
 }

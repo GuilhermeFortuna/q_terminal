@@ -15,7 +15,7 @@ panel objects and shared stores serve every arrangement.
 
 ## Ordered implementation
 
-- [ ] **1. First-run workspace.** In `src/workspace/schema.rs` add the bundled `Chart`
+- [x] **1. First-run workspace.** In `src/workspace/schema.rs` add the bundled `Chart`
   workspace with a single `chart` node; in `src/workspace/store.rs` select it only when
   `last_used` is absent. Keep the existing bundled workspaces and versioned schema.
   Cover fresh config, recorded last-used layout, unreadable last-used fallback, and

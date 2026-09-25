@@ -5,7 +5,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::schema::{
-    default_single, default_trading, parse_workspace, serialize_workspace, LoadError, WorkspaceFile,
+    default_chart, default_single, default_trading, parse_workspace, serialize_workspace,
+    LoadError, WorkspaceFile,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,12 +77,16 @@ impl WorkspaceStore {
     }
 
     pub fn load_last_or_default(&mut self) -> (WorkspaceFile, bool) {
-        let fallback = default_single();
-        let name = self
-            .last_used
-            .clone()
-            .or_else(|| self.list().first().cloned())
-            .unwrap_or_else(|| fallback.name.clone());
+        let fallback = default_chart();
+        let name = match self.last_used.as_ref() {
+            Some(n) => n.clone(),
+            None => {
+                return match self.load("Chart") {
+                    Ok(file) => (file, false),
+                    Err(_) => (fallback, false),
+                };
+            }
+        };
         match self.load(&name) {
             Ok(file) => (file, false),
             Err(err) => {
@@ -133,11 +138,12 @@ impl WorkspaceStore {
 
     fn ensure_defaults(&mut self) {
         let _ = fs::create_dir_all(&self.dir);
-        let defaults = [default_trading(), default_single()];
+        let defaults = [default_chart(), default_trading(), default_single()];
         for file in defaults {
             let path = self.path_for(&file.name);
             if !path.exists() {
-                let _ = self.save(&file);
+                let text = serialize_workspace(&file);
+                let _ = fs::write(path, text);
             }
         }
     }
@@ -231,10 +237,53 @@ mod tests {
     fn defaults_created_once() {
         let dir = temp_dir("defaults");
         let mut store = WorkspaceStore::open_dir(dir.clone());
+        assert!(store.path_for("Chart").exists());
         assert!(store.path_for("Trading").exists());
         assert!(store.path_for("Single monitor").exists());
+        let chart = store.load("Chart").unwrap();
+        assert_eq!(chart.windows.len(), 1);
+        assert_eq!(chart.windows[0].root.panels(), vec!["chart"]);
         let trading = store.load("Trading").unwrap();
         assert_eq!(trading.windows.len(), 2);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn fresh_config_selects_chart_when_last_used_absent() {
+        let dir = temp_dir("fresh_chart");
+        let mut store = WorkspaceStore::open_dir(dir.clone());
+        let (file, fallback) = store.load_last_or_default();
+        assert_eq!(file.name, "Chart");
+        assert!(!fallback);
+        assert_eq!(file.windows.len(), 1);
+        assert_eq!(file.windows[0].root.panels(), vec!["chart"]);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn recorded_last_used_is_restored() {
+        let dir = temp_dir("recorded");
+        let store = WorkspaceStore::open_dir(dir.clone());
+        store.set_last_used("Trading").unwrap();
+        let mut store2 = WorkspaceStore::open_dir(dir.clone());
+        let (file, fallback) = store2.load_last_or_default();
+        assert_eq!(file.name, "Trading");
+        assert!(!fallback);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn unreadable_last_used_falls_back_to_chart() {
+        let dir = temp_dir("unreadable");
+        let store = WorkspaceStore::open_dir(dir.clone());
+        store.set_last_used("Corrupt").unwrap();
+        let bad_path = store.path_for("Corrupt");
+        fs::write(bad_path, "invalid toml [[[").unwrap();
+        let mut store2 = WorkspaceStore::open_dir(dir.clone());
+        let (file, fallback) = store2.load_last_or_default();
+        assert_eq!(file.name, "Chart");
+        assert!(fallback);
+        assert!(store2.reports().iter().any(|r| r.name == "Corrupt"));
         let _ = fs::remove_dir_all(dir);
     }
 
