@@ -140,6 +140,28 @@ pub fn default_trading() -> WorkspaceFile {
     }
 }
 
+pub fn default_chart() -> WorkspaceFile {
+    use crate::display::identity::fixtures;
+
+    WorkspaceFile {
+        schema_version: CURRENT_SCHEMA_VERSION,
+        name: "Chart".into(),
+        windows: vec![WorkspaceWindow {
+            composition: "chart".into(),
+            root: Node::tabs(&["chart"]),
+            display: fixtures::asus_vg328().fingerprint,
+            geometry: GeometryIntent {
+                x: 0,
+                y: 0,
+                width: 1920,
+                height: 1080,
+            },
+            detached: false,
+        }],
+        selection: WorkspaceSelection::default(),
+    }
+}
+
 pub fn default_single() -> WorkspaceFile {
     use crate::display::identity::fixtures;
     use crate::shell::layout::composition;

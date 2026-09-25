@@ -33,7 +33,7 @@ Rectangle {
             elide: Text.ElideRight
             maximumLineCount: 1
             visible: root.symbolLine !== ""
-            text: root.symbolLine + (root.sourceLabel !== "" ? (" · " + root.sourceLabel) : "")
+            text: root.symbolLine + (root.sourceLabel !== "" && root.sourceLabel !== "Configured" ? (" · " + root.sourceLabel) : "")
         }
 
         Text {
@@ -49,15 +49,15 @@ Rectangle {
                 }
                 var s = root.connectionState.toLowerCase();
                 if (s === "retrying" || (s === "connecting" && root.lastError !== "")) {
-                    return "API unreachable, retrying...";
+                    return "API unreachable · Retrying";
                 }
                 if (root.historyLoading) {
-                    return "Loading history...";
+                    return "Loading history";
                 }
                 if (root.isLiveOnly) {
-                    return "Waiting for live bars (live only)...";
+                    return "Waiting for bars · Live stream active";
                 }
-                return "No bars available";
+                return "No bars available · Select symbol to start";
             }
         }
 

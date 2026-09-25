@@ -5,7 +5,8 @@ import qml
 Button {
     id: root
     property string variant: "secondary"
-    property string previewState: "rest"
+    property string previewState: checked ? "selected" : "rest"
+    property string toolTip: ""
     implicitHeight: Theme.controlHeight
     implicitWidth: Spacing.priceAxisWidth + Spacing.xl
     enabled: previewState !== "disabled"
@@ -15,8 +16,10 @@ Button {
     background: Rectangle {
         radius: Theme.radiusMedium
         color: root.variant === "primary" ? (root.down || root.previewState === "pressed" ? Theme.accentPressed : Theme.accentStrong) : ControlState.background(root.previewState)
-        border.color: root.activeFocus || root.previewState === "focused" ? Theme.accent : ControlState.border(root.previewState)
-        border.width: root.activeFocus || root.previewState === "focused" ? Theme.focusBorderWidth : Theme.borderWidth
+        border.color: root.activeFocus || root.previewState === "focused" || root.previewState === "selected" ? Theme.accent : ControlState.border(root.previewState)
+        border.width: root.activeFocus || root.previewState === "focused" || root.previewState === "selected" ? Theme.focusBorderWidth : Theme.borderWidth
         opacity: root.enabled ? 1.0 : 0.55
     }
+    ToolTip.visible: hovered && toolTip.length > 0
+    ToolTip.text: toolTip
 }

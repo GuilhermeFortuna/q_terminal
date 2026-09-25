@@ -178,7 +178,10 @@ Rectangle {
                 id: sourceLabel
                 objectName: "sourceLabelText"
                 Layout.alignment: Qt.AlignVCenter
-                text: root.effectiveContext ? root.effectiveContext.source_label : ""
+                readonly property string rawSource: root.effectiveContext ? root.effectiveContext.source_label : ""
+                readonly property bool isConfigured: rawSource === "Configured"
+                visible: rawSource !== "" && !isConfigured
+                text: visible ? rawSource : ""
                 color: Theme.textSecondary
                 font.family: Theme.uiFont
                 font.pixelSize: Theme.typeLabel
@@ -227,7 +230,16 @@ Rectangle {
                 id: lastBarLabel
                 objectName: "lastBarLabelText"
                 Layout.alignment: Qt.AlignVCenter
-                text: root.effectiveContext ? ("Last bar: " + root.effectiveContext.last_bar_label) : ""
+                readonly property bool isLoading: {
+                    if (root.previewState === "loading" || root.previewState === "switching") return true;
+                    if (root.feed && root.feed.history_loading) return true;
+                    if (root.effectiveContext && root.effectiveContext.condition_label === "Loading") return true;
+                    return false;
+                }
+                readonly property string rawLastBar: root.effectiveContext ? root.effectiveContext.last_bar_label : ""
+                readonly property bool hasBar: rawLastBar !== "" && rawLastBar !== "Last bar unavailable"
+                visible: hasBar || (!isLoading && rawLastBar === "Last bar unavailable")
+                text: hasBar ? ("Last bar: " + rawLastBar) : (visible ? "No bar data" : "")
                 color: Theme.textTertiary
                 font.pixelSize: Theme.typeLabel
                 font.family: Theme.numericFontFamily

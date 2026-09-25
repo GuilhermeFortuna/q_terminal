@@ -176,7 +176,7 @@ Rectangle {
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: "No deployments yet"
+                        text: "No deployments"
                         color: Theme.textStrong
                         font.pixelSize: Theme.typeBody
                         font.bold: true
@@ -185,7 +185,7 @@ Rectangle {
                         Layout.alignment: Qt.AlignHCenter
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
-                        text: "Create an account, then create a deployment to begin monitoring execution."
+                        text: "Create an account and deployment to start."
                         color: Theme.textMuted
                         font.pixelSize: Theme.typeLabel
                     }

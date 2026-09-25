@@ -62,11 +62,6 @@ Window {
         anchors.fill: parent
         spacing: Spacing.none
 
-        PlacementNotice {
-            Layout.fillWidth: true
-            workspace: win.shell.workspace
-        }
-
         WorkspaceMenu {
             Layout.fillWidth: true
             shell: win.shell

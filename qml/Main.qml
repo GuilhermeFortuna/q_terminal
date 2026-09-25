@@ -212,11 +212,42 @@ Item {
         case "chart.follow-deployment":
             shell.activeChartContext.follow_deployment();
             break;
+        case "operations.toggle":
+            var wasOps = shellController.is_operations_visible();
+            shellController.toggle_operations(fromWindow ? fromWindow.windowId : "");
+            shell.syncWindows();
+            if (wasOps && !shellController.is_operations_visible()) {
+                shell.focusChart();
+            }
+            break;
+        case "tape.toggle":
+            var wasTape = shellController.is_tape_visible();
+            shellController.toggle_tape(fromWindow ? fromWindow.windowId : "");
+            shell.syncWindows();
+            if (wasTape && !shellController.is_tape_visible()) {
+                shell.focusChart();
+            }
+            break;
+        }
+    }
+
+    function focusChart() {
+        var chart = shell.panelItem("chart");
+        if (chart && typeof chart.focusCanvas === "function") {
+            chart.focusCanvas();
         }
     }
 
     // Runs a command on the panel that owns its dialog, and brings that window forward.
     function forward(panelId, command) {
+        if (panelId === "status" || panelId === "deployments" || panelId === "detail") {
+            if (!shellController.is_operations_visible()) {
+                var wins = shell.windowObjects();
+                var targetWin = wins.length > 0 ? wins[0].windowId : "";
+                shellController.ensure_operations_visible(targetWin);
+                shell.syncWindows();
+            }
+        }
         var panel = shell.panelItem(panelId);
         var w = shell.windowObject(shellController.panel_window(panelId));
         if (w) {

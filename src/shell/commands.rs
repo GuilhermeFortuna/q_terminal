@@ -181,6 +181,22 @@ pub const STANDARD: &[Command] = &[
         None,
         KillSwitch::Ignored,
     ),
+    cmd(
+        "operations.toggle",
+        "Toggle operations",
+        "Ctrl+Shift+O",
+        Scope::App,
+        None,
+        KillSwitch::Ignored,
+    ),
+    cmd(
+        "tape.toggle",
+        "Toggle tape",
+        "Ctrl+Shift+T",
+        Scope::App,
+        None,
+        KillSwitch::Ignored,
+    ),
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]

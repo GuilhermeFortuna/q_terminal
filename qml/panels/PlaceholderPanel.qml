@@ -7,6 +7,6 @@ PanelFrame {
     EmptyState {
         anchors.fill: parent
         title: root.spec.title
-        detail: "Reserved for a later release."
+        detail: root.panelId === "tape" ? "Tape data is not available yet" : "Reserved for a later release."
     }
 }
