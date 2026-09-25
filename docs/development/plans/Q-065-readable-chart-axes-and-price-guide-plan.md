@@ -15,24 +15,25 @@ values.
 
 ## Ordered implementation
 
-- [ ] **1. Axis data model.** Extract bounded tick generation and formatting from
+- [x] **1. Axis data model.** Extract bounded tick generation and formatting from
   `qml/ChartPane.qml` into pure `qml/ChartAxis.js`. Time ticks use `bar_time_at()` and
   visible indices, with a bounded number of timestamp queries;
   price ticks use visible bounds and feed precision. Define the 1/2/5 step, spacing,
   flat-range, and resize behavior explicitly. Test timestamps across midnight and an
   offset change, narrow widths, one bar, empty data, high-precision prices, and
   pan/zoom. Keep calculations off the scene graph paint path.
-- [ ] **2. Axis presentation.** Replace the four endpoint labels in `ChartPane.qml`
+- [x] **2. Axis presentation.** Replace the four endpoint labels in `ChartPane.qml`
   with major ticks, local date/time labels, an explicit `UTC±HH:MM` offset, price labels,
   and aligned subdued grid. Use theme tokens for axis width, type, spacing, and line
   color. Measure labels before placing them; keep grid and tick item counts bounded.
   Exercise markers, overlays, crosshair, and plot-edge collision cases in the gallery.
-- [ ] **3. Unified readout and price guide.** Format `BarSnapshot.time` into local time
-  with the same offset convention for the visual `BarReadout` and accessible text.
-  Add the last-bar price line/badge, deriving its value from the existing feed snapshot
-  and its status from existing freshness state. The badge reads `Last` when stale or
-  disconnected and yields to a crosshair badge on overlap. Test target switch,
-  loading/empty state, fresh/stale/disconnected labels, and precision consistency.
+- [x] **3. Unified readout.** Format `BarSnapshot.time` into local time with the same
+  offset convention for the visual `BarReadout` and accessible text.
+  Descoped by the task owner during implementation: the last-bar current-price
+  line/badge described in the spec is dropped from this task rather than shipped in a
+  form that could freeze on a forming candle or show the latest price while inspecting
+  history. Axis readability (time and price ticks) is the required deliverable; the
+  price guide can be revisited as a separate, smaller follow-up if still wanted.
 - [ ] **4. Review and handoff.** Record the Bookmap and Quantower adaptations in
   `docs/design/components.md`. Inspect gallery and chart captures at 1920×1080,
   2560×1440, and narrow width with both fresh and stale data. Run

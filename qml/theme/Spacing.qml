@@ -51,6 +51,11 @@ QtObject {
     readonly property int chartMinimumHeight: 220
     readonly property int chartMinimumVisibleBars: 5
     readonly property int chartMaximumVisibleBars: 500
+    readonly property int chartMaxTimeTicks: 8
+    readonly property int chartMinPriceTicks: 5
+    readonly property int chartMaxPriceTicks: 7
+    readonly property int chartTickLength: 4
+    readonly property int chartTickLabelGap: 4
     readonly property int bannerHeight: 32
     readonly property int mainHeaderHeight: 48
     readonly property int actionHeight: 44

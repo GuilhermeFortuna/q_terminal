@@ -80,6 +80,11 @@ QtObject {
     readonly property int priceAxisWidth: Spacing.priceAxisWidth
     readonly property int chartMinimumVisibleBars: Spacing.chartMinimumVisibleBars
     readonly property int chartMaximumVisibleBars: Spacing.chartMaximumVisibleBars
+    readonly property int chartMaxTimeTicks: Spacing.chartMaxTimeTicks
+    readonly property int chartMinPriceTicks: Spacing.chartMinPriceTicks
+    readonly property int chartMaxPriceTicks: Spacing.chartMaxPriceTicks
+    readonly property int chartTickLength: Spacing.chartTickLength
+    readonly property int chartTickLabelGap: Spacing.chartTickLabelGap
 
     readonly property int typeLabelSmall: 9
     readonly property int typeLabel: 10

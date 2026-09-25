@@ -153,6 +153,10 @@ fn main() {
                         .prefix("/qt/qml/qml/qml")
                         .file(
                             qt_build_utils::QResourceFile::new("qml/Format.js").alias("Format.js"),
+                        )
+                        .file(
+                            qt_build_utils::QResourceFile::new("qml/ChartAxis.js")
+                                .alias("ChartAxis.js"),
                         ),
                 )
                 .resource(
@@ -166,9 +170,15 @@ fn main() {
                         ),
                 )
                 .resource(
-                    qt_build_utils::QResource::new().prefix("/qt/qml/qml").file(
-                        qt_build_utils::QResourceFile::new("qml/Format.js").alias("Format.js"),
-                    ),
+                    qt_build_utils::QResource::new()
+                        .prefix("/qt/qml/qml")
+                        .file(
+                            qt_build_utils::QResourceFile::new("qml/Format.js").alias("Format.js"),
+                        )
+                        .file(
+                            qt_build_utils::QResourceFile::new("qml/ChartAxis.js")
+                                .alias("ChartAxis.js"),
+                        ),
                 )
                 .resource(
                     qt_build_utils::QResource::new()
