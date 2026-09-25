@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import qml
+import "ChartAxis.js" as ChartAxis
 
 Item {
     id: root
@@ -15,8 +16,10 @@ Item {
     readonly property bool empty: viewport.empty
     readonly property bool inspectingHistory: viewport.inspectingHistory
     readonly property bool atLoadedHistoryBoundary: !viewport.empty && viewport.firstBar === 0
-    readonly property string topPriceLabel: viewport.empty ? "" : (root.feed && root.feed.format_price ? root.feed.format_price(viewport.highPrice) : viewport.highPrice.toFixed(2))
-    readonly property string bottomPriceLabel: viewport.empty ? "" : (root.feed && root.feed.format_price ? root.feed.format_price(viewport.lowPrice) : viewport.lowPrice.toFixed(2))
+    // Kept for the C++ test probe (chart_pane_axis_labels_match_viewport_bounds); the axis
+    // itself now renders the major price ticks below, not these two endpoint labels.
+    readonly property string topPriceLabel: viewport.empty ? "" : root.formatAxisPrice(viewport.highPrice)
+    readonly property string bottomPriceLabel: viewport.empty ? "" : root.formatAxisPrice(viewport.lowPrice)
 
     property int keyboardSelectedBar: -1
     property bool inspectionDismissed: false
@@ -62,13 +65,33 @@ Item {
         return -1;
     }
 
+    // "YYYY-MM-DD HH:MM[:SS] UTC±HH:MM" of a bar's epoch-ms, in the workstation's local
+    // timezone (Q-065) rather than the feed's UTC-only time_text, so the readout, its
+    // accessible text and the axis agree on time and offset.
+    function localBarTimeText(ms) {
+        if (!(ms > 0)) {
+            return "";
+        }
+        var d = new Date(ms);
+        function p2(n) { return (n < 10 ? "0" : "") + n; }
+        var datePart = d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate());
+        var timePart = d.getSeconds() === 0
+            ? (p2(d.getHours()) + ":" + p2(d.getMinutes()))
+            : (p2(d.getHours()) + ":" + p2(d.getMinutes()) + ":" + p2(d.getSeconds()));
+        return datePart + " " + timePart + " " + ChartAxis.formatUtcOffset(ms);
+    }
+
     readonly property var barSnapshot: {
         var rev = root.feed ? root.feed.revision : 0;
         if (!root.feed || activeBarIndex < 0 || !root.feed.bar_snapshot_json || isTargetSwitching || viewport.empty) {
             return ({ valid: false });
         }
         try {
-            return JSON.parse(root.feed.bar_snapshot_json(activeBarIndex));
+            var snap = JSON.parse(root.feed.bar_snapshot_json(activeBarIndex));
+            if (snap && snap.valid) {
+                snap.time_text = root.localBarTimeText(root.normalizeMs(snap.time));
+            }
+            return snap;
         } catch (error) {
             return ({ valid: false });
         }
@@ -164,10 +187,6 @@ Item {
         tipText.text = root.feed.marker_detail_at(effectiveHoverX, effectiveHoverY, 10);
     }
 
-
-    function pad2(n) {
-        return (n < 10 ? "0" : "") + n;
-    }
 
     function normalizeMs(t) {
         if (!t || t <= 0) {
@@ -337,34 +356,110 @@ Item {
     }
 
 
-    function formatTime(t) {
-        var ms = normalizeMs(t);
-        if (ms <= 0) {
-            return "";
+    // Epoch-ms of a visible bar index, tolerating probes/fixtures that expose only
+    // first_time/timeframe_ms rather than bar_time_at().
+    function barTimeAtIndex(index) {
+        if (!root.feed) {
+            return 0;
         }
-        var d = new Date(ms);
-        return pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes());
+        if (root.feed.bar_time_at) {
+            return normalizeMs(root.feed.bar_time_at(index));
+        }
+        var tf = (root.feed.timeframe_ms && root.feed.timeframe_ms > 0) ? root.feed.timeframe_ms : 60000;
+        return normalizeMs(root.feed.first_time + Math.max(0, index) * tf);
     }
 
-    readonly property string leftTimeLabel: {
+    // Bounded candidate time ticks from the visible bar range (Q-065). ChartPane filters
+    // these for measured-width overlap before placing delegates; ChartAxis.js only derives
+    // the round-boundary candidates and their local formatting.
+    readonly property var rawTimeTicks: {
+        if (viewport.empty || !root.feed || viewport.lastBar <= viewport.firstBar) {
+            return [];
+        }
+        return ChartAxis.computeTimeTicks({
+            firstBar: viewport.firstBar,
+            lastBar: viewport.lastBar,
+            barTimeAt: root.barTimeAtIndex,
+            maxTicks: Theme.chartMaxTimeTicks
+        });
+    }
+
+    // The offset shown once in the axis corner: the newest visible bar's instant, so it
+    // reflects "now" rather than the (possibly differently-offset) oldest visible tick.
+    readonly property string axisOffsetLabel: {
         if (viewport.empty || !root.feed) {
             return "";
         }
-        if (!root.feed.bar_time_at) {
-            var tf = (root.feed.timeframe_ms && root.feed.timeframe_ms > 0) ? root.feed.timeframe_ms : 60000;
-            return formatTime(root.feed.first_time + Math.max(0, viewport.firstBar) * tf);
-        }
-        return formatTime(root.feed.bar_time_at(viewport.firstBar));
+        var t = root.barTimeAtIndex(Math.max(viewport.firstBar, viewport.lastBar - 1));
+        return t > 0 ? ChartAxis.formatUtcOffset(t) : "";
     }
 
-    readonly property string rightTimeLabel: {
-        if (viewport.empty || !root.feed) {
-            return "";
+    readonly property var priceTicks: viewport.empty
+        ? []
+        : ChartAxis.computePriceTicks(viewport.lowPrice, viewport.highPrice, {
+              minTicks: Theme.chartMinPriceTicks,
+              maxTicks: Theme.chartMaxPriceTicks
+          })
+
+    function formatAxisPrice(value) {
+        return (root.feed && root.feed.format_price) ? root.feed.format_price(value) : value.toFixed(2);
+    }
+
+    // Full label text for a time tick, including the date (at a day boundary) and the
+    // offset (only where it differs from the axis-corner reference), so overlap filtering
+    // measures exactly what will be drawn.
+    function timeTickLabelText(tick) {
+        var text = tick.label;
+        if (tick.showDate) {
+            text = tick.dateLabel + " " + text;
         }
-        if (!root.feed.bar_time_at) {
-            return formatTime(root.feed.last_time);
+        if (tick.offsetDiffers) {
+            text += " " + tick.offsetLabel;
         }
-        return formatTime(root.feed.bar_time_at(Math.max(viewport.firstBar, viewport.lastBar - 1)));
+        return text;
+    }
+
+    // Greedy left-to-right selection of non-overlapping, non-clipped time ticks, measured
+    // with the same font as the delegates that render them (Q-065: "measure labels before
+    // placing them").
+    readonly property var filteredTimeTicks: {
+        var raw = root.rawTimeTicks;
+        var plotWidth = chartArea.width;
+        if (raw.length === 0 || plotWidth <= 0) {
+            return [];
+        }
+        var kept = [];
+        var lastRight = -Infinity;
+        for (var i = 0; i < raw.length; i++) {
+            var tick = raw[i];
+            var label = root.timeTickLabelText(tick);
+            var w = timeTickMetrics.advanceWidth(label);
+            var center = tick.x * plotWidth;
+            var left = center - w / 2;
+            var right = center + w / 2;
+            if (left < 0 || right > plotWidth) {
+                continue;
+            }
+            if (left < lastRight + Theme.chartTickLabelGap) {
+                continue;
+            }
+            var placed = {};
+            for (var key in tick) placed[key] = tick[key];
+            placed.text = label;
+            placed.textWidth = w;
+            kept.push(placed);
+            lastRight = right;
+        }
+        return kept;
+    }
+
+    // Measures the same font the delegates render, without creating/destroying a QQuickText
+    // per candidate: a fixed instance queried from a JS binding (Q-065; see the fixed-count
+    // Repeater note below for why the delegates themselves must not churn).
+    FontMetrics {
+        id: timeTickMetrics
+        font.family: Theme.uiFont
+        font.pixelSize: Theme.typeBodySmall
     }
 
     Viewport {
@@ -479,6 +574,45 @@ Item {
             id: chartContainer
             anchors.fill: chartArea
             visible: !viewport.empty
+
+            // Quiet grid at the major axis ticks, subordinate to candles, markers,
+            // overlays and the crosshair (z below the default-z chart items below). The
+            // Repeater model is a fixed count, not the reactive tick array: recomputing
+            // ticks on every viewport change would otherwise add and remove delegates
+            // continuously, and Qt Quick's asynchronous item teardown does not always
+            // finish before the process exits (observed as a shutdown crash in the
+            // gallery capture). Delegates beyond the live tick count simply hide.
+            Repeater {
+                model: Theme.chartMaxTimeTicks
+                delegate: Rectangle {
+                    id: timeGridLine
+                    required property int index
+                    readonly property var tick: index < root.filteredTimeTicks.length ? root.filteredTimeTicks[index] : null
+                    visible: !!tick
+                    x: tick ? Math.round(tick.x * chartContainer.width) : 0
+                    y: 0
+                    width: Spacing.hairline
+                    height: chartContainer.height
+                    color: Theme.borderSubtle
+                    z: -1
+                }
+            }
+
+            Repeater {
+                model: Theme.chartMaxPriceTicks
+                delegate: Rectangle {
+                    id: priceGridLine
+                    required property int index
+                    readonly property var tick: index < root.priceTicks.length ? root.priceTicks[index] : null
+                    visible: !!tick
+                    x: 0
+                    y: tick ? Math.round(tick.fraction * chartContainer.height) : 0
+                    width: chartContainer.width
+                    height: Spacing.hairline
+                    color: Theme.borderSubtle
+                    z: -1
+                }
+            }
 
             BarChartItem {
                 id: chart
@@ -657,7 +791,7 @@ Item {
         anchors.top: parent.top
         anchors.right: parent.right
         anchors.topMargin: Spacing.size4
-        anchors.rightMargin: Spacing.priceAxisWidth + Spacing.size8
+        anchors.rightMargin: root.axisPriceWidth + Spacing.size8
         spacing: Spacing.size8
         z: 2
 
@@ -689,12 +823,30 @@ Item {
         }
     }
 
+
+    FontMetrics {
+        id: priceTickMetrics
+        font.family: Theme.numericFontFamily
+        font.pixelSize: Theme.typeBodySmall
+    }
+
+    // Right-axis width reserved for the widest rendered price label, never narrower than
+    // the historical minimum width.
+    readonly property real axisPriceWidth: {
+        var maxW = 0;
+        var i;
+        for (i = 0; i < root.priceTicks.length; i++) {
+            maxW = Math.max(maxW, priceTickMetrics.advanceWidth(root.formatAxisPrice(root.priceTicks[i].value)));
+        }
+        return Math.max(Spacing.priceAxisWidth, maxW + Spacing.size16);
+    }
+
     Item {
         id: priceAxis
         anchors.top: parent.top
         anchors.right: parent.right
         anchors.bottom: timeAxis.top
-        width: Spacing.size64
+        width: root.axisPriceWidth
 
         Rectangle {
             anchors.left: parent.left
@@ -704,28 +856,24 @@ Item {
             color: Theme.borderSubtle
         }
 
-        Text {
-            id: topPriceText
-            objectName: "topPriceText"
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.margins: Spacing.size4
-            text: root.topPriceLabel
-            color: Theme.textTertiary
-            font.pixelSize: Theme.typeBodySmall
-            visible: !viewport.empty
-        }
-
-        Text {
-            id: bottomPriceText
-            objectName: "bottomPriceText"
-            anchors.bottom: parent.bottom
-            anchors.left: parent.left
-            anchors.margins: Spacing.size4
-            text: root.bottomPriceLabel
-            color: Theme.textTertiary
-            font.pixelSize: Theme.typeBodySmall
-            visible: !viewport.empty
+        // Fixed-count pool (see the time-grid Repeater note above): delegates beyond the
+        // live tick count hide rather than being removed.
+        Repeater {
+            model: Theme.chartMaxPriceTicks
+            delegate: Text {
+                id: priceTickLabel
+                required property int index
+                readonly property var tick: index < root.priceTicks.length ? root.priceTicks[index] : null
+                objectName: "priceTickText"
+                visible: !!tick
+                x: Spacing.size4
+                y: tick ? Math.max(0, Math.min(priceAxis.height - implicitHeight, tick.fraction * priceAxis.height - implicitHeight / 2)) : 0
+                text: tick ? root.formatAxisPrice(tick.value) : ""
+                color: Theme.textTertiary
+                font.pixelSize: Theme.typeBodySmall
+                font.family: Theme.numericFontFamily
+                font.features: { "tnum": 1 }
+            }
         }
 
         Rectangle {
@@ -769,28 +917,44 @@ Item {
             color: Theme.borderSubtle
         }
 
-        Text {
-            id: leftTimeText
-            objectName: "leftTimeText"
+        Item {
+            id: timeTickStrip
             anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: Spacing.size4
-            text: root.leftTimeLabel
-            color: Theme.textTertiary
-            font.pixelSize: Theme.typeBodySmall
-            visible: !viewport.empty
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: chartArea.width
+
+            // Fixed-count pool (see the time-grid Repeater note above): delegates beyond
+            // the live tick count hide rather than being removed.
+            Repeater {
+                model: Theme.chartMaxTimeTicks
+                delegate: Text {
+                    id: timeTickLabel
+                    required property int index
+                    readonly property var tick: index < root.filteredTimeTicks.length ? root.filteredTimeTicks[index] : null
+                    objectName: "timeTickText"
+                    visible: !!tick
+                    x: tick ? tick.x * timeTickStrip.width - implicitWidth / 2 : 0
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: tick ? tick.text : ""
+                    color: Theme.textTertiary
+                    font.pixelSize: Theme.typeBodySmall
+                    font.family: Theme.uiFont
+                }
+            }
         }
 
         Text {
-            id: rightTimeText
-            objectName: "rightTimeText"
+            id: axisOffsetText
+            objectName: "axisOffsetText"
             anchors.right: parent.right
-            anchors.rightMargin: Spacing.size70
+            anchors.rightMargin: Spacing.size4
             anchors.verticalCenter: parent.verticalCenter
-            text: root.rightTimeLabel
-            color: Theme.textTertiary
-            font.pixelSize: Theme.typeBodySmall
-            visible: !viewport.empty
+            text: root.axisOffsetLabel
+            color: Theme.textMuted
+            font.pixelSize: Theme.typeLabelSmall
+            font.family: Theme.numericFontFamily
+            visible: !viewport.empty && text !== ""
         }
     }
 }
