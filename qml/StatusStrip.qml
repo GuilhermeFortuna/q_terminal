@@ -66,7 +66,7 @@ Rectangle {
             color: Theme.critical
             radius: Spacing.size3
             height: Spacing.size16
-            width: staleText.width + 8
+            width: staleText.width + Spacing.size8
             anchors.verticalCenter: parent.verticalCenter
 
             Text {
@@ -87,7 +87,7 @@ Rectangle {
             color: Theme.accentLegacy
             radius: Spacing.size3
             height: Spacing.size16
-            width: liveOnlyText.width + 8
+            width: liveOnlyText.width + Spacing.size8
             anchors.verticalCenter: parent.verticalCenter
 
             Text {
@@ -129,32 +129,86 @@ Rectangle {
         }
     }
 
+    property bool diagnosticsOpen: false
+
     Row {
         id: rightItems
         anchors.right: parent.right
         anchors.rightMargin: Spacing.size8
         anchors.verticalCenter: parent.verticalCenter
-        spacing: Spacing.size12
+        spacing: Spacing.size8
 
-        Text {
-            text: "Applied: " + (root.feed ? root.feed.applied : 0)
-            color: Theme.textTertiary
-            font.pixelSize: Theme.typeBodySmall
+        Rectangle {
+            id: trustWarning
+            visible: root.feed && (root.feed.dropped > 0 || root.feed.gaps_closed > 0)
+            color: Theme.warningSurface
+            border.color: Theme.warningStrong
+            border.width: Theme.borderWidth
+            radius: Theme.radiusMedium
+            height: Spacing.size20
+            width: trustText.implicitWidth + Theme.spaceMd * 2
+            anchors.verticalCenter: parent.verticalCenter
+
+            Text {
+                id: trustText
+                anchors.centerIn: parent
+                text: {
+                    if (!root.feed) return "";
+                    if (root.feed.dropped > 0 && root.feed.gaps_closed > 0) {
+                        return "Drops: " + root.feed.dropped + " · Gaps: " + root.feed.gaps_closed;
+                    }
+                    if (root.feed.dropped > 0) {
+                        return "Dropped: " + root.feed.dropped;
+                    }
+                    return "Gaps: " + root.feed.gaps_closed;
+                }
+                color: Theme.warningText
+                font.family: Theme.uiFont
+                font.pixelSize: Theme.typeLabel
+                font.weight: Typography.weightMedium
+            }
         }
-        Text {
-            text: "Dropped: " + (root.feed ? root.feed.dropped : 0)
-            color: Theme.textTertiary
-            font.pixelSize: Theme.typeBodySmall
+
+        Row {
+            id: diagnosticsRow
+            visible: root.diagnosticsOpen
+            spacing: Spacing.size8
+            anchors.verticalCenter: parent.verticalCenter
+
+            Text {
+                text: "Applied: " + (root.feed ? root.feed.applied : 0)
+                color: Theme.textTertiary
+                font.pixelSize: Theme.typeLabel
+                font.family: Theme.numericFontFamily
+            }
+            Text {
+                text: "Dropped: " + (root.feed ? root.feed.dropped : 0)
+                color: (root.feed && root.feed.dropped > 0) ? Theme.warningText : Theme.textTertiary
+                font.pixelSize: Theme.typeLabel
+                font.family: Theme.numericFontFamily
+            }
+            Text {
+                text: "Gaps: " + (root.feed ? root.feed.gaps_closed : 0)
+                color: (root.feed && root.feed.gaps_closed > 0) ? Theme.warningText : Theme.textTertiary
+                font.pixelSize: Theme.typeLabel
+                font.family: Theme.numericFontFamily
+            }
+            Text {
+                text: "REST: " + (root.feed ? root.feed.rest_calls : 0)
+                color: Theme.textTertiary
+                font.pixelSize: Theme.typeLabel
+                font.family: Theme.numericFontFamily
+            }
         }
-        Text {
-            text: "Gaps: " + (root.feed ? root.feed.gaps_closed : 0)
-            color: Theme.textTertiary
-            font.pixelSize: Theme.typeBodySmall
-        }
-        Text {
-            text: "REST: " + (root.feed ? root.feed.rest_calls : 0)
-            color: Theme.textTertiary
-            font.pixelSize: Theme.typeBodySmall
+
+        AppButton {
+            id: diagnosticsButton
+            text: root.diagnosticsOpen ? "Diagnostics ▴" : "Diagnostics ▾"
+            implicitWidth: Spacing.size100
+            implicitHeight: Spacing.size20
+            font.pixelSize: Theme.typeLabel
+            Accessible.name: root.diagnosticsOpen ? "Hide diagnostics counters" : "Show diagnostics counters"
+            onClicked: root.diagnosticsOpen = !root.diagnosticsOpen
         }
     }
 }

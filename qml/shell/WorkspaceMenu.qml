@@ -66,6 +66,71 @@ RowLayout {
         onClicked: root.window.openPalette()
     }
 
+    Rectangle {
+        id: opsAlertChip
+        objectName: "opsAlertChip"
+        visible: !root.shell.controller.operations_visible && criticalOpsCause !== ""
+        implicitHeight: Spacing.size24
+        implicitWidth: alertRow.implicitWidth + Spacing.size16
+        radius: Theme.radiusMedium
+        color: Theme.criticalSurface
+        border.color: Theme.criticalStrong
+        border.width: Theme.borderWidth
+        Layout.alignment: Qt.AlignVCenter
+
+        readonly property var opsStatus: root.shell.activeOpsStatus
+        readonly property bool workerUnavailable: opsStatus ? (opsStatus.api_status !== "unknown" && (!opsStatus.worker_heartbeat_known || opsStatus.worker_status !== "active" || opsStatus.worker_heartbeat_age_s > 30.0)) : false
+        readonly property string criticalOpsCause: {
+            if (!opsStatus) return "";
+            if (!opsStatus.postgres_available) return "Database unavailable";
+            if (opsStatus.kill_switch_enabled) return "Kill switch engaged";
+            if (opsStatus.unknown_orders > 0) return "Unknown orders: " + opsStatus.unknown_orders;
+            if (workerUnavailable) return "Worker unavailable";
+            return "";
+        }
+
+        function openOperations() {
+            root.shell.controller.ensure_operations_visible(root.window.windowId);
+            root.shell.syncWindows();
+        }
+
+        MouseArea {
+            id: alertMouse
+            objectName: "alertMouse"
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            Accessible.role: Accessible.Button
+            Accessible.name: "Alert: " + opsAlertChip.criticalOpsCause + ". Click to open Operations."
+            onClicked: opsAlertChip.openOperations()
+        }
+
+        RowLayout {
+            id: alertRow
+            anchors.centerIn: parent
+            spacing: Theme.spaceXs
+
+            Text {
+                text: "⚠"
+                color: Theme.critical
+                font.family: Theme.uiFont
+                font.pixelSize: Theme.typeLabel
+            }
+
+            Text {
+                id: alertText
+                text: opsAlertChip.criticalOpsCause
+                color: Theme.critical
+                font.family: Theme.uiFont
+                font.pixelSize: Theme.typeLabel
+                font.weight: Typography.weightMedium
+            }
+        }
+
+        ToolTip.visible: alertMouse.containsMouse && opsAlertChip.criticalOpsCause !== ""
+        ToolTip.text: "Click to open Operations and address " + opsAlertChip.criticalOpsCause
+    }
+
     AppButton {
         id: moreButton
         text: "More"

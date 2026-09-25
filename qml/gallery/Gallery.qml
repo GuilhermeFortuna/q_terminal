@@ -51,6 +51,146 @@ ApplicationWindow {
                 }
             }
 
+            Text { text: "STATUS HIERARCHY & OPERATIONAL ALERTS (Q-064)"; color: Theme.accent; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabel; font.weight: Typography.weightBold }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spaceMd
+
+                Panel {
+                    Layout.fillWidth: true
+                    implicitHeight: Spacing.size100
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: Theme.spaceSm
+                        spacing: Theme.spaceXs
+                        Text { text: "HEALTHY (QUIET)"; color: Theme.textMuted; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                        StatusBadge { text: "LIVE"; role: Semantic.positive }
+                        Text { text: "PETR4 · 1m · Candles"; color: Theme.textPrimary; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabel; font.bold: true }
+                        Text { text: "Operations hidden · No alerts"; color: Theme.textTertiary; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                    }
+                }
+
+                Panel {
+                    Layout.fillWidth: true
+                    implicitHeight: Spacing.size100
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: Theme.spaceSm
+                        spacing: Theme.spaceXs
+                        Text { text: "STALE FEED"; color: Theme.textMuted; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                        StatusBadge { text: "STALE 2m 5s"; role: Semantic.stale }
+                        Text { text: "Following: momentum-alpha"; color: Theme.textSecondary; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabel }
+                        Text { text: "Distinct from disconnected"; color: Theme.textTertiary; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                    }
+                }
+
+                Panel {
+                    Layout.fillWidth: true
+                    implicitHeight: Spacing.size100
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: Theme.spaceSm
+                        spacing: Theme.spaceXs
+                        Text { text: "DISCONNECTED"; color: Theme.textMuted; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                        StatusBadge { text: "DISCONNECTED"; role: Semantic.critical }
+                        Text { text: "API retrying connection"; color: Theme.textSecondary; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabel }
+                        Text { text: "Never labeled live"; color: Theme.textTertiary; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                    }
+                }
+
+                Panel {
+                    Layout.fillWidth: true
+                    implicitHeight: Spacing.size100
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: Theme.spaceSm
+                        spacing: Theme.spaceXs
+                        Text { text: "WORKER OFFLINE"; color: Theme.textMuted; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                        Rectangle {
+                            height: Spacing.size24
+                            implicitWidth: workerAlertText.implicitWidth + Spacing.size16
+                            radius: Theme.radiusMedium
+                            color: Theme.criticalSurface
+                            border.color: Theme.criticalStrong
+                            border.width: Theme.borderWidth
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: Theme.spaceXs
+                                Text { text: "⚠"; color: Theme.critical; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabel }
+                                Text { id: workerAlertText; text: "Worker unavailable"; color: Theme.critical; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabel; font.weight: Typography.weightMedium }
+                            }
+                        }
+                        Text { text: "Reveals Ops on click"; color: Theme.textTertiary; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                    }
+                }
+
+                Panel {
+                    Layout.fillWidth: true
+                    implicitHeight: Spacing.size100
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: Theme.spaceSm
+                        spacing: Theme.spaceXs
+                        Text { text: "UNKNOWN ORDERS"; color: Theme.textMuted; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                        Rectangle {
+                            height: Spacing.size24
+                            implicitWidth: unkAlertText.implicitWidth + Spacing.size16
+                            radius: Theme.radiusMedium
+                            color: Theme.criticalSurface
+                            border.color: Theme.criticalStrong
+                            border.width: Theme.borderWidth
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: Theme.spaceXs
+                                Text { text: "⚠"; color: Theme.critical; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabel }
+                                Text { id: unkAlertText; text: "Unknown orders: 2"; color: Theme.critical; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabel; font.weight: Typography.weightMedium }
+                            }
+                        }
+                        Text { text: "Reconciliation required"; color: Theme.textTertiary; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                    }
+                }
+
+                Panel {
+                    Layout.fillWidth: true
+                    implicitHeight: Spacing.size100
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: Theme.spaceSm
+                        spacing: Theme.spaceXs
+                        Text { text: "KILL SWITCH"; color: Theme.textMuted; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                        Rectangle {
+                            height: Spacing.size24
+                            implicitWidth: killAlertText.implicitWidth + Spacing.size16
+                            radius: Theme.radiusMedium
+                            color: Theme.criticalSurface
+                            border.color: Theme.criticalStrong
+                            border.width: Theme.borderWidth
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: Theme.spaceXs
+                                Text { text: "⚠"; color: Theme.critical; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabel }
+                                Text { id: killAlertText; text: "Kill switch engaged"; color: Theme.critical; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabel; font.weight: Typography.weightMedium }
+                            }
+                        }
+                        Text { text: "Trading risk halted"; color: Theme.textTertiary; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                    }
+                }
+
+                Panel {
+                    Layout.fillWidth: true
+                    implicitHeight: Spacing.size100
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: Theme.spaceSm
+                        spacing: Theme.spaceXs
+                        Text { text: "TAPE PLACEHOLDER"; color: Theme.textMuted; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                        Text { text: "Tape"; color: Theme.textPrimary; font.family: Theme.uiFont; font.pixelSize: Theme.typeBodySmall; font.bold: true }
+                        Text { text: "Tape data is not available yet"; color: Theme.textMuted; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                        Text { text: "Honest placeholder copy"; color: Theme.textTertiary; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                    }
+                }
+            }
+
             GridLayout {
                 Layout.fillWidth: true
                 columns: root.width >= Spacing.workstationWideWidth ? Spacing.galleryWideColumns : Spacing.galleryColumns

@@ -20,12 +20,12 @@ Rectangle {
     readonly property string heartbeatAge: opsStatus.worker_heartbeat_known
                                         ? Format.formatAge(opsStatus.worker_heartbeat_age_s) : "unknown"
     readonly property string summary: {
-        if (!opsStatus.postgres_available) return "DATABASE UNAVAILABLE — execution state may be unknown"
-        if (opsStatus.kill_switch_enabled) return "KILL SWITCH ENGAGED — new risk is halted"
-        if (opsStatus.unknown_orders > 0) return "RECONCILIATION REQUIRED — " + opsStatus.unknown_orders + " unknown orders"
-        if (workerUnavailable) return "EXECUTION WORKER UNAVAILABLE — heartbeat " + heartbeatAge
-        if (opsStatus.live_locked) return "LIVE TRADING LOCKED"
-        return "OPERATIONS HEALTHY"
+        if (!opsStatus.postgres_available) return "DATABASE UNAVAILABLE · Check database service"
+        if (opsStatus.kill_switch_enabled) return "KILL SWITCH ENGAGED · Release to resume risk"
+        if (opsStatus.unknown_orders > 0) return "RECONCILIATION REQUIRED · " + opsStatus.unknown_orders + " unknown order(s)"
+        if (workerUnavailable) return "WORKER UNAVAILABLE · Heartbeat " + heartbeatAge
+        if (opsStatus.live_locked) return "LIVE TRADING LOCKED · Unlock to trade"
+        return "HEALTHY"
     }
 
     // Shell command entry point (Q-052): the palette and shortcuts open the same
@@ -98,7 +98,7 @@ Rectangle {
                 anchors.rightMargin: Spacing.size16
 
                 Text {
-                    text: "⚠ Database Unavailable (503): Postgres is down — all deployments marked unknown"
+                    text: "⚠ Database Unavailable: Postgres offline"
                     color: Theme.textOnAccent
                     font.pixelSize: Theme.typeBody
                     font.bold: true
@@ -122,7 +122,7 @@ Rectangle {
                 anchors.rightMargin: Spacing.size16
 
                 Text {
-                    text: "⚠ Execution Worker Offline / Stale (Status: " + root.opsStatus.worker_status + ", Heartbeat age: " + Format.formatAge(root.opsStatus.worker_heartbeat_age_s) + ")"
+                    text: "⚠ Worker Unavailable: Offline or stale (" + Format.formatAge(root.opsStatus.worker_heartbeat_age_s) + ")"
                     color: Theme.warningForeground
                     font.pixelSize: Theme.typeBody
                     font.bold: true
@@ -146,7 +146,7 @@ Rectangle {
                 anchors.rightMargin: Spacing.size16
 
                 Text {
-                    text: "⚠ Reconciliation Required: " + root.opsStatus.unknown_orders + " unknown order(s) detected"
+                    text: "⚠ Reconciliation Required: " + root.opsStatus.unknown_orders + " unknown order(s)"
                     color: Theme.textOnAccent
                     font.pixelSize: Theme.typeBody
                     font.bold: true
@@ -191,7 +191,7 @@ Rectangle {
                 // Stream Connection & Age
                 Rectangle {
                     height: Spacing.size24
-                    implicitWidth: streamRow.implicitWidth + 16
+                    implicitWidth: streamRow.implicitWidth + Spacing.size16
                     radius: Spacing.size4
                     color: Semantic.background(Semantic.health(root.opsStatus.stream_state))
                     border.color: Semantic.border(Semantic.health(root.opsStatus.stream_state))
@@ -221,7 +221,7 @@ Rectangle {
                 // API Status
                 Rectangle {
                     height: Spacing.size24
-                    implicitWidth: apiText.implicitWidth + 16
+                    implicitWidth: apiText.implicitWidth + Spacing.size16
                     radius: Spacing.size4
                     color: Semantic.background(Semantic.health(root.opsStatus.api_status))
                     border.color: Semantic.border(Semantic.health(root.opsStatus.api_status))
@@ -240,7 +240,7 @@ Rectangle {
                 // Worker Status & Heartbeat
                 Rectangle {
                     height: Spacing.size24
-                    implicitWidth: workerRow.implicitWidth + 16
+                    implicitWidth: workerRow.implicitWidth + Spacing.size16
                     radius: Spacing.size4
                     color: Semantic.background(Semantic.workerHealth(root.opsStatus.worker_status, root.opsStatus.worker_heartbeat_age_s))
                     border.color: Semantic.border(Semantic.workerHealth(root.opsStatus.worker_status, root.opsStatus.worker_heartbeat_age_s))
@@ -263,7 +263,7 @@ Rectangle {
                 // MT5 Edge & Terminal Build
                 Rectangle {
                     height: Spacing.size24
-                    implicitWidth: edgeRow.implicitWidth + 16
+                    implicitWidth: edgeRow.implicitWidth + Spacing.size16
                     radius: Spacing.size4
                     color: Semantic.background(Semantic.edgeHealth(root.opsStatus.edge_reachable, root.opsStatus.edge_mt5_connected))
                     border.color: Semantic.border(Semantic.edgeHealth(root.opsStatus.edge_reachable, root.opsStatus.edge_mt5_connected))
@@ -286,7 +286,7 @@ Rectangle {
                 // Unknown Orders Chip
                 Rectangle {
                     height: Spacing.size24
-                    implicitWidth: unkText.implicitWidth + 16
+                    implicitWidth: unkText.implicitWidth + Spacing.size16
                     radius: Spacing.size4
                     visible: root.opsStatus.unknown_orders > 0
                     color: Theme.criticalSurface
@@ -310,7 +310,7 @@ Rectangle {
 
                     Rectangle {
                         height: Spacing.size24
-                        implicitWidth: killText.implicitWidth + 16
+                        implicitWidth: killText.implicitWidth + Spacing.size16
                         radius: Spacing.size4
                         color: Semantic.background(Semantic.killSwitch(root.opsStatus.kill_switch_enabled))
                         border.color: Semantic.border(Semantic.killSwitch(root.opsStatus.kill_switch_enabled))
@@ -327,7 +327,7 @@ Rectangle {
 
                     Rectangle {
                         height: Spacing.size24
-                        implicitWidth: killBtnText.implicitWidth + 16
+                        implicitWidth: killBtnText.implicitWidth + Spacing.size16
                         radius: Spacing.size4
                         visible: !root.opsStatus.kill_switch_enabled
                         color: Semantic.background(Semantic.critical)
@@ -353,7 +353,7 @@ Rectangle {
 
                     Rectangle {
                         height: Spacing.size24
-                        implicitWidth: releaseBtnText.implicitWidth + 16
+                        implicitWidth: releaseBtnText.implicitWidth + Spacing.size16
                         radius: Spacing.size4
                         visible: root.opsStatus.kill_switch_enabled
                         color: Semantic.background(Semantic.neutral)
@@ -380,7 +380,7 @@ Rectangle {
                 // Live Lock Badge
                 Rectangle {
                     height: Spacing.size24
-                    implicitWidth: liveLockText.implicitWidth + 16
+                    implicitWidth: liveLockText.implicitWidth + Spacing.size16
                     radius: Spacing.size4
                     color: Semantic.background(Semantic.liveLock(root.opsStatus.live_locked))
                     border.color: Semantic.border(Semantic.liveLock(root.opsStatus.live_locked))

@@ -830,3 +830,92 @@ async fn closing_extra_groups_returns_focus_to_chart() {
     assert_eq!(ev(&mut ctx, "controller.is_operations_visible()"), "false");
     assert_eq!(ev(&mut ctx, "panelItem('chart').testFocusCanvas()"), "true");
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn ops_alert_chip_appears_when_operations_hidden_and_critical_condition_exists() {
+    let (_server, mut ctx, _config_home) = start().await;
+
+    // Initial state: chart-only workspace, operations is hidden
+    assert_eq!(ev(&mut ctx, "controller.is_operations_visible()"), "false");
+
+    let is_chip_visible = |ctx: &mut SliceContext| {
+        ev(
+            ctx,
+            r#"
+            (function() {
+                function findItem(root, name) {
+                    if (!root) return null;
+                    if (root.objectName === name) return root;
+                    var ch = root.children || [];
+                    for (var i = 0; i < ch.length; i++) {
+                        var res = findItem(ch[i], name);
+                        if (res) return res;
+                    }
+                    return null;
+                }
+                var chip = findItem(windowObjects()[0].contentItem, "opsAlertChip");
+                return chip ? String(chip.visible) : "not_found";
+            })()
+            "#,
+        )
+    };
+
+    let chip_text = |ctx: &mut SliceContext| {
+        ev(
+            ctx,
+            r#"
+            (function() {
+                function findItem(root, name) {
+                    if (!root) return null;
+                    if (root.objectName === name) return root;
+                    var ch = root.children || [];
+                    for (var i = 0; i < ch.length; i++) {
+                        var res = findItem(ch[i], name);
+                        if (res) return res;
+                    }
+                    return null;
+                }
+                var chip = findItem(windowObjects()[0].contentItem, "opsAlertChip");
+                return chip ? chip.criticalOpsCause : "";
+            })()
+            "#,
+        )
+    };
+
+    // When healthy, chip is not visible
+    assert_eq!(is_chip_visible(&mut ctx), "false");
+
+    // Engage kill switch
+    ev(&mut ctx, "activeOpsStatus.kill_switch_enabled = true");
+    pump(100).await;
+    assert_eq!(is_chip_visible(&mut ctx), "true");
+    assert_eq!(chip_text(&mut ctx), "Kill switch engaged");
+
+    // Click chip to reveal operations
+    ev(
+        &mut ctx,
+        r#"
+        (function() {
+            function findItem(root, name) {
+                if (!root) return null;
+                if (root.objectName === name) return root;
+                var ch = root.children || [];
+                for (var i = 0; i < ch.length; i++) {
+                    var res = findItem(ch[i], name);
+                    if (res) return res;
+                }
+                return null;
+            }
+            var chip = findItem(windowObjects()[0].contentItem, "opsAlertChip");
+            if (chip) {
+                chip.openOperations();
+            }
+        })()
+        "#,
+    );
+    pump(200).await;
+
+    // Operations is now visible, so alert chip is hidden
+    assert_eq!(ev(&mut ctx, "controller.is_operations_visible()"), "true");
+    assert_eq!(is_chip_visible(&mut ctx), "false");
+}

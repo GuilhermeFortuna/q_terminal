@@ -107,7 +107,7 @@ Rectangle {
                     Layout.alignment: Qt.AlignHCenter
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
-                    text: "Select a deployment to inspect execution activity. The chart remains available for the configured instrument."
+                    text: "Select a deployment from the list to inspect execution details."
                     color: Theme.textMuted
                     font.pixelSize: Theme.typeLabel
                 }

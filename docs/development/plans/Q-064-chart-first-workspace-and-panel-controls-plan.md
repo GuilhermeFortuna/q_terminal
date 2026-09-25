@@ -37,7 +37,7 @@ panel objects and shared stores serve every arrangement.
   placement reports, and keyboard focus. Show active toggle state and shortcut tooltips;
   return focus to the chart after a group closes. Capture both workstation sizes and a
   narrow window to check for clipping.
-- [ ] **4. Quiet primary copy.** In `ChartIdentity.qml`, `StatusStrip.qml`,
+- [x] **4. Quiet primary copy.** In `ChartIdentity.qml`, `StatusStrip.qml`,
   `OpsHeader.qml`, `ChartEmptyState.qml`, deployment empty states, and
   `PlaceholderPanel.qml`, apply the spec's hierarchy. Move routine feed counters to
   diagnostics; keep nonzero trust problems and one actionable market-data condition
