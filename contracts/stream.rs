@@ -58,12 +58,14 @@ pub struct ExecutionDecisionState {
     pub bar_close_time: String,
     pub compiled_config: Option<serde_json::Value>,
     pub config_hash: String,
+    pub config_revision: Option<i64>,
     pub context: Option<serde_json::Value>,
     pub created_at: Option<String>,
     pub deployment_id: UUID,
     pub entity: String,
     pub id: UUID,
     pub outcome: DecisionOutcome,
+    pub paper_cost_config: Option<PaperCostConfig>,
     pub reason: Option<serde_json::Value>,
     pub requested_quantity: Option<Decimal>,
     pub risk_config: Option<serde_json::Value>,
@@ -82,6 +84,7 @@ pub struct ExecutionDeploymentState {
     pub broker_mode: BrokerMode,
     pub compiled_config: Option<serde_json::Value>,
     pub config_hash: String,
+    pub config_revision: Option<i64>,
     pub created_at: Option<String>,
     pub deployment_id: UUID,
     pub entity: String,
@@ -91,6 +94,7 @@ pub struct ExecutionDeploymentState {
     pub live_activation_enabled: bool,
     pub name: String,
     pub paper_account_id: Option<UUID>,
+    pub paper_cost_config: Option<PaperCostConfig>,
     pub pending_action: Option<serde_json::Value>,
     pub pending_action_requested_at: Option<serde_json::Value>,
     pub risk_config: Option<serde_json::Value>,
@@ -154,6 +158,7 @@ pub struct ExecutionOrderState {
     pub decision_id: Option<UUID>,
     pub deployment_id: UUID,
     pub details: Option<serde_json::Value>,
+    pub dispatch_attempted_at: Option<serde_json::Value>,
     pub entity: String,
     pub external_order_id: Option<serde_json::Value>,
     pub id: UUID,
@@ -255,6 +260,14 @@ pub struct LatestValuesResponse {
 }
 
 pub type LedgerEntryType = String;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PaperCostConfig {
+    pub cost_bps: Decimal,
+    pub cost_per_contract: Decimal,
+    pub point_value: Decimal,
+    pub slippage_points: Decimal,
+}
 
 pub type PositionSide = String;
 

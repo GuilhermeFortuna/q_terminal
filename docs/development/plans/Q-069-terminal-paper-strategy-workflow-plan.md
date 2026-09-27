@@ -53,7 +53,7 @@ QML receives view-facing fields and never performs financial calculations.
 
 ## Ordered implementation
 
-- [ ] 1. On the Q-069 task branch, pin Q-066 contracts and run
+- [x] 1. On the Q-069 task branch, pin Q-066 contracts and run
   `make contracts-check`. Update `BOUNDARY.md` and README with the narrow
   deployment-configuration permission and paper-only dev behavior.
 - [ ] 2. Add fake-server tests for catalog fetch, symbol search, typed form

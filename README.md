@@ -74,7 +74,7 @@ The live chart slice provides a read-only, reactive candlestick chart window dis
 
 ## The Operations Workspace
 
-The operations workspace is the terminal's execution surface. It is arranged by the shell into panels (see above) and is driven by the in-memory execution store plus a two-second health/positions poller. Q-048 adds command controls (accounts, deployments, lifecycle, flatten, kill switch, resolve) with confirmations and §8.1 enablement.
+The operations workspace is the terminal's execution surface. It is arranged by the shell into panels (see above) and is driven by the in-memory execution store plus a two-second health/positions poller. Q-048 adds command controls (accounts, deployments, lifecycle, flatten, kill switch, resolve) with confirmations and §8.1 enablement. Q-069 adds catalog-first paper deployment configuration, paused-flat deployment editing, paper dispatch audit details, and deployment performance.
 
 ### What It Shows
 
@@ -280,8 +280,8 @@ for more, or `Q_TERMINAL_SEED_ONLY=<n>` to replay one.
 ---
 
 ## Architectural Boundary
-
-`q_terminal` is dedicated strictly to **live trading and operations**. It never grows research surfaces, strategy editors, backtesters, or parameter optimizers.
+ 
+`q_terminal` is dedicated strictly to **live trading and operations**. It never grows research surfaces, strategy editors, backtesters, or parameter optimizers. A narrow exception permits selecting registry strategies from the backend catalog and configuring their paper execution parameters; strategy code authoring and optimization remain prohibited. In the dev workflow, only paper deployments can be created or run.
 
 Furthermore, `q_terminal` **owns no backend process**: it launches nothing, supervises nothing, and stops nothing. See [`BOUNDARY.md`](BOUNDARY.md) for details.
 
