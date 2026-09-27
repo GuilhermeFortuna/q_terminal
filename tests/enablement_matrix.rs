@@ -140,6 +140,10 @@ fn expectations_for(scenario: &Scenario) -> Vec<Expectation> {
                 enabled: false,
             },
             Expectation {
+                cmd: CommandKind::EditDeployment,
+                enabled: false,
+            },
+            Expectation {
                 cmd: CommandKind::Resolve,
                 enabled: false,
             },
@@ -175,6 +179,10 @@ fn expectations_for(scenario: &Scenario) -> Vec<Expectation> {
             },
             Expectation {
                 cmd: CommandKind::CreateAccount,
+                enabled: false,
+            },
+            Expectation {
+                cmd: CommandKind::EditDeployment,
                 enabled: false,
             },
             Expectation {
@@ -216,6 +224,10 @@ fn expectations_for(scenario: &Scenario) -> Vec<Expectation> {
                 enabled: true,
             },
             Expectation {
+                cmd: CommandKind::EditDeployment,
+                enabled: true,
+            },
+            Expectation {
                 cmd: CommandKind::Resolve,
                 enabled: true,
             },
@@ -251,6 +263,10 @@ fn expectations_for(scenario: &Scenario) -> Vec<Expectation> {
             },
             Expectation {
                 cmd: CommandKind::CreateAccount,
+                enabled: true,
+            },
+            Expectation {
+                cmd: CommandKind::EditDeployment,
                 enabled: true,
             },
             Expectation {

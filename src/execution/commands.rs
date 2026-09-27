@@ -13,6 +13,18 @@ pub struct ManualFill {
     pub external_fill_id: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CatalogDeploymentParams {
+    pub strategy_name: String,
+    pub strategy_params: Value,
+    pub exit_params: Value,
+    pub symbol: String,
+    pub timeframe: String,
+    pub sizing_config: Value,
+    pub risk_config: Value,
+    pub paper_cost_config: Value,
+}
+
 #[derive(Debug, Clone)]
 pub enum Command {
     CreateAccount {
@@ -24,7 +36,14 @@ pub enum Command {
         paper_account_id: String,
         name: String,
         broker_mode: String,
-        source_backtest_run_id: String,
+        source_backtest_run_id: Option<String>,
+        catalog: Option<CatalogDeploymentParams>,
+    },
+    EditDeployment {
+        deployment_id: String,
+        expected_revision: i64,
+        actor: String,
+        configuration: Value,
     },
     Lifecycle {
         deployment_id: String,
@@ -187,6 +206,112 @@ impl CommandClient {
             .unwrap_or_default();
         Ok(items)
     }
+
+    pub async fn fetch_strategy_catalog(&self) -> Result<Value, CommandError> {
+        let url = format!("{}/api/v1/execution/strategy-catalog", self.api_base);
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| CommandError::Transport(e.to_string()))?;
+        if !resp.status().is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            return Err(CommandError::InvalidResponse(text));
+        }
+        let body: Value = resp
+            .json()
+            .await
+            .map_err(|e| CommandError::InvalidResponse(e.to_string()))?;
+        Ok(body)
+    }
+
+    pub async fn search_symbols(&self, query: &str) -> Result<Vec<Value>, CommandError> {
+        let url = format!("{}/api/v1/market/symbols/search?q={}", self.api_base, query);
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| CommandError::Transport(e.to_string()))?;
+        if !resp.status().is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            return Err(CommandError::InvalidResponse(text));
+        }
+        let body: Value = resp
+            .json()
+            .await
+            .map_err(|e| CommandError::InvalidResponse(e.to_string()))?;
+        Ok(body.as_array().cloned().unwrap_or_default())
+    }
+
+    pub async fn fetch_deployment(&self, id: &str) -> Result<Value, CommandError> {
+        let url = format!("{}/api/v1/execution/deployments/{}", self.api_base, id);
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| CommandError::Transport(e.to_string()))?;
+        if !resp.status().is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            return Err(CommandError::InvalidResponse(text));
+        }
+        let body: Value = resp
+            .json()
+            .await
+            .map_err(|e| CommandError::InvalidResponse(e.to_string()))?;
+        Ok(body)
+    }
+
+    pub async fn fetch_performance(&self, id: &str) -> Result<Value, CommandError> {
+        let url = format!(
+            "{}/api/v1/execution/deployments/{}/performance",
+            self.api_base, id
+        );
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| CommandError::Transport(e.to_string()))?;
+        if !resp.status().is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            return Err(CommandError::InvalidResponse(text));
+        }
+        let body: Value = resp
+            .json()
+            .await
+            .map_err(|e| CommandError::InvalidResponse(e.to_string()))?;
+        Ok(body)
+    }
+
+    pub async fn fetch_performance_marks(
+        &self,
+        id: &str,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Value, CommandError> {
+        let url = format!(
+            "{}/api/v1/execution/deployments/{}/performance/marks?limit={}&offset={}",
+            self.api_base, id, limit, offset
+        );
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| CommandError::Transport(e.to_string()))?;
+        if !resp.status().is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            return Err(CommandError::InvalidResponse(text));
+        }
+        let body: Value = resp
+            .json()
+            .await
+            .map_err(|e| CommandError::InvalidResponse(e.to_string()))?;
+        Ok(body)
+    }
 }
 
 fn route_for(cmd: &Command) -> (reqwest::Method, String, Value) {
@@ -209,16 +334,52 @@ fn route_for(cmd: &Command) -> (reqwest::Method, String, Value) {
             name,
             broker_mode,
             source_backtest_run_id,
-        } => (
-            reqwest::Method::POST,
-            "api/v1/execution/deployments".to_string(),
-            json!({
+            catalog,
+        } => {
+            let mut body = json!({
                 "paper_account_id": paper_account_id,
                 "name": name,
                 "broker_mode": broker_mode,
-                "source_backtest_run_id": source_backtest_run_id,
-            }),
-        ),
+                "live_activation_enabled": false,
+            });
+            if let Some(run_id) = source_backtest_run_id {
+                body["source_backtest_run_id"] = json!(run_id);
+            }
+            if let Some(cat) = catalog {
+                body["catalog"] = json!({
+                    "strategy_name": cat.strategy_name,
+                    "strategy_params": cat.strategy_params,
+                    "exit_params": cat.exit_params,
+                    "symbol": cat.symbol,
+                    "timeframe": cat.timeframe,
+                    "sizing_config": cat.sizing_config,
+                    "risk_config": cat.risk_config,
+                    "paper_cost_config": cat.paper_cost_config,
+                });
+            }
+            (
+                reqwest::Method::POST,
+                "api/v1/execution/deployments".to_string(),
+                body,
+            )
+        }
+        Command::EditDeployment {
+            deployment_id,
+            expected_revision,
+            actor,
+            configuration,
+        } => {
+            let mut body = configuration.clone();
+            if let Value::Object(ref mut map) = body {
+                map.insert("expected_revision".into(), json!(expected_revision));
+                map.insert("actor".into(), json!(actor));
+            }
+            (
+                reqwest::Method::PATCH,
+                format!("api/v1/execution/deployments/{deployment_id}/configuration"),
+                body,
+            )
+        }
         Command::Lifecycle {
             deployment_id,
             action,

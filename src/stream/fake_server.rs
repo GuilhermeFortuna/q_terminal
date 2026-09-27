@@ -291,14 +291,24 @@ impl FakeServer {
                                 let path_and_query = parts[1];
                                 let path = path_and_query.split('?').next().unwrap_or("");
 
-                                // Command routes (Q-048)
-                                let is_command_route = path.contains("/api/v1/backtests")
-                                    || (path.contains("/api/v1/execution/")
-                                        && (path.ends_with("/accounts")
-                                            || path.ends_with("/deployments")
-                                            || path.ends_with("/actions")
-                                            || path.ends_with("/kill-switch")
-                                            || path.contains("/resolve")));
+                                // Command routes (Q-048 / Q-069)
+                                let is_paged_route = path.ends_with("/orders")
+                                    || path.ends_with("/fills")
+                                    || path.ends_with("/decisions")
+                                    || path.ends_with("/risk-events")
+                                    || path.ends_with("/ledger");
+                                let is_chart_route = path.ends_with("/chart");
+                                let is_command_route = !is_paged_route
+                                    && !is_chart_route
+                                    && (path.contains("/api/v1/backtests")
+                                        || path.contains("/api/v1/market/symbols/search")
+                                        || (path.contains("/api/v1/execution/")
+                                            && (path.ends_with("/accounts")
+                                                || path.contains("/deployments")
+                                                || path.ends_with("/actions")
+                                                || path.ends_with("/kill-switch")
+                                                || path.contains("/resolve")
+                                                || path.ends_with("/strategy-catalog"))));
                                 if is_command_route {
                                     {
                                         let mut cmd_state = command_state_arc.write().await;
@@ -314,12 +324,15 @@ impl FakeServer {
                                         cmd_state.handle(method, path, key, &body)
                                     };
                                     if let Some((status, extra_headers, resp_body)) = response {
-                                        let status_line = if status == 200 {
-                                            "HTTP/1.1 200 OK"
-                                        } else if status == 409 {
-                                            "HTTP/1.1 409 Conflict"
-                                        } else {
-                                            "HTTP/1.1 404 Not Found"
+                                        let status_line = match status {
+                                            200 => "HTTP/1.1 200 OK".to_string(),
+                                            201 => "HTTP/1.1 201 Created".to_string(),
+                                            400 => "HTTP/1.1 400 Bad Request".to_string(),
+                                            404 => "HTTP/1.1 404 Not Found".to_string(),
+                                            409 => "HTTP/1.1 409 Conflict".to_string(),
+                                            422 => "HTTP/1.1 422 Unprocessable Entity".to_string(),
+                                            500 => "HTTP/1.1 500 Internal Server Error".to_string(),
+                                            s => format!("HTTP/1.1 {s} Status"),
                                         };
                                         let mut header_block = format!(
                                             "{status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close",
