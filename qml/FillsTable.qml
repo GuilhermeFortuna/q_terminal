@@ -10,6 +10,18 @@ Rectangle {
 
     required property ExecutionModels executionModels
 
+    property string selFillId: ""
+    property string selOrderId: ""
+    property string selFilledAt: ""
+    property string selSide: ""
+    property string selPrice: ""
+    property string selQty: ""
+    property string selFee: ""
+    property string selSlippage: ""
+    property string selQuoteBid: ""
+    property string selQuoteAsk: ""
+    property string selQuoteTime: ""
+
     ColumnLayout {
         anchors.fill: parent
         spacing: Spacing.size0
@@ -59,10 +71,34 @@ Rectangle {
                 required property string fee
                 required property string slippage
                 required property string filled_at
+                required property string quote_bid
+                required property string quote_ask
+                required property string quote_timestamp
+
+                readonly property bool isSelected: listView.currentIndex === rowRect.index
 
                 width: listView.width
                 height: Spacing.size28
-                color: (index % 2 === 0) ? Theme.surfaceBase : Theme.surfaceRaised
+                color: isSelected ? Theme.surfaceSelected : ((index % 2 === 0) ? Theme.surfaceBase : Theme.surfaceRaised)
+
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: {
+                        listView.currentIndex = rowRect.index;
+                        root.selFillId = rowRect.id;
+                        root.selOrderId = rowRect.order_id;
+                        root.selFilledAt = rowRect.filled_at;
+                        root.selSide = rowRect.side;
+                        root.selPrice = rowRect.price;
+                        root.selQty = rowRect.quantity;
+                        root.selFee = rowRect.fee;
+                        root.selSlippage = rowRect.slippage;
+                        root.selQuoteBid = rowRect.quote_bid;
+                        root.selQuoteAsk = rowRect.quote_ask;
+                        root.selQuoteTime = rowRect.quote_timestamp;
+                    }
+                }
 
                 RowLayout {
                     anchors.fill: parent
@@ -103,7 +139,6 @@ Rectangle {
                         text: rowRect.price
                         color: Theme.textStrong
                         font.pixelSize: Theme.typeBodySmall
-                        font.bold: true
                         Layout.preferredWidth: Spacing.size90
                     }
 
@@ -123,9 +158,76 @@ Rectangle {
 
                     Text {
                         text: rowRect.slippage !== "" ? rowRect.slippage : "--"
-                        color: Theme.textMuted
+                        color: Theme.textSecondary
                         font.pixelSize: Theme.typeBodySmall
                         Layout.fillWidth: true
+                    }
+                }
+            }
+        }
+
+        // Wireshark-style dense Audit Detail Inspector pane for Fills
+        Rectangle {
+            Layout.fillWidth: true
+            height: root.selFillId !== "" ? Spacing.size72 : Spacing.none
+            visible: root.selFillId !== ""
+            color: Theme.surfaceOverlay
+            border.color: Theme.borderDefault
+            border.width: Spacing.size1
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: Spacing.size8
+                spacing: Spacing.size4
+
+                RowLayout {
+                    spacing: Spacing.size12
+                    Text { text: "FILL AUDIT"; color: Theme.accent; font.pixelSize: Theme.typeLabelSmall; font.bold: true }
+                    Text {
+                        text: "FILL ID: " + root.selFillId
+                        color: Theme.textStrong
+                        font.pixelSize: Theme.typeLabel
+                        font.bold: true
+                    }
+                    Text {
+                        text: "ORDER ID: " + root.selOrderId
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.typeLabelSmall
+                    }
+                    Text {
+                        text: "TIME: " + Format.formatIsoTime(root.selFilledAt)
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.typeLabelSmall
+                    }
+                }
+
+                RowLayout {
+                    spacing: Spacing.size16
+                    Text {
+                        text: "EXECUTION: " + root.selSide.toUpperCase() + " " + root.selQty + " @ " + root.selPrice
+                        color: Semantic.foreground(Semantic.side(root.selSide))
+                        font.pixelSize: Theme.typeLabelSmall
+                        font.bold: true
+                    }
+                    Text {
+                        text: "FEE: " + (root.selFee !== "" ? root.selFee : "0.00")
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.typeLabelSmall
+                    }
+                    Text {
+                        text: "SLIPPAGE: " + (root.selSlippage !== "" ? root.selSlippage : "0.0")
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.typeLabelSmall
+                    }
+                }
+
+                RowLayout {
+                    spacing: Spacing.size16
+                    Text {
+                        visible: root.selQuoteBid !== "" || root.selQuoteAsk !== ""
+                        text: "MARKET QUOTE AT FILL: Bid " + (root.selQuoteBid || "--") + " | Ask " + (root.selQuoteAsk || "--") + (root.selQuoteTime !== "" ? (" (" + Format.formatIsoTime(root.selQuoteTime) + ")") : "")
+                        color: Theme.accent
+                        font.pixelSize: Theme.typeLabelSmall
                     }
                 }
             }

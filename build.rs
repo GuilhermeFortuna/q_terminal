@@ -104,6 +104,7 @@ fn main() {
         .qml_file("qml/ConfirmDialog.qml")
         .qml_file("qml/AccountDialog.qml")
         .qml_file("qml/DeployDialog.qml")
+        .qml_file("qml/EditDeploymentDialog.qml")
         .qml_file("qml/ResolveDialog.qml")
         .qml_file(QmlFile::from("qml/theme/Palette.qml").singleton(true))
         .qml_file(QmlFile::from("qml/theme/Typography.qml").singleton(true))

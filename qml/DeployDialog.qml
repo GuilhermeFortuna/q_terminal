@@ -7,7 +7,7 @@ import "Format.js" as Format
 
 Dialog {
     id: root
-    title: "New deployment"
+    title: inReview ? "Review deployment" : "New deployment"
     modal: true
     standardButtons: Dialog.NoButton
     width: Spacing.size480
@@ -21,12 +21,34 @@ Dialog {
     signal liveDeployConfirmed(var payload)
 
     property var savedRuns: []
+    property var catalogStrategies: []
+    property var symbolResults: []
+    property int selectedStrategyIndex: 0
+    property bool isCatalogMode: true
+    property bool inReview: false
 
-    function refreshRuns() {
+    // Form fields for catalog mode
+    property string chosenStrategyName: ""
+    property string chosenStrategyType: "candle"
+    property string chosenProvenance: "builtin"
+    property string chosenSymbol: "WIN$N"
+    property string chosenTimeframe: "15m"
+    property string paramFastPeriod: "10"
+    property string paramSlowPeriod: "30"
+    property string paramStopLossPct: "1.5"
+    property string paramQuantity: "1"
+    property string paramMaxPositionSize: "2"
+    property string paramMaxDailyDrawdown: "500.00"
+    property string paramPointValue: "0.2"
+    property string paramSlippage: "0.5"
+    property string paramCommission: "1.0"
+
+    function refreshAll() {
+        root.executionControls.fetch_strategy_catalog();
         root.executionControls.fetch_saved_runs();
     }
 
-    Component.onCompleted: refreshRuns()
+    Component.onCompleted: refreshAll()
 
     Connections {
         target: root.executionControls
@@ -37,72 +59,631 @@ Dialog {
                 root.savedRuns = [];
             }
         }
+        function onStrategy_catalog_jsonChanged() {
+            try {
+                var raw = JSON.parse(root.executionControls.strategy_catalog_json);
+                var list = raw.strategies || [];
+                // Only allow candle strategies; tick/genome entries cannot be selected
+                var filtered = [];
+                for (var i = 0; i < list.length; ++i) {
+                    var s = list[i];
+                    if (s.strategy_type !== "tick" && s.strategy_type !== "genome") {
+                        filtered.push(s);
+                    }
+                }
+                root.catalogStrategies = filtered;
+                if (filtered.length > 0) {
+                    root.selectStrategy(0);
+                }
+            } catch (e) {
+                root.catalogStrategies = [];
+            }
+        }
+        function onSymbol_search_results_jsonChanged() {
+            try {
+                root.symbolResults = JSON.parse(root.executionControls.symbol_search_results_json);
+            } catch (e) {
+                root.symbolResults = [];
+            }
+        }
+    }
+
+    function selectStrategy(index) {
+        if (index < 0 || index >= root.catalogStrategies.length) return;
+        root.selectedStrategyIndex = index;
+        var s = root.catalogStrategies[index];
+        root.chosenStrategyName = s.name || "";
+        root.chosenStrategyType = s.strategy_type || "candle";
+        root.chosenProvenance = s.source_kind || s.provenance || "builtin";
+        if (s.default_symbol) root.chosenSymbol = s.default_symbol;
+        if (s.default_timeframe) root.chosenTimeframe = s.default_timeframe;
+        if (nameField.text === "" || nameField.text.indexOf(" ") > 0) {
+            nameField.text = (s.label || s.name || "Strategy") + " " + root.chosenSymbol;
+        }
+
+        // Apply parameter defaults if provided in strategy specs
+        var params = s.params || s.parameters || [];
+        for (var p = 0; p < params.length; ++p) {
+            var item = params[p];
+            if (item.name === "fast_period" && item.default !== undefined) {
+                root.paramFastPeriod = "" + item.default;
+            } else if (item.name === "slow_period" && item.default !== undefined) {
+                root.paramSlowPeriod = "" + item.default;
+            } else if (item.name === "stop_loss_pct" && item.default !== undefined) {
+                root.paramStopLossPct = "" + item.default;
+            }
+        }
     }
 
     ColumnLayout {
         anchors.fill: parent
         spacing: Spacing.size8
 
+        // Source Switcher (Strategy Catalog vs Saved Run)
+        RowLayout {
+            Layout.fillWidth: true
+            visible: !root.inReview
+            spacing: Spacing.size4
+
+            Rectangle {
+                id: tabCatalog
+                height: Spacing.size28
+                Layout.fillWidth: true
+                radius: Spacing.size4
+                color: root.isCatalogMode ? Theme.surfaceSelected : Theme.surfaceOverlay
+                border.color: root.isCatalogMode ? Theme.accent : Theme.borderDefault
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "Strategy Catalog"
+                    color: root.isCatalogMode ? Theme.accent : Theme.textSecondary
+                    font.pixelSize: Theme.typeLabel
+                    font.bold: true
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: root.isCatalogMode = true
+                }
+            }
+
+            Rectangle {
+                id: tabSaved
+                height: Spacing.size28
+                Layout.fillWidth: true
+                radius: Spacing.size4
+                color: !root.isCatalogMode ? Theme.surfaceSelected : Theme.surfaceOverlay
+                border.color: !root.isCatalogMode ? Theme.accent : Theme.borderDefault
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "Saved Run"
+                    color: !root.isCatalogMode ? Theme.accent : Theme.textSecondary
+                    font.pixelSize: Theme.typeLabel
+                    font.bold: true
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: root.isCatalogMode = false
+                }
+            }
+        }
+
+        // Deployment Name
         TextField {
             id: nameField
             Layout.fillWidth: true
+            visible: !root.inReview
             placeholderText: "Deployment name"
         }
 
-        ComboBox {
-            id: brokerMode
+        // ==================== CATALOG FIRST WORKFLOW ====================
+        ScrollView {
             Layout.fillWidth: true
-            model: ["paper", "mt5_live"]
-        }
-
-        Label { text: "Saved backtest run"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabel }
-
-        ListView {
-            id: runList
-            Layout.fillWidth: true
-            Layout.preferredHeight: Spacing.size160
+            Layout.preferredHeight: Spacing.size320
             clip: true
-            model: root.savedRuns
-            currentIndex: -1
+            visible: root.isCatalogMode && !root.inReview
+            contentWidth: availableWidth
 
-            delegate: Rectangle {
-                required property var modelData
-                required property int index
-                width: runList.width
-                height: Spacing.size44
-                color: runList.currentIndex === index ? Theme.surfaceSelected : (mouseArea.containsMouse ? Theme.surfaceOverlay : Theme.surfaceBase)
-                border.color: runList.currentIndex === index ? Theme.accent : Theme.borderDefault
+            ColumnLayout {
+                width: parent.width
+                spacing: Spacing.size10
 
-                MouseArea {
-                    id: mouseArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onClicked: runList.currentIndex = index
+                // 1. Strategy Identity & Provenance
+                Text {
+                    text: "STRATEGY IDENTITY"
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.typeLabelSmall
+                    font.bold: true
                 }
 
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: Spacing.size8
-                    Text {
-                        text: (modelData.strategy_name || "?") + " · " + (modelData.symbol || "?") + " " + (modelData.timeframe || "?")
-                        color: Theme.textStrong
-                        font.pixelSize: Theme.typeBodySmall
-                        font.bold: true
+                ComboBox {
+                    id: strategyCombo
+                    Layout.fillWidth: true
+                    model: {
+                        var names = [];
+                        for (var i = 0; i < root.catalogStrategies.length; ++i) {
+                            var s = root.catalogStrategies[i];
+                            names.push((s.label || s.name) + " (" + (s.source_kind || s.provenance || "builtin") + ")");
+                        }
+                        return names;
                     }
-                    Text {
-                        text: modelData.saved_at ? Format.formatIsoTime(modelData.saved_at) : ""
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.typeLabel
+                    currentIndex: root.selectedStrategyIndex
+                    onActivated: function(index) {
+                        root.selectStrategy(index);
+                    }
+                }
+
+                Text {
+                    property var curr: (root.catalogStrategies.length > root.selectedStrategyIndex) ? root.catalogStrategies[root.selectedStrategyIndex] : null
+                    text: curr ? (curr.description || "Candle strategy") : ""
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.typeLabel
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+
+                // 2. Exact Symbol & Timeframe
+                Text {
+                    text: "MARKET DISCOVERY"
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.typeLabelSmall
+                    font.bold: true
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Spacing.size8
+
+                    TextField {
+                        id: symbolField
+                        Layout.fillWidth: true
+                        placeholderText: "Exact Symbol (e.g. WIN$N)"
+                        text: root.chosenSymbol
+                        onTextChanged: root.chosenSymbol = text.trim()
+                    }
+
+                    Rectangle {
+                        height: Spacing.size28
+                        implicitWidth: searchSymbolText.implicitWidth + 16
+                        radius: Spacing.size4
+                        color: Theme.surfaceElevated
+                        border.color: Theme.borderDefault
+
+                        Text {
+                            id: searchSymbolText
+                            anchors.centerIn: parent
+                            text: "Search"
+                            color: Theme.accent
+                            font.pixelSize: Theme.typeLabel
+                            font.bold: true
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                var query = symbolField.text.trim();
+                                if (query !== "") root.executionControls.search_symbols(query);
+                            }
+                        }
+                    }
+
+                    ComboBox {
+                        id: timeframeCombo
+                        Layout.preferredWidth: Spacing.size90
+                        model: ["15m", "30m", "1h", "4h", "1d"]
+                        currentIndex: 0
+                        onActivated: function(index) {
+                            root.chosenTimeframe = currentText;
+                        }
+                    }
+                }
+
+                // Symbol Search Results popup list if any
+                ListView {
+                    id: symbolResultsList
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: root.symbolResults.length > 0 ? Spacing.size72 : Spacing.none
+                    visible: root.symbolResults.length > 0
+                    clip: true
+                    model: root.symbolResults
+
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: symbolResultsList.width
+                        height: Spacing.size24
+                        color: symbolMouse.containsMouse ? Theme.surfaceSelected : Theme.surfaceOverlay
+                        border.color: Theme.borderDefault
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: Spacing.size8
+                            anchors.rightMargin: Spacing.size8
+                            Text {
+                                text: modelData.symbol
+                                color: Theme.accent
+                                font.bold: true
+                                font.pixelSize: Theme.typeBodySmall
+                            }
+                            Text {
+                                text: modelData.name || ""
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.typeLabel
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        MouseArea {
+                            id: symbolMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: {
+                                root.chosenSymbol = modelData.symbol;
+                                symbolField.text = modelData.symbol;
+                                root.symbolResults = [];
+                            }
+                        }
+                    }
+                }
+
+                // 3. Sizing & Risk (MuseScore inspector grouping)
+                Text {
+                    text: "SIZING & RISK LIMITS"
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.typeLabelSmall
+                    font.bold: true
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Spacing.size8
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Spacing.size2
+                        Text { text: "Quantity (Contracts)"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
+                        TextField {
+                            Layout.fillWidth: true
+                            text: root.paramQuantity
+                            onTextChanged: root.paramQuantity = text.trim()
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Spacing.size2
+                        Text { text: "Max Position Size"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
+                        TextField {
+                            Layout.fillWidth: true
+                            text: root.paramMaxPositionSize
+                            onTextChanged: root.paramMaxPositionSize = text.trim()
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Spacing.size2
+                        Text { text: "Max Daily Loss (BRL)"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
+                        TextField {
+                            Layout.fillWidth: true
+                            text: root.paramMaxDailyDrawdown
+                            onTextChanged: root.paramMaxDailyDrawdown = text.trim()
+                        }
+                    }
+                }
+
+                // 4. Paper Costs
+                Text {
+                    text: "PAPER COSTS & POINT VALUE"
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.typeLabelSmall
+                    font.bold: true
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Spacing.size8
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Spacing.size2
+                        Text { text: "Point Value"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
+                        TextField {
+                            Layout.fillWidth: true
+                            text: root.paramPointValue
+                            onTextChanged: root.paramPointValue = text.trim()
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Spacing.size2
+                        Text { text: "Slippage (Points)"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
+                        TextField {
+                            Layout.fillWidth: true
+                            text: root.paramSlippage
+                            onTextChanged: root.paramSlippage = text.trim()
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Spacing.size2
+                        Text { text: "Commission / Order"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
+                        TextField {
+                            Layout.fillWidth: true
+                            text: root.paramCommission
+                            onTextChanged: root.paramCommission = text.trim()
+                        }
+                    }
+                }
+
+                // 5. Strategy Parameters
+                Text {
+                    text: "STRATEGY PARAMETERS"
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.typeLabelSmall
+                    font.bold: true
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Spacing.size8
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Spacing.size2
+                        Text { text: "Fast Period"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
+                        TextField {
+                            Layout.fillWidth: true
+                            text: root.paramFastPeriod
+                            onTextChanged: root.paramFastPeriod = text.trim()
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Spacing.size2
+                        Text { text: "Slow Period"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
+                        TextField {
+                            Layout.fillWidth: true
+                            text: root.paramSlowPeriod
+                            onTextChanged: root.paramSlowPeriod = text.trim()
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Spacing.size2
+                        Text { text: "Stop Loss (%)"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
+                        TextField {
+                            Layout.fillWidth: true
+                            text: root.paramStopLossPct
+                            onTextChanged: root.paramStopLossPct = text.trim()
+                        }
+                    }
+                }
+
+                // 6. Broker Mode: Paper Only
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: Spacing.size32
+                    radius: Spacing.size4
+                    color: Theme.surfaceOverlay
+                    border.color: Theme.borderDefault
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Spacing.size10
+                        anchors.rightMargin: Spacing.size10
+                        Text {
+                            text: "MODE:"
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.typeLabelSmall
+                            font.bold: true
+                        }
+                        Text {
+                            text: "PAPER (dev profile — mt5_live locked)"
+                            color: Theme.accent
+                            font.pixelSize: Theme.typeLabel
+                            font.bold: true
+                        }
                     }
                 }
             }
         }
 
+        // ==================== SAVED RUN SECONDARY SOURCE ====================
+        ColumnLayout {
+            Layout.fillWidth: true
+            visible: !root.isCatalogMode && !root.inReview
+            spacing: Spacing.size8
+
+            Label { text: "Saved backtest run"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabel }
+
+            ListView {
+                id: runList
+                Layout.fillWidth: true
+                Layout.preferredHeight: Spacing.size160
+                clip: true
+                model: root.savedRuns
+                currentIndex: -1
+
+                delegate: Rectangle {
+                    required property var modelData
+                    required property int index
+                    width: runList.width
+                    height: Spacing.size44
+                    color: runList.currentIndex === index ? Theme.surfaceSelected : (savedMouseArea.containsMouse ? Theme.surfaceOverlay : Theme.surfaceBase)
+                    border.color: runList.currentIndex === index ? Theme.accent : Theme.borderDefault
+
+                    MouseArea {
+                        id: savedMouseArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: runList.currentIndex = index
+                    }
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: Spacing.size8
+                        Text {
+                            text: (modelData.strategy_name || "?") + " · " + (modelData.symbol || "?") + " " + (modelData.timeframe || "?")
+                            color: Theme.textStrong
+                            font.pixelSize: Theme.typeBodySmall
+                            font.bold: true
+                        }
+                        Text {
+                            text: modelData.saved_at ? Format.formatIsoTime(modelData.saved_at) : ""
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.typeLabel
+                        }
+                    }
+                }
+            }
+        }
+
+        // ==================== REVIEW SUMMARY STEP ====================
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: Spacing.size320
+            visible: root.inReview
+            radius: Spacing.size4
+            color: Theme.surfaceOverlay
+            border.color: Theme.accent
+            border.width: Spacing.size1
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: Spacing.size16
+                spacing: Spacing.size8
+
+                Text {
+                    text: "REVIEW DEPLOYMENT CONFIGURATION"
+                    color: Theme.accent
+                    font.pixelSize: Theme.typeBodySmall
+                    font.bold: true
+                }
+
+                Rectangle { Layout.fillWidth: true; height: Spacing.size1; color: Theme.borderDefault }
+
+                GridLayout {
+                    columns: 2
+                    columnSpacing: Spacing.size16
+                    rowSpacing: Spacing.size6
+                    Layout.fillWidth: true
+
+                    Text { text: "Strategy:"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
+                    Text { text: root.chosenStrategyName + " (" + root.chosenProvenance + ")"; color: Theme.textStrong; font.bold: true; font.pixelSize: Theme.typeLabel }
+
+                    Text { text: "Symbol & TF:"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
+                    Text { text: root.chosenSymbol + " · " + root.chosenTimeframe; color: Theme.textStrong; font.bold: true; font.pixelSize: Theme.typeLabel }
+
+                    Text { text: "Parameters:"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
+                    Text { text: "fast=" + root.paramFastPeriod + ", slow=" + root.paramSlowPeriod + ", stop_loss=" + root.paramStopLossPct + "%"; color: Theme.textStrong; font.pixelSize: Theme.typeLabel }
+
+                    Text { text: "Sizing & Risk:"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
+                    Text { text: "Qty=" + root.paramQuantity + ", MaxPos=" + root.paramMaxPositionSize + ", MaxLoss=" + root.paramMaxDailyDrawdown; color: Theme.textStrong; font.pixelSize: Theme.typeLabel }
+
+                    Text { text: "Costs:"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
+                    Text { text: "PtVal=" + root.paramPointValue + ", Slip=" + root.paramSlippage + ", Comm=" + root.paramCommission; color: Theme.textStrong; font.pixelSize: Theme.typeLabel }
+
+                    Text { text: "Account ID:"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
+                    Text { text: root.accountId !== "" ? root.accountId : "Selected paper account"; color: Theme.textStrong; font.pixelSize: Theme.typeLabel }
+
+                    Text { text: "Broker Mode:"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
+                    Text { text: "PAPER (Paper only in dev profile)"; color: Theme.accent; font.bold: true; font.pixelSize: Theme.typeLabel }
+                }
+
+                Item { Layout.fillHeight: true }
+
+                Text {
+                    text: "Authoritative validation performed by backend. Stream event will settle row."
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.typeLabelSmall
+                }
+            }
+        }
+
+        // ==================== DIALOG ACTIONS ====================
         RowLayout {
             Layout.fillWidth: true
+            spacing: Spacing.size8
+
             Item { Layout.fillWidth: true }
-            Button { text: "Cancel"; onClicked: root.reject() }
+
             Button {
+                text: root.inReview ? "Back" : "Cancel"
+                onClicked: {
+                    if (root.inReview) {
+                        root.inReview = false;
+                    } else {
+                        root.reject();
+                    }
+                }
+            }
+
+            // Catalog Mode: Review button then Deploy
+            Button {
+                visible: root.isCatalogMode && !root.inReview
+                text: "Review"
+                enabled: nameField.text.trim() !== "" && root.chosenSymbol !== "" && root.chosenTimeframe !== "" && root.accountId !== ""
+                onClicked: {
+                    root.inReview = true;
+                }
+            }
+
+            Button {
+                visible: root.isCatalogMode && root.inReview
+                text: "Deploy Paper Strategy"
+                onClicked: {
+                    var fast = parseInt(root.paramFastPeriod, 10) || 10;
+                    var slow = parseInt(root.paramSlowPeriod, 10) || 30;
+                    var stopLoss = parseFloat(root.paramStopLossPct) || 1.5;
+
+                    var payload = {
+                        paper_account_id: root.accountId,
+                        name: nameField.text.trim(),
+                        broker_mode: "paper",
+                        catalog: {
+                            strategy_name: root.chosenStrategyName,
+                            strategy_params: {
+                                fast_period: fast,
+                                slow_period: slow
+                            },
+                            exit_params: {
+                                stop_loss_pct: stopLoss
+                            },
+                            symbol: root.chosenSymbol,
+                            timeframe: root.chosenTimeframe,
+                            sizing_config: {
+                                quantity: root.paramQuantity
+                            },
+                            risk_config: {
+                                max_position_size: root.paramMaxPositionSize,
+                                max_daily_drawdown: root.paramMaxDailyDrawdown
+                            },
+                            paper_cost_config: {
+                                point_value: root.paramPointValue,
+                                slippage: root.paramSlippage,
+                                commission: root.paramCommission
+                            }
+                        }
+                    };
+
+                    // For dev profile, brokerMode is paper; live Deploy is checked for safety
+                    var brokerMode = "paper";
+                    if (brokerMode === "mt5_live") {
+                        liveDeployConfirmed(payload);
+                    } else {
+                        deployRequested(payload);
+                        root.accept();
+                    }
+                }
+            }
+
+            // Saved Run Mode: Deploy button
+            Button {
+                visible: !root.isCatalogMode && !root.inReview
                 text: "Deploy"
                 enabled: nameField.text.trim() !== "" && runList.currentIndex >= 0 && root.accountId !== ""
                 onClicked: {
@@ -110,10 +691,11 @@ Dialog {
                     var payload = {
                         paper_account_id: root.accountId,
                         name: nameField.text.trim(),
-                        broker_mode: brokerMode.currentText,
+                        broker_mode: "paper",
                         source_backtest_run_id: run.id
                     };
-                    if (brokerMode.currentText === "mt5_live") {
+                    var brokerMode = "paper";
+                    if (brokerMode === "mt5_live") {
                         liveDeployConfirmed(payload);
                     } else {
                         deployRequested(payload);

@@ -10,6 +10,18 @@ Rectangle {
 
     required property ExecutionModels executionModels
 
+    property string selOrderId: ""
+    property string selIntentId: ""
+    property string selIntentTime: ""
+    property string selDispatchTime: ""
+    property string selDecisionId: ""
+    property string selStatus: ""
+    property string selRejection: ""
+    property string selReconciliation: ""
+    property string selSide: ""
+    property string selQty: ""
+    property string selCreatedAt: ""
+
     ColumnLayout {
         anchors.fill: parent
         spacing: Spacing.size0
@@ -58,11 +70,36 @@ Rectangle {
                 required property string quantity
                 required property string status
                 required property string reconciliation_state
+                required property string rejection_reason
+                required property string dispatch_attempted_at
+                required property string intent_committed_at
+                required property string decision_id
                 required property string created_at
+
+                readonly property bool isSelected: listView.currentIndex === rowRect.index
 
                 width: listView.width
                 height: Spacing.size28
-                color: (index % 2 === 0) ? Theme.surfaceBase : Theme.surfaceRaised
+                color: isSelected ? Theme.surfaceSelected : ((index % 2 === 0) ? Theme.surfaceBase : Theme.surfaceRaised)
+
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: {
+                        listView.currentIndex = rowRect.index;
+                        root.selOrderId = rowRect.id;
+                        root.selIntentId = rowRect.intent_id;
+                        root.selIntentTime = rowRect.intent_committed_at;
+                        root.selDispatchTime = rowRect.dispatch_attempted_at;
+                        root.selDecisionId = rowRect.decision_id;
+                        root.selStatus = rowRect.status;
+                        root.selRejection = rowRect.rejection_reason;
+                        root.selReconciliation = rowRect.reconciliation_state;
+                        root.selSide = rowRect.side;
+                        root.selQty = rowRect.quantity;
+                        root.selCreatedAt = rowRect.created_at;
+                    }
+                }
 
                 RowLayout {
                     anchors.fill: parent
@@ -126,6 +163,80 @@ Rectangle {
                         color: Semantic.foreground(Semantic.reconciliation(rowRect.reconciliation_state))
                         font.pixelSize: Theme.typeBodySmall
                         Layout.fillWidth: true
+                    }
+                }
+            }
+        }
+
+        // Wireshark-style dense Audit Detail Inspector pane
+        Rectangle {
+            Layout.fillWidth: true
+            height: root.selOrderId !== "" ? Spacing.size72 : Spacing.none
+            visible: root.selOrderId !== ""
+            color: Theme.surfaceOverlay
+            border.color: Theme.borderDefault
+            border.width: Spacing.size1
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: Spacing.size8
+                spacing: Spacing.size4
+
+                RowLayout {
+                    spacing: Spacing.size12
+                    Text { text: "AUDIT TRAIL"; color: Theme.accent; font.pixelSize: Theme.typeLabelSmall; font.bold: true }
+                    Text {
+                        text: "ORDER: " + root.selOrderId
+                        color: Theme.textStrong
+                        font.pixelSize: Theme.typeLabel
+                        font.bold: true
+                    }
+                    Text {
+                        text: "STATUS: " + root.selStatus.toUpperCase()
+                        color: Semantic.foreground(Semantic.orderStatus(root.selStatus))
+                        font.pixelSize: Theme.typeLabelSmall
+                        font.bold: true
+                    }
+                    Text {
+                        visible: root.selReconciliation !== ""
+                        text: "RECON: " + root.selReconciliation
+                        color: Semantic.foreground(Semantic.reconciliation(root.selReconciliation))
+                        font.pixelSize: Theme.typeLabelSmall
+                    }
+                }
+
+                RowLayout {
+                    spacing: Spacing.size16
+                    Text {
+                        text: "DECISION: " + (root.selDecisionId !== "" ? root.selDecisionId : "--")
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.typeLabelSmall
+                    }
+                    Text {
+                        text: "→ INTENT: " + (root.selIntentId !== "" ? root.selIntentId : "--") + (root.selIntentTime !== "" ? (" (" + Format.formatIsoTime(root.selIntentTime) + ")") : "")
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.typeLabelSmall
+                    }
+                    Text {
+                        text: "→ DISPATCH: " + (root.selDispatchTime !== "" ? Format.formatIsoTime(root.selDispatchTime) : "Not attempted")
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.typeLabelSmall
+                    }
+                }
+
+                RowLayout {
+                    spacing: Spacing.size16
+                    Text {
+                        visible: root.selRejection !== ""
+                        text: "REJECTION REASON: " + root.selRejection
+                        color: Theme.critical
+                        font.pixelSize: Theme.typeLabelSmall
+                        font.bold: true
+                    }
+                    Text {
+                        text: "CREATED: " + Format.formatIsoTime(root.selCreatedAt) + " | SIDE: " + root.selSide.toUpperCase() + " | QTY: " + root.selQty
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.typeLabelSmall
                     }
                 }
             }
