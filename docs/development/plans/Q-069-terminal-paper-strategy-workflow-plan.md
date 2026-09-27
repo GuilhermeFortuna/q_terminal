@@ -53,25 +53,25 @@ QML receives view-facing fields and never performs financial calculations.
 
 ## Ordered implementation
 
-- [ ] 1. On the Q-069 task branch, pin Q-066 contracts and run
+- [x] 1. On the Q-069 task branch, pin Q-066 contracts and run
   `make contracts-check`. Update `BOUNDARY.md` and README with the narrow
   deployment-configuration permission and paper-only dev behavior.
-- [ ] 2. Add fake-server tests for catalog fetch, symbol search, typed form
+- [x] 2. Add fake-server tests for catalog fetch, symbol search, typed form
   values and paper-only create payload. Extend Rust commands/controls and
   replace the saved-run-only QML create flow. Verify idempotent retry and
   stream-only settlement.
-- [ ] 3. Add fake-server tests for full-replacement PATCH, revision conflict,
+- [x] 3. Add fake-server tests for full-replacement PATCH, revision conflict,
   disabled lifecycle/position states and late stream events. Implement the
   paused edit UI and command path.
-- [ ] 4. Add performance response models and selection-scoped fetches. Extend
+- [x] 4. Add performance response models and selection-scoped fetches. Extend
   audit details with dispatch/quote/fee fields and build the compact summary
   and equity-delta history. Test stale marks, no closed trades, unknown orders
   and late responses after switching deployments.
-- [ ] 5. Record MuseScore/Qt Quick Controls/Wireshark adaptations in
+- [x] 5. Record MuseScore/Qt Quick Controls/Wireshark adaptations in
   `docs/design/components.md`. Render gallery shots per component with
   `env -u WAYLAND_DISPLAY -u DISPLAY make gallery-shot`, inspect the images,
   and fix visual/focus issues before moving on.
-- [ ] 6. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check` and the frame
+- [x] 6. Run `env -u WAYLAND_DISPLAY -u DISPLAY make check` and the frame
   benchmark. During an open market, run the Q-068 paper walkthrough through
   `./dev up full`; record evidence without sending broker orders. Commit
   focused changes on the task branch.

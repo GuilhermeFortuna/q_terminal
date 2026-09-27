@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -11,7 +11,9 @@ use cxx_qt_lib::QString;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::execution::commands::{Command, CommandClient, CommandError, ManualFill};
+use crate::execution::commands::{
+    CatalogDeploymentParams, Command, CommandClient, CommandError, ManualFill,
+};
 use crate::execution::enablement::{self, CommandKind, Health};
 use crate::execution::store::ExecutionHandle;
 
@@ -42,6 +44,10 @@ enum Settlement {
     DeploymentPendingAction {
         deployment_id: String,
         action: String,
+    },
+    DeploymentEdited {
+        deployment_id: String,
+        expected_revision: i64,
     },
     KillSwitch {
         enabled: bool,
@@ -85,6 +91,11 @@ pub mod ffi {
         #[qproperty(QString, api_base)]
         #[qproperty(QString, operator_name)]
         #[qproperty(QString, saved_runs_json)]
+        #[qproperty(QString, strategy_catalog_json)]
+        #[qproperty(QString, symbol_search_results_json)]
+        #[qproperty(QString, deployment_detail_json)]
+        #[qproperty(QString, performance_summary_json)]
+        #[qproperty(QString, performance_marks_json)]
         type ExecutionControls = super::ExecutionControlsRust;
 
         #[qinvokable]
@@ -132,7 +143,44 @@ pub mod ffi {
         fn action_message(self: Pin<&mut ExecutionControls>, action_id: QString) -> QString;
 
         #[qinvokable]
+        fn action_status_code(self: Pin<&mut ExecutionControls>, action_id: QString) -> i32;
+
+        #[qinvokable]
+        fn action_error_code(self: Pin<&mut ExecutionControls>, action_id: QString) -> QString;
+
+        #[qinvokable]
+        fn is_deployment_editable(
+            self: Pin<&mut ExecutionControls>,
+            deployment_id: QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn deployment_edit_disabled_reason(
+            self: Pin<&mut ExecutionControls>,
+            deployment_id: QString,
+        ) -> QString;
+
+        #[qinvokable]
         fn fetch_saved_runs(self: Pin<&mut ExecutionControls>);
+
+        #[qinvokable]
+        fn fetch_strategy_catalog(self: Pin<&mut ExecutionControls>);
+
+        #[qinvokable]
+        fn search_symbols(self: Pin<&mut ExecutionControls>, query: QString);
+
+        #[qinvokable]
+        fn fetch_deployment_detail(self: Pin<&mut ExecutionControls>, deployment_id: QString);
+
+        #[qinvokable]
+        fn fetch_performance(
+            self: Pin<&mut ExecutionControls>,
+            deployment_id: QString,
+            bar_close_time: QString,
+        );
+
+        #[qinvokable]
+        fn clear_performance(self: Pin<&mut ExecutionControls>);
 
         #[qinvokable]
         fn bind_store(self: Pin<&mut ExecutionControls>);
@@ -145,6 +193,12 @@ pub struct ExecutionControlsRust {
     pub api_base: QString,
     pub operator_name: QString,
     pub saved_runs_json: QString,
+    pub strategy_catalog_json: QString,
+    pub symbol_search_results_json: QString,
+    pub deployment_detail_json: QString,
+    pub performance_summary_json: QString,
+    pub performance_marks_json: QString,
+    performance_gen: Arc<AtomicU64>,
     client: Option<CommandClient>,
     handle: Option<ExecutionHandle>,
     health: Health,
@@ -159,6 +213,12 @@ impl Default for ExecutionControlsRust {
             api_base: QString::default(),
             operator_name: QString::from("operator"),
             saved_runs_json: QString::from("[]"),
+            strategy_catalog_json: QString::from("{\"strategies\":[]}"),
+            symbol_search_results_json: QString::from("[]"),
+            deployment_detail_json: QString::from("{}"),
+            performance_summary_json: QString::from("{}"),
+            performance_marks_json: QString::from("[]"),
+            performance_gen: Arc::new(AtomicU64::new(0)),
             client: None,
             handle: None,
             health: Health {
@@ -223,18 +283,99 @@ impl ExecutionControlsRust {
                     .get("broker_mode")
                     .and_then(|v| v.as_str())
                     .unwrap_or("paper");
+                if paper_account_id.is_empty() || name.is_empty() {
+                    return None;
+                }
                 let run_id = args
                     .get("source_backtest_run_id")
                     .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                if paper_account_id.is_empty() || name.is_empty() || run_id.is_empty() {
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
+                let catalog = if let Some(cat) = args.get("catalog") {
+                    let strategy_name = cat
+                        .get("strategy_name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let symbol = cat
+                        .get("symbol")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let timeframe = cat
+                        .get("timeframe")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    if strategy_name.is_empty() || symbol.is_empty() || timeframe.is_empty() {
+                        return None;
+                    }
+                    Some(CatalogDeploymentParams {
+                        strategy_name,
+                        strategy_params: cat
+                            .get("strategy_params")
+                            .cloned()
+                            .unwrap_or(serde_json::json!({})),
+                        exit_params: cat
+                            .get("exit_params")
+                            .cloned()
+                            .unwrap_or(serde_json::json!({})),
+                        symbol,
+                        timeframe,
+                        sizing_config: cat
+                            .get("sizing_config")
+                            .cloned()
+                            .unwrap_or(serde_json::json!({"quantity": "1"})),
+                        risk_config: cat
+                            .get("risk_config")
+                            .cloned()
+                            .unwrap_or(serde_json::json!({})),
+                        paper_cost_config: cat.get("paper_cost_config").cloned().unwrap_or(
+                            serde_json::json!({
+                                "point_value": "1",
+                                "slippage_points": "0",
+                                "cost_per_contract": "0",
+                                "cost_bps": "0"
+                            }),
+                        ),
+                    })
+                } else {
+                    None
+                };
+
+                if run_id.is_none() && catalog.is_none() {
                     return None;
                 }
+
                 Some(Command::CreateDeployment {
                     paper_account_id: paper_account_id.to_string(),
                     name: name.to_string(),
                     broker_mode: broker_mode.to_string(),
-                    source_backtest_run_id: run_id.to_string(),
+                    source_backtest_run_id: run_id,
+                    catalog,
+                })
+            }
+            CommandKind::EditDeployment => {
+                let deployment_id = args
+                    .get("deployment_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let expected_revision = args
+                    .get("expected_revision")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                if deployment_id.is_empty() || expected_revision < 1 {
+                    return None;
+                }
+                let configuration = args
+                    .get("configuration")
+                    .cloned()
+                    .unwrap_or(serde_json::json!({}));
+                Some(Command::EditDeployment {
+                    deployment_id: deployment_id.to_string(),
+                    expected_revision,
+                    actor: actor.to_string(),
+                    configuration,
                 })
             }
             CommandKind::Start | CommandKind::Pause | CommandKind::Stop | CommandKind::Flatten => {
@@ -328,6 +469,21 @@ impl ExecutionControlsRust {
                     .unwrap_or("")
                     .to_string(),
             }),
+            CommandKind::EditDeployment => {
+                let deployment_id = args
+                    .get("deployment_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let expected_revision = args
+                    .get("expected_revision")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                Some(Settlement::DeploymentEdited {
+                    deployment_id,
+                    expected_revision,
+                })
+            }
             CommandKind::Start => Some(Settlement::DeploymentLifecycle {
                 deployment_id: args
                     .get("deployment_id")
@@ -378,6 +534,14 @@ impl ExecutionControlsRust {
     ) -> bool {
         let data = store.data();
         match settlement {
+            Settlement::DeploymentEdited {
+                deployment_id,
+                expected_revision,
+            } => data
+                .deployments
+                .get(deployment_id)
+                .map(|d| d.config_revision.unwrap_or(0) > *expected_revision)
+                .unwrap_or(false),
             Settlement::DeploymentLifecycle {
                 deployment_id,
                 lifecycle,
@@ -698,6 +862,287 @@ impl ffi::ExecutionControls {
                     let json = serde_json::to_string(&runs).unwrap_or_else(|_| "[]".to_string());
                     let _ = qt_thread.queue(move |mut controls| {
                         controls.as_mut().set_saved_runs_json(QString::from(&json));
+                    });
+                });
+            });
+    }
+
+    pub fn action_status_code(mut self: Pin<&mut Self>, action_id: QString) -> i32 {
+        self.as_mut().rust_mut().tick_actions();
+        let id = action_id.to_string();
+        self.rust()
+            .actions
+            .get(&id)
+            .map(|a| a.status_code as i32)
+            .unwrap_or(0)
+    }
+
+    pub fn action_error_code(mut self: Pin<&mut Self>, action_id: QString) -> QString {
+        self.as_mut().rust_mut().tick_actions();
+        let id = action_id.to_string();
+        let code = self
+            .rust()
+            .actions
+            .get(&id)
+            .map(|a| a.error_code.as_str())
+            .unwrap_or("");
+        QString::from(code)
+    }
+
+    pub fn deployment_edit_disabled_reason(
+        self: Pin<&mut Self>,
+        deployment_id: QString,
+    ) -> QString {
+        let dep_id = deployment_id.to_string();
+        if dep_id.is_empty() {
+            return QString::from("No deployment selected");
+        }
+        let health = self.rust().current_health();
+        if !health.api_reachable {
+            return QString::from("API unreachable");
+        }
+        if !health.postgres_available {
+            return QString::from("Postgres unavailable");
+        }
+        let handle = match &self.rust().handle {
+            Some(h) => h.clone(),
+            None => return QString::from("Store unavailable"),
+        };
+        let reason = handle.read(|store| {
+            let data = store.data();
+            let dep = match data.deployments.get(&dep_id) {
+                Some(d) => d,
+                None => return "Deployment not found".to_string(),
+            };
+            if dep.broker_mode == "mt5_live" {
+                return "Live deployments cannot be edited in dev profile".to_string();
+            }
+            let lc = dep.lifecycle.as_str();
+            if lc != "draft" && lc != "paused" {
+                return format!(
+                    "Cannot edit deployment in '{lc}' lifecycle (must be draft or paused)"
+                );
+            }
+            if let Some(pos) = data.positions.get(&dep_id) {
+                let q = pos.quantity.as_str();
+                if !q.is_empty() && q != "0" && q != "0.0" {
+                    return "Cannot edit deployment with an open position (must be flat)"
+                        .to_string();
+                }
+            }
+            if let Some(pa) = dep.pending_action.as_ref().and_then(|v| v.as_str()) {
+                if !pa.is_empty() {
+                    return format!("Cannot edit while action '{pa}' is pending");
+                }
+            }
+            let unk_count = data
+                .orders
+                .get(&dep_id)
+                .map(|ring| {
+                    ring.iter()
+                        .filter(|o| {
+                            o.reconciliation_state == "unknown"
+                                || o.reconciliation_state == "failed"
+                        })
+                        .count()
+                })
+                .unwrap_or(0);
+            if unk_count > 0 {
+                return "Cannot edit deployment with unresolved unknown orders".to_string();
+            }
+            String::new()
+        });
+        QString::from(&reason)
+    }
+
+    pub fn is_deployment_editable(self: Pin<&mut Self>, deployment_id: QString) -> bool {
+        self.deployment_edit_disabled_reason(deployment_id)
+            .to_string()
+            .is_empty()
+    }
+
+    pub fn fetch_strategy_catalog(self: Pin<&mut Self>) {
+        let api_base = self.rust().api_base.to_string();
+        let qt_thread = self.qt_thread();
+        let _ = std::thread::Builder::new()
+            .name("fetch-strategy-catalog".into())
+            .spawn(move || {
+                let rt = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt,
+                    Err(_) => return,
+                };
+                rt.block_on(async move {
+                    let client = CommandClient::new(&api_base);
+                    let catalog = client
+                        .fetch_strategy_catalog()
+                        .await
+                        .unwrap_or_else(|_| serde_json::json!({"strategies": []}));
+                    let json = serde_json::to_string(&catalog)
+                        .unwrap_or_else(|_| "{\"strategies\":[]}".to_string());
+                    let _ = qt_thread.queue(move |mut controls| {
+                        controls
+                            .as_mut()
+                            .set_strategy_catalog_json(QString::from(&json));
+                    });
+                });
+            });
+    }
+
+    pub fn search_symbols(self: Pin<&mut Self>, query: QString) {
+        let api_base = self.rust().api_base.to_string();
+        let q = query.to_string();
+        let qt_thread = self.qt_thread();
+        let _ = std::thread::Builder::new()
+            .name("search-symbols".into())
+            .spawn(move || {
+                let rt = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt,
+                    Err(_) => return,
+                };
+                rt.block_on(async move {
+                    let client = CommandClient::new(&api_base);
+                    let results = client.search_symbols(&q).await.unwrap_or_default();
+                    let json = serde_json::to_string(&results).unwrap_or_else(|_| "[]".to_string());
+                    let _ = qt_thread.queue(move |mut controls| {
+                        controls
+                            .as_mut()
+                            .set_symbol_search_results_json(QString::from(&json));
+                    });
+                });
+            });
+    }
+
+    pub fn fetch_deployment_detail(self: Pin<&mut Self>, deployment_id: QString) {
+        let api_base = self.rust().api_base.to_string();
+        let dep_id = deployment_id.to_string();
+        let qt_thread = self.qt_thread();
+        let _ = std::thread::Builder::new()
+            .name("fetch-deployment-detail".into())
+            .spawn(move || {
+                let rt = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt,
+                    Err(_) => return,
+                };
+                rt.block_on(async move {
+                    let client = CommandClient::new(&api_base);
+                    let detail = client
+                        .fetch_deployment(&dep_id)
+                        .await
+                        .unwrap_or_else(|_| serde_json::json!({}));
+                    let json = serde_json::to_string(&detail).unwrap_or_else(|_| "{}".to_string());
+                    let _ = qt_thread.queue(move |mut controls| {
+                        controls
+                            .as_mut()
+                            .set_deployment_detail_json(QString::from(&json));
+                    });
+                });
+            });
+    }
+
+    pub fn clear_performance(mut self: Pin<&mut Self>) {
+        self.rust().performance_gen.fetch_add(1, Ordering::SeqCst);
+        self.as_mut()
+            .set_performance_summary_json(QString::from("{}"));
+        self.as_mut()
+            .set_performance_marks_json(QString::from("[]"));
+    }
+
+    pub fn fetch_performance(
+        self: Pin<&mut Self>,
+        deployment_id: QString,
+        bar_close_time: QString,
+    ) {
+        let dep_id = deployment_id.to_string();
+        if dep_id.is_empty() {
+            return;
+        }
+        let bar_target = bar_close_time.to_string();
+        let api_base = self.rust().api_base.to_string();
+        let gen = self.rust().performance_gen.clone();
+        let my_gen = gen.fetch_add(1, Ordering::SeqCst) + 1;
+        let qt_thread = self.qt_thread();
+
+        let _ = std::thread::Builder::new()
+            .name("fetch-performance".into())
+            .spawn(move || {
+                let rt = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt,
+                    Err(_) => return,
+                };
+                rt.block_on(async move {
+                    let client = CommandClient::new(&api_base);
+                    let mut attempts = 0;
+                    let max_attempts = if !bar_target.is_empty() { 3 } else { 1 };
+                    let mut summary_val = serde_json::json!({});
+                    let mut marks_val = serde_json::json!([]);
+
+                    while attempts < max_attempts {
+                        if gen.load(Ordering::SeqCst) != my_gen {
+                            return;
+                        }
+                        if let Ok(sum) = client.fetch_performance(&dep_id).await {
+                            summary_val = sum;
+                        }
+                        if let Ok(m_resp) = client.fetch_performance_marks(&dep_id, 50, 0).await {
+                            let items = m_resp
+                                .get("items")
+                                .cloned()
+                                .unwrap_or(serde_json::json!([]));
+                            marks_val = items;
+                        }
+
+                        if bar_target.is_empty() {
+                            break;
+                        }
+
+                        let has_matching_mark = marks_val
+                            .as_array()
+                            .map(|arr| {
+                                arr.first()
+                                    .and_then(|m| m.get("bar_close_time"))
+                                    .and_then(|v| v.as_str())
+                                    == Some(&bar_target)
+                            })
+                            .unwrap_or(false);
+
+                        if has_matching_mark {
+                            break;
+                        }
+
+                        attempts += 1;
+                        if attempts < max_attempts {
+                            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        }
+                    }
+
+                    if gen.load(Ordering::SeqCst) != my_gen {
+                        return;
+                    }
+
+                    let sum_str =
+                        serde_json::to_string(&summary_val).unwrap_or_else(|_| "{}".to_string());
+                    let marks_str =
+                        serde_json::to_string(&marks_val).unwrap_or_else(|_| "[]".to_string());
+
+                    let _ = qt_thread.queue(move |mut controls| {
+                        controls
+                            .as_mut()
+                            .set_performance_summary_json(QString::from(&sum_str));
+                        controls
+                            .as_mut()
+                            .set_performance_marks_json(QString::from(&marks_str));
                     });
                 });
             });

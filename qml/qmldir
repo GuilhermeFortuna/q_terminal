@@ -28,4 +28,5 @@ ConfirmDialog 1.0 ConfirmDialog.qml
 AccountDialog 1.0 AccountDialog.qml
 DeployDialog 1.0 DeployDialog.qml
 ResolveDialog 1.0 ResolveDialog.qml
+EditDeploymentDialog 1.0 EditDeploymentDialog.qml
 

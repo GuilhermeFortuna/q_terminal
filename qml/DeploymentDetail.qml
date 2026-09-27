@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import qml
 import "Format.js" as Format
@@ -51,6 +52,41 @@ Rectangle {
         onConfirmed: requestLifecycle("stop", true)
     }
 
+    EditDeploymentDialog {
+        id: editDialog
+        executionControls: root.executionControls
+        deploymentId: root.executionModels.selected_deployment_id
+    }
+
+    property string _lastBarFetched: ""
+
+    Connections {
+        target: root.executionModels
+        function onSelected_deployment_idChanged() {
+            var depId = root.executionModels.selected_deployment_id;
+            if (depId !== "") {
+                root.executionControls.fetch_performance(depId, "");
+            } else {
+                root.executionControls.clear_performance();
+            }
+        }
+        function onRevisionChanged() {
+            var depId = root.executionModels.selected_deployment_id;
+            var barTime = root.deploymentField("last_bar_close_time");
+            if (depId !== "" && barTime !== "" && barTime !== root._lastBarFetched) {
+                root._lastBarFetched = barTime;
+                root.executionControls.fetch_performance(depId, barTime);
+            }
+        }
+    }
+
+    Component.onCompleted: {
+        var depId = root.executionModels.selected_deployment_id;
+        if (depId !== "") {
+            root.executionControls.fetch_performance(depId, "");
+        }
+    }
+
     property int currentTabIndex: 0
 
     function trigger(command) {
@@ -80,6 +116,29 @@ Rectangle {
             }
         } catch (e) {}
         return null;
+    }
+
+    function getPerformanceSummary() {
+        try {
+            var raw = root.executionControls.performance_summary_json;
+            if (!raw || raw === "" || raw === "{}") return null;
+            return JSON.parse(raw);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function getPerformanceMarks() {
+        try {
+            var raw = root.executionControls.performance_marks_json;
+            if (!raw || raw === "" || raw === "[]") return [];
+            var parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) return parsed;
+            if (parsed && Array.isArray(parsed.items)) return parsed.items;
+            return [];
+        } catch (e) {
+            return [];
+        }
     }
 
     ColumnLayout {
@@ -153,7 +212,7 @@ Rectangle {
 
                         Rectangle {
                             height: Spacing.size18
-                            implicitWidth: lifeDetailText.implicitWidth + 8
+                            implicitWidth: lifeDetailText.implicitWidth + Spacing.size8
                             radius: Spacing.size3
                             color: Semantic.background(Semantic.lifecycle(root.executionModels.field_for_selected_deployment("lifecycle")))
 
@@ -240,6 +299,38 @@ Rectangle {
                             }
                         }
                     }
+
+                    Rectangle {
+                        property bool canEdit: root.executionControls.is_deployment_editable(root.executionModels.selected_deployment_id)
+                        property string disabledReason: root.executionControls.deployment_edit_disabled_reason(root.executionModels.selected_deployment_id)
+                        height: Spacing.size24
+                        implicitWidth: editBtnText.implicitWidth + Spacing.size16
+                        radius: Spacing.size4
+                        opacity: canEdit ? 1.0 : 0.4
+                        color: editMouse.containsMouse && canEdit ? Theme.surfaceSelected : Theme.surfaceBase
+                        border.color: canEdit ? Theme.accent : Theme.borderDefault
+
+                        Text {
+                            id: editBtnText
+                            anchors.centerIn: parent
+                            text: "Edit Config"
+                            color: parent.canEdit ? Theme.textPrimary : Theme.textMuted
+                            font.pixelSize: Theme.typeLabel
+                            font.bold: true
+                        }
+
+                        ToolTip.visible: editMouse.containsMouse && !canEdit && disabledReason !== ""
+                        ToolTip.text: disabledReason
+
+                        MouseArea {
+                            id: editMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            enabled: parent.canEdit
+                            cursorShape: parent.canEdit ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: editDialog.open()
+                        }
+                    }
                 }
 
                 Item { Layout.fillWidth: true }
@@ -247,7 +338,7 @@ Rectangle {
                 // Position Marks & PnL Summary (read-only from backend /positions poller)
                 Rectangle {
                     height: Spacing.size48
-                    implicitWidth: posRow.implicitWidth + 20
+                    implicitWidth: posRow.implicitWidth + Spacing.size20
                     radius: Spacing.size4
                     color: Theme.surfaceBase
                     border.color: Theme.borderDefault
@@ -311,6 +402,210 @@ Rectangle {
                                 color: Semantic.foreground(Semantic.signedString(pos && pos.unrealized_pnl ? pos.unrealized_pnl : ""))
                                 font.pixelSize: Theme.typeBodySmall
                                 font.bold: true
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Performance & Bar Equity Delta Strip
+        Rectangle {
+            Layout.fillWidth: true
+            height: root.hasSelection ? Spacing.size40 : Spacing.none
+            visible: root.hasSelection
+            color: Theme.surfaceBase
+            border.color: Theme.borderDefault
+            border.width: Spacing.size1
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: Spacing.size16
+                anchors.rightMargin: Spacing.size16
+                spacing: Spacing.size20
+
+                // Performance label & Mark status badge
+                RowLayout {
+                    spacing: Spacing.size8
+                    Text {
+                        text: "PERFORMANCE"
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.typeLabelSmall
+                        font.bold: true
+                    }
+                    Rectangle {
+                        property var perf: root.getPerformanceSummary()
+                        property string status: perf && perf.mark_status ? perf.mark_status : (root.deploymentField("last_bar_close_time") !== "" ? "pending" : "none")
+                        height: Spacing.size16
+                        implicitWidth: markStatusText.implicitWidth + Spacing.size8
+                        radius: Spacing.size2
+                        color: status === "marked" ? Theme.positiveSurface : (status === "pending" ? Theme.warningSurface : Theme.surfaceSelected)
+
+                        Text {
+                            id: markStatusText
+                            anchors.centerIn: parent
+                            text: {
+                                if (parent.status === "marked") return "MARK COMMIT";
+                                if (parent.status === "pending") return "MARK PENDING";
+                                if (parent.status === "unavailable") return "MARK UNAVAILABLE";
+                                return "NO MARKS";
+                            }
+                            color: {
+                                if (parent.status === "marked") return Theme.positiveStrong;
+                                if (parent.status === "pending") return Theme.warningStrong;
+                                return Theme.textMuted;
+                            }
+                            font.pixelSize: Theme.typeLabelSmall
+                            font.bold: true
+                        }
+                    }
+                }
+
+                // Net PnL
+                RowLayout {
+                    spacing: Spacing.size4
+                    Text { text: "Net:"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
+                    Text {
+                        property var perf: root.getPerformanceSummary()
+                        text: (perf && perf.net_pnl !== undefined && perf.net_pnl !== null) ? perf.net_pnl : "--"
+                        color: Semantic.foreground(Semantic.signedString(text))
+                        font.pixelSize: Theme.typeLabel
+                        font.bold: true
+                    }
+                }
+
+                // Realized PnL
+                RowLayout {
+                    spacing: Spacing.size4
+                    Text { text: "Realized:"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
+                    Text {
+                        property var perf: root.getPerformanceSummary()
+                        text: (perf && perf.realized_pnl !== undefined && perf.realized_pnl !== null) ? perf.realized_pnl : "--"
+                        color: Semantic.foreground(Semantic.signedString(text))
+                        font.pixelSize: Theme.typeLabel
+                        font.bold: true
+                    }
+                }
+
+                // Fees
+                RowLayout {
+                    spacing: Spacing.size4
+                    Text { text: "Fees:"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
+                    Text {
+                        property var perf: root.getPerformanceSummary()
+                        text: (perf && perf.fees !== undefined && perf.fees !== null) ? perf.fees : "--"
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.typeLabel
+                    }
+                }
+
+                // Win Rate & Trades
+                RowLayout {
+                    spacing: Spacing.size4
+                    Text { text: "Win Rate:"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
+                    Text {
+                        property var perf: root.getPerformanceSummary()
+                        text: {
+                            if (!perf || perf.win_rate === undefined || perf.win_rate === null) return "--";
+                            var wr = parseFloat(perf.win_rate);
+                            if (isNaN(wr)) return perf.win_rate;
+                            return (wr * 100).toFixed(0) + "%";
+                        }
+                        color: Theme.textPrimary
+                        font.pixelSize: Theme.typeLabel
+                        font.bold: true
+                    }
+                    Text {
+                        property var perf: root.getPerformanceSummary()
+                        text: {
+                            if (!perf || perf.closed_trade_count === undefined || perf.closed_trade_count === null) return "";
+                            return "(" + perf.closed_trade_count + " " + (perf.closed_trade_count === 1 ? "trade" : "trades") + ")";
+                        }
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.typeLabelSmall
+                    }
+                }
+
+                // Separator
+                Rectangle {
+                    width: Spacing.size1
+                    height: Spacing.size16
+                    color: Theme.borderDefault
+                }
+
+                // Equity Delta History (recent bars)
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Spacing.size6
+                    Text {
+                        text: "Equity Δ:"
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.typeLabelSmall
+                    }
+
+                    Item {
+                        Layout.fillWidth: true
+                        height: Spacing.size20
+                        clip: true
+
+                        Row {
+                            spacing: Spacing.size4
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            Repeater {
+                                model: root.getPerformanceMarks()
+
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    height: Spacing.size18
+                                    implicitWidth: deltaText.implicitWidth + Spacing.size8
+                                    radius: Spacing.size2
+                                    color: {
+                                        var d = modelData.equity_delta;
+                                        if (!d || d === "0.00" || d === "0") return Theme.surfaceSelected;
+                                        return String(d).startsWith("-") ? Theme.negativeSurface : Theme.positiveSurface;
+                                    }
+
+                                    Text {
+                                        id: deltaText
+                                        anchors.centerIn: parent
+                                        text: {
+                                            var d = modelData.equity_delta || "--";
+                                            if (d !== "--" && !String(d).startsWith("-") && !String(d).startsWith("+") && d !== "0.00" && d !== "0") {
+                                                return "+" + d;
+                                            }
+                                            return d;
+                                        }
+                                        color: {
+                                            var d = modelData.equity_delta;
+                                            if (!d || d === "0.00" || d === "0") return Theme.textMuted;
+                                            return String(d).startsWith("-") ? Theme.negativeStrong : Theme.positiveStrong;
+                                        }
+                                        font.pixelSize: Theme.typeLabelSmall
+                                        font.bold: true
+                                    }
+
+                                    ToolTip.visible: deltaMouse.containsMouse
+                                    ToolTip.text: {
+                                        var time = modelData.bar_close_time ? Format.formatIsoTime(modelData.bar_close_time) : "";
+                                        var mp = modelData.mark_price ? (" · Mark: " + modelData.mark_price) : "";
+                                        return time + mp;
+                                    }
+
+                                    MouseArea {
+                                        id: deltaMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                    }
+                                }
+                            }
+
+                            Text {
+                                visible: root.getPerformanceMarks().length === 0
+                                text: "No marks yet"
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.typeLabelSmall
+                                anchors.verticalCenter: parent.verticalCenter
                             }
                         }
                     }

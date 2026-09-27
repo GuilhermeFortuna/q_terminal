@@ -26,7 +26,8 @@ The operations workspace now issues REST commands (each with an `Idempotency-Key
 and shows effects only when the execution stream delivers them:
 
 - **Create paper account** — `POST /api/v1/execution/accounts`
-- **Create deployment** — `POST /api/v1/execution/deployments` (saved-run picker only; no result browser)
+- **Create deployment** — `POST /api/v1/execution/deployments` (catalog-first paper strategy selection with typed entry/exit parameters, exact symbol search, timeframe, sizing, risk and paper costs, or saved-run picker; paper mode only in the dev workflow; no result browser)
+- **Edit deployment configuration (Q-069)** — `PATCH /api/v1/execution/deployments/{id}/configuration` (draft or paused-flat deployments only; editable parameters, sizing, risk and paper costs; expected revision and actor; symbol, timeframe, account and strategy identity remain immutable; no strategy code editing)
 - **Lifecycle** — `POST /api/v1/execution/deployments/{id}/actions` (`start`, `pause`, `stop`)
 - **Flatten** — same actions route with `action: flatten` (confirmed)
 - **Kill switch** — `PUT /api/v1/execution/kill-switch` (engage and release, both confirmed)
@@ -34,7 +35,8 @@ and shows effects only when the execution stream delivers them:
 
 Enablement follows architecture §8.1 via `ExecutionControls` + `enablement.rs`.
 Confirmations name the consequence; `mt5_live` deployments show a distinct live banner.
-The configured operator name (`operator` / `Q_TERMINAL_OPERATOR`) is sent as the actor on lifecycle and resolve commands.
+The configured operator name (`operator` / `Q_TERMINAL_OPERATOR`) is sent as the actor on lifecycle, edit, and resolve commands.
+In the dev workflow, the create form offers only paper mode; no UI action sets `live_activation_enabled` or offers an MT5 live deployment, and existing live rows (if present) remain visibly locked and non-startable.
 
 ### The multi-window shell (Q-052)
 
@@ -63,7 +65,7 @@ document already permits:
 ## 2. Surfaces This Repository Will Never Grow
 
 `q_terminal` is explicitly **not** a general-purpose research or backtesting UI. To prevent scope creep and architecture degradation, `q_terminal` will **never** grow:
-- **No Strategy Editor:** Strategy development, code editing, and script compilation belong in research environments.
+- **No Strategy Editor:** Strategy development, code editing, custom-strategy authoring, and script compilation belong in research environments (`q_backend` / `q_frontend`). The terminal permits selecting registry strategies and configuring their paper deployment parameters only; it never compiles configs, computes config hashes, or edits strategy code.
 - **No Parameter Optimizer:** Grid search, genetic optimization, and curve fitting belong in batch compute services.
 - **No Backtest / Result Browser:** Historic backtest visualization, walk-forward result browsers, and tear sheets belong in the research surface (`q_frontend`).
 - **No Dataset Catalog Explorer:** Data ingestion workflows and dataset inspection belong in dedicated tooling.

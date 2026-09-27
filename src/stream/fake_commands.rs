@@ -97,6 +97,219 @@ impl CommandFakeState {
             return Some((200, vec![], body));
         }
 
+        if method == "GET" && path.ends_with("/strategy-catalog") {
+            let body = json!({
+                "strategies": [
+                    {
+                        "name": "MovingAverageCross",
+                        "label": "Moving Average Cross",
+                        "description": "Dual moving average crossover trend strategy",
+                        "source_kind": "builtin",
+                        "strategy_type": "candle",
+                        "base_strategy_name": "MovingAverageCross",
+                        "default_timeframe": "15m",
+                        "default_symbol": "WIN$N",
+                        "params": [
+                            {
+                                "name": "fast_period",
+                                "label": "Fast Period",
+                                "type": "int",
+                                "default": 10,
+                                "min": 2.0,
+                                "max": 100.0,
+                                "step": 1.0,
+                                "choices": null,
+                                "hint": "Lookback for fast moving average",
+                                "exit_group": null
+                            },
+                            {
+                                "name": "slow_period",
+                                "label": "Slow Period",
+                                "type": "int",
+                                "default": 30,
+                                "min": 5.0,
+                                "max": 200.0,
+                                "step": 1.0,
+                                "choices": null,
+                                "hint": "Lookback for slow moving average",
+                                "exit_group": null
+                            },
+                            {
+                                "name": "stop_loss_pct",
+                                "label": "Stop Loss (%)",
+                                "type": "float",
+                                "default": 1.5,
+                                "min": 0.1,
+                                "max": 10.0,
+                                "step": 0.1,
+                                "choices": null,
+                                "hint": "Stop loss percentage",
+                                "exit_group": "risk"
+                            }
+                        ]
+                    },
+                    {
+                        "name": "CustomMACrossover",
+                        "label": "Custom MA Wrapper",
+                        "description": "User saved custom MA wrapper",
+                        "source_kind": "custom",
+                        "strategy_type": "candle",
+                        "base_strategy_name": "MovingAverageCross",
+                        "params": [
+                            {
+                                "name": "fast_period",
+                                "label": "Fast Period",
+                                "type": "int",
+                                "default": 8,
+                                "min": 2.0,
+                                "max": 50.0,
+                                "step": 1.0,
+                                "choices": null,
+                                "hint": "Fast lookback",
+                                "exit_group": null
+                            }
+                        ]
+                    },
+                    {
+                        "name": "TickScalper",
+                        "label": "Tick Scalper",
+                        "description": "High frequency tick scalper",
+                        "source_kind": "builtin",
+                        "strategy_type": "tick",
+                        "base_strategy_name": "TickScalper",
+                        "params": []
+                    }
+                ]
+            })
+            .to_string();
+            return Some((200, vec![], body));
+        }
+
+        if method == "GET" && path.contains("/symbols/search") {
+            let body = json!([
+                {
+                    "symbol": "WIN$N",
+                    "name": "Mini Ibovespa Futuro",
+                    "exchange": "B3",
+                    "assetClass": "FUTURES"
+                },
+                {
+                    "symbol": "PETR4",
+                    "name": "Petroleo Brasileiro SA",
+                    "exchange": "B3",
+                    "assetClass": "EQUITY"
+                },
+                {
+                    "symbol": "VALE3",
+                    "name": "Vale SA",
+                    "exchange": "B3",
+                    "assetClass": "EQUITY"
+                }
+            ])
+            .to_string();
+            return Some((200, vec![], body));
+        }
+
+        if method == "GET" && path.contains("/performance/marks") {
+            let body = json!({
+                "items": [
+                    {
+                        "bar_close_time": "2026-09-27T12:00:00Z",
+                        "config_revision": 1,
+                        "mark_status": "marked",
+                        "quote_bid": "100.50",
+                        "quote_ask": "100.55",
+                        "quote_timestamp": "2026-09-27T12:00:01Z",
+                        "quote_source": "bbo",
+                        "mark_price": "100.50",
+                        "realized_pnl": "150.00",
+                        "fees": "12.50",
+                        "unrealized_pnl": "50.00",
+                        "equity_delta": "37.50"
+                    }
+                ],
+                "total": 1,
+                "limit": 50,
+                "offset": 0
+            })
+            .to_string();
+            return Some((200, vec![], body));
+        }
+
+        if method == "GET" && path.ends_with("/performance") {
+            let body = json!({
+                "deployment_id": "dep-0001",
+                "realized_pnl": "150.00",
+                "unrealized_pnl": "50.00",
+                "fees": "12.50",
+                "net_pnl": "187.50",
+                "closed_trade_count": 5,
+                "win_count": 3,
+                "win_rate": "0.60",
+                "mark_status": "marked",
+                "marked_at": "2026-09-27T12:00:00Z",
+                "config_revision": 1
+            })
+            .to_string();
+            return Some((200, vec![], body));
+        }
+
+        if method == "GET"
+            && path.contains("/api/v1/execution/deployments/")
+            && !path.ends_with("/actions")
+            && !path.ends_with("/chart")
+            && !path.ends_with("/performance")
+            && !path.contains("/performance/")
+            && !path.ends_with("/orders")
+            && !path.ends_with("/fills")
+            && !path.ends_with("/decisions")
+            && !path.ends_with("/risk-events")
+            && !path.ends_with("/ledger")
+        {
+            let id = path.rsplit('/').next().unwrap_or("dep-0001");
+            let body = json!({
+                "id": id,
+                "paper_account_id": "acc-0001",
+                "name": "Moving Average Cross WIN$N",
+                "broker_mode": "paper",
+                "lifecycle": "paused",
+                "strategy_name": "MovingAverageCross",
+                "strategy_version": 1,
+                "config_hash": "abcdef1234567890",
+                "config_revision": 1,
+                "source_kind": "builtin",
+                "symbol": "WIN$N",
+                "timeframe": "15m",
+                "live_activation_enabled": false,
+                "created_at": "2026-09-27T10:00:00Z",
+                "updated_at": "2026-09-27T10:00:00Z",
+                "compiled_config": {
+                    "strategy_params": {
+                        "fast_period": 10,
+                        "slow_period": 30
+                    },
+                    "exit_params": {
+                        "stop_loss_pct": 1.5
+                    }
+                },
+                "sizing_config": {
+                    "quantity": "1"
+                },
+                "risk_config": {
+                    "max_daily_loss": "5000"
+                },
+                "paper_cost_config": {
+                    "point_value": "1.0",
+                    "slippage_points": "0.0",
+                    "cost_per_contract": "0.0",
+                    "cost_bps": "0.0"
+                },
+                "unknown_order_count": 0
+            })
+            .to_string();
+            return Some((200, vec![], body));
+        }
+
         let key = key?;
         let parsed_body: Value = serde_json::from_str(body).unwrap_or(json!({}));
 
@@ -164,8 +377,36 @@ impl CommandFakeState {
                     "cash_balance": "10000",
                 }),
             )
+        } else if path.contains("/configuration") {
+            let rev = parsed_body
+                .get("expected_revision")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(1);
+            (
+                200,
+                json!({
+                    "id": "dep-0001",
+                    "name": "edited-deployment",
+                    "lifecycle": "paused",
+                    "broker_mode": "paper",
+                    "config_revision": rev + 1,
+                    "compiled_config": {},
+                    "sizing_config": parsed_body.get("sizing_config").cloned().unwrap_or(json!({"quantity": "1"})),
+                    "risk_config": parsed_body.get("risk_config").cloned().unwrap_or(json!({})),
+                    "paper_cost_config": parsed_body.get("paper_cost_config").cloned().unwrap_or(json!({})),
+                }),
+            )
         } else if path.ends_with("/deployments") {
             self.deployments_created += 1;
+            let cat = parsed_body.get("catalog");
+            let sym = cat
+                .and_then(|c| c.get("symbol"))
+                .and_then(|s| s.as_str())
+                .unwrap_or("WIN$N");
+            let tf = cat
+                .and_then(|c| c.get("timeframe"))
+                .and_then(|s| s.as_str())
+                .unwrap_or("15m");
             (
                 200,
                 json!({
@@ -173,6 +414,9 @@ impl CommandFakeState {
                     "name": parsed_body.get("name").cloned().unwrap_or(json!("new")),
                     "lifecycle": "stopped",
                     "broker_mode": parsed_body.get("broker_mode").cloned().unwrap_or(json!("paper")),
+                    "symbol": sym,
+                    "timeframe": tf,
+                    "config_revision": 1,
                 }),
             )
         } else if path.contains("/actions") {

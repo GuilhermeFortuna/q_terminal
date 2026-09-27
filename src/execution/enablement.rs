@@ -37,6 +37,7 @@ impl WorkerStatus {
 pub enum CommandKind {
     CreateAccount,
     CreateDeployment,
+    EditDeployment,
     Start,
     Pause,
     Stop,
@@ -47,9 +48,10 @@ pub enum CommandKind {
 }
 
 impl CommandKind {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::CreateAccount,
         Self::CreateDeployment,
+        Self::EditDeployment,
         Self::Start,
         Self::Pause,
         Self::Stop,
@@ -63,6 +65,7 @@ impl CommandKind {
         match s {
             "create_account" => Some(Self::CreateAccount),
             "create_deployment" => Some(Self::CreateDeployment),
+            "edit_deployment" => Some(Self::EditDeployment),
             "start" => Some(Self::Start),
             "pause" => Some(Self::Pause),
             "stop" => Some(Self::Stop),
@@ -130,7 +133,7 @@ pub fn enabled(cmd: CommandKind, health: &Health) -> Enablement {
             }
             Enablement::Enabled
         }
-        CommandKind::CreateAccount | CommandKind::Resolve => {
+        CommandKind::CreateAccount | CommandKind::Resolve | CommandKind::EditDeployment => {
             if !health.postgres_available {
                 return Enablement::Disabled {
                     reason: "Postgres unavailable".into(),

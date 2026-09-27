@@ -147,25 +147,25 @@ impl Default for ExecutionModelsRust {
             let m_deployments = RawTableModel(ffi::make_table_model());
             ffi::table_model_set_roles_csv(
                 m_deployments.0,
-                "id,name,symbol,timeframe,broker_mode,lifecycle,pending_action,last_bar_close_time,pos_quantity,pos_side,pos_entry_price,pos_unrealized_pnl,pos_mark_price,unknown_order_count",
+                "id,name,symbol,timeframe,broker_mode,lifecycle,pending_action,last_bar_close_time,pos_quantity,pos_side,pos_entry_price,pos_unrealized_pnl,pos_mark_price,unknown_order_count,config_revision",
             );
 
             let m_orders = RawTableModel(ffi::make_table_model());
             ffi::table_model_set_roles_csv(
                 m_orders.0,
-                "id,created_at,intent_id,side,order_type,quantity,status,reconciliation_state,rejection_reason",
+                "id,created_at,intent_id,side,order_type,quantity,status,reconciliation_state,rejection_reason,dispatch_attempted_at,intent_committed_at,decision_id",
             );
 
             let m_fills = RawTableModel(ffi::make_table_model());
             ffi::table_model_set_roles_csv(
                 m_fills.0,
-                "id,order_id,created_at,filled_at,side,price,quantity,fee,slippage",
+                "id,order_id,created_at,filled_at,side,price,quantity,fee,slippage,quote_bid,quote_ask,quote_timestamp",
             );
 
             let m_decisions = RawTableModel(ffi::make_table_model());
             ffi::table_model_set_roles_csv(
                 m_decisions.0,
-                "id,created_at,bar_close_time,signal_action,outcome,requested_quantity,reason",
+                "id,created_at,bar_close_time,signal_action,outcome,requested_quantity,reason,config_revision",
             );
 
             let m_risk = RawTableModel(ffi::make_table_model());
@@ -342,6 +342,7 @@ impl ExecutionModelsRust {
                     "pos_unrealized_pnl": "",
                     "pos_mark_price": "",
                     "unknown_order_count": unk_count,
+                    "config_revision": d.config_revision.unwrap_or(0),
                 }));
             }
 
@@ -374,6 +375,9 @@ impl ExecutionModelsRust {
                         "status": o.status,
                         "reconciliation_state": o.reconciliation_state,
                         "rejection_reason": o.rejection_reason.as_ref().and_then(|v| v.as_str()).unwrap_or(""),
+                        "dispatch_attempted_at": o.dispatch_attempted_at.as_ref().and_then(|v| v.as_str()).unwrap_or(""),
+                        "intent_committed_at": o.intent_committed_at.as_ref().and_then(|v| v.as_str()).unwrap_or(""),
+                        "decision_id": o.decision_id.as_deref().unwrap_or(""),
                     }));
                 }
             }
@@ -399,6 +403,9 @@ impl ExecutionModelsRust {
                         "quantity": f.quantity,
                         "fee": f.fee,
                         "slippage": f.slippage,
+                        "quote_bid": f.quote_bid.as_deref().unwrap_or(""),
+                        "quote_ask": f.quote_ask.as_deref().unwrap_or(""),
+                        "quote_timestamp": f.quote_timestamp.as_ref().and_then(|v| v.as_str()).unwrap_or(""),
                     }));
                 }
             }
@@ -422,6 +429,7 @@ impl ExecutionModelsRust {
                         "outcome": d.outcome,
                         "requested_quantity": d.requested_quantity.as_deref().unwrap_or(""),
                         "reason": d.reason.as_ref().and_then(|v| v.as_str()).unwrap_or(""),
+                        "config_revision": d.config_revision.unwrap_or(0),
                     }));
                 }
             }
@@ -530,6 +538,9 @@ impl ExecutionModelsRust {
                         "status": o.status,
                         "reconciliation_state": o.reconciliation_state,
                         "rejection_reason": o.rejection_reason.as_ref().and_then(|v| v.as_str()).unwrap_or(""),
+                        "dispatch_attempted_at": o.dispatch_attempted_at.as_ref().and_then(|v| v.as_str()).unwrap_or(""),
+                        "intent_committed_at": o.intent_committed_at.as_ref().and_then(|v| v.as_str()).unwrap_or(""),
+                        "decision_id": o.decision_id.as_deref().unwrap_or(""),
                     }));
                 }
             }
@@ -555,6 +566,9 @@ impl ExecutionModelsRust {
                         "quantity": f.quantity,
                         "fee": f.fee,
                         "slippage": f.slippage,
+                        "quote_bid": f.quote_bid.as_deref().unwrap_or(""),
+                        "quote_ask": f.quote_ask.as_deref().unwrap_or(""),
+                        "quote_timestamp": f.quote_timestamp.as_ref().and_then(|v| v.as_str()).unwrap_or(""),
                     }));
                 }
             }
@@ -578,6 +592,7 @@ impl ExecutionModelsRust {
                         "outcome": d.outcome,
                         "requested_quantity": d.requested_quantity.as_deref().unwrap_or(""),
                         "reason": d.reason.as_ref().and_then(|v| v.as_str()).unwrap_or(""),
+                        "config_revision": d.config_revision.unwrap_or(0),
                     }));
                 }
             }
