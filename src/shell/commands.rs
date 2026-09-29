@@ -407,7 +407,7 @@ mod tests {
     fn section_8_1_rules_still_apply() {
         let reg = CommandRegistry::standard().unwrap();
         let mut h = healthy();
-        h.worker_status = WorkerStatus::Offline;
+        h.postgres_available = false;
         assert!(!reg.enablement("deployment.create", &h, false).is_enabled());
         h.api_reachable = false;
         assert!(!reg.enablement("kill-switch.set", &h, false).is_enabled());
