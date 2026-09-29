@@ -13,6 +13,9 @@ Rectangle {
     required property ExecutionModels executionModels
     required property ExecutionControls executionControls
     required property OpsStatus opsStatus
+    property string accountActionId: ""
+    property string deploymentActionId: ""
+    property string commandMessage: ""
 
     // The selection this list shows. A window detached from the global selection binds its
     // own here and, with routesSelection, hands a click to the shell instead of selecting
@@ -35,20 +38,55 @@ Rectangle {
         id: accountDialog
         onCreateRequested: function(name, balance, currency) {
             var payload = { name: name, initial_balance: balance, currency: currency };
-            executionControls.request("create_account", JSON.stringify(payload));
+            root.accountActionId = root.executionControls.request("create_account", JSON.stringify(payload));
+            root.commandMessage = root.accountActionId !== "" ? "Creating paper account…" : "Account command unavailable";
         }
     }
 
     DeployDialog {
         id: deployDialog
         executionControls: root.executionControls
+        executionModels: root.executionModels
         accountId: root.executionModels.selected_account_id
         onDeployRequested: function(payload) {
-            executionControls.request("create_deployment", JSON.stringify(payload));
+            root.deploymentActionId = root.executionControls.request("create_deployment", JSON.stringify(payload));
+            root.commandMessage = root.deploymentActionId !== "" ? "Creating paper deployment…" : "Deployment command unavailable";
         }
         onLiveDeployConfirmed: function(payload) {
             liveDeployConfirm.payload = payload;
             liveDeployConfirm.open();
+        }
+    }
+
+    Timer {
+        interval: 100
+        repeat: true
+        running: root.accountActionId !== "" || root.deploymentActionId !== ""
+        onTriggered: {
+            if (root.accountActionId !== "") {
+                var accountPhase = root.executionControls.action_phase(root.accountActionId);
+                root.commandMessage = root.executionControls.action_message(root.accountActionId);
+                if (accountPhase === "settled") {
+                    var accountId = root.executionControls.action_response_id(root.accountActionId);
+                    if (accountId !== "") root.executionModels.select_account(accountId);
+                    root.commandMessage = "Paper account ready. Select New to configure a strategy.";
+                    root.accountActionId = "";
+                } else if (accountPhase === "refused") {
+                    root.accountActionId = "";
+                }
+            }
+            if (root.deploymentActionId !== "") {
+                var deploymentPhase = root.executionControls.action_phase(root.deploymentActionId);
+                root.commandMessage = root.executionControls.action_message(root.deploymentActionId);
+                if (deploymentPhase === "settled") {
+                    var deploymentId = root.executionControls.action_response_id(root.deploymentActionId);
+                    if (deploymentId !== "") root.executionModels.select_deployment(deploymentId);
+                    root.commandMessage = "Paper deployment ready. Select Start to run it.";
+                    root.deploymentActionId = "";
+                } else if (deploymentPhase === "refused") {
+                    root.deploymentActionId = "";
+                }
+            }
         }
     }
 
@@ -151,6 +189,16 @@ Rectangle {
                     Layout.alignment: Qt.AlignVCenter
                 }
             }
+        }
+
+        // Deployments ListView
+        Text {
+            Layout.fillWidth: true
+            visible: root.commandMessage !== ""
+            text: root.commandMessage
+            color: Theme.textSecondary
+            font.pixelSize: Theme.typeLabel
+            wrapMode: Text.WordWrap
         }
 
         // Deployments ListView

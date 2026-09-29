@@ -149,7 +149,8 @@ QtObject {
     }
 
     function workerHealth(status, age) {
-        return String(status).toLowerCase() === "active" && age <= 30.0 ? positive : warning;
+        var workerStatus = String(status).toLowerCase();
+        return (workerStatus === "healthy" || workerStatus === "active") && age <= 30.0 ? positive : warning;
     }
 
     function edgeHealth(reachable, connected) {

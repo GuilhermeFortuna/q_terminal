@@ -16,6 +16,18 @@ Rectangle {
     required property ExecutionControls executionControls
 
     property string lastActionId: ""
+    property string lifecycleMessage: ""
+
+    Timer {
+        interval: 100
+        repeat: true
+        running: root.lastActionId !== ""
+        onTriggered: {
+            var phase = root.executionControls.action_phase(root.lastActionId);
+            root.lifecycleMessage = root.executionControls.action_message(root.lastActionId);
+            if (phase === "settled" || phase === "refused") root.lastActionId = "";
+        }
+    }
     readonly property bool hasSelection: root.executionModels.selected_deployment_id !== ""
 
     function deploymentField(field) {
@@ -28,6 +40,7 @@ Rectangle {
         var payload = { deployment_id: depId };
         var id = root.executionControls.request(action, JSON.stringify(payload));
         root.lastActionId = id;
+        root.lifecycleMessage = id !== "" ? "Sending deployment action…" : "Deployment action unavailable";
     }
 
     ConfirmDialog {
@@ -63,6 +76,8 @@ Rectangle {
     Connections {
         target: root.executionModels
         function onSelected_deployment_idChanged() {
+            root.lastActionId = "";
+            root.lifecycleMessage = "";
             var depId = root.executionModels.selected_deployment_id;
             if (depId !== "") {
                 root.executionControls.fetch_performance(depId, "");
@@ -407,6 +422,16 @@ Rectangle {
                     }
                 }
             }
+        }
+
+        // Performance & Bar Equity Delta Strip
+        Text {
+            Layout.fillWidth: true
+            visible: root.lifecycleMessage !== ""
+            text: root.lifecycleMessage
+            color: Theme.textSecondary
+            font.pixelSize: Theme.typeLabel
+            wrapMode: Text.WordWrap
         }
 
         // Performance & Bar Equity Delta Strip

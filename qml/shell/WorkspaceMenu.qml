@@ -93,7 +93,7 @@ RowLayout {
         }
 
         readonly property var opsStatus: root.shell.activeOpsStatus
-        readonly property bool workerUnavailable: opsStatus ? (opsStatus.api_status !== "unknown" && (!opsStatus.worker_heartbeat_known || opsStatus.worker_status !== "active" || opsStatus.worker_heartbeat_age_s > 30.0)) : false
+        readonly property bool workerUnavailable: opsStatus ? (opsStatus.api_status !== "unknown" && (!opsStatus.worker_heartbeat_known || opsStatus.worker_status !== "healthy" && opsStatus.worker_status !== "active" || opsStatus.worker_heartbeat_age_s > 30.0)) : false
         readonly property string criticalOpsCause: {
             if (!opsStatus) return "";
             if (!opsStatus.postgres_available) return "Database unavailable";

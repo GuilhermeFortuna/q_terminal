@@ -14,6 +14,7 @@ Dialog {
     anchors.centerIn: parent
 
     required property ExecutionControls executionControls
+    required property ExecutionModels executionModels
     property string accountId: ""
     property string actionId: ""
 
@@ -26,18 +27,17 @@ Dialog {
     property int selectedStrategyIndex: 0
     property bool isCatalogMode: true
     property bool inReview: false
+    property var parameterValues: ({})
+    property string formError: ""
 
     // Form fields for catalog mode
     property string chosenStrategyName: ""
     property string chosenStrategyType: "candle"
     property string chosenProvenance: "builtin"
     property string chosenSymbol: "WIN$N"
-    property string chosenTimeframe: "15m"
-    property string paramFastPeriod: "10"
-    property string paramSlowPeriod: "30"
-    property string paramStopLossPct: "1.5"
+    property string chosenTimeframe: "M15"
     property string paramQuantity: "1"
-    property string paramMaxPositionSize: "2"
+    property string paramMaxNotional: "500000"
     property string paramMaxDailyDrawdown: "500.00"
     property string paramPointValue: "0.2"
     property string paramSlippage: "0.5"
@@ -46,6 +46,52 @@ Dialog {
     function refreshAll() {
         root.executionControls.fetch_strategy_catalog();
         root.executionControls.fetch_saved_runs();
+    }
+
+    onOpened: {
+        root.accountId = root.executionModels.selected_account_id;
+        root.inReview = false;
+        root.formError = "";
+        root.refreshAll();
+    }
+
+    function parameterValue(spec) {
+        var value = root.parameterValues[spec.name];
+        return value === undefined ? "" + spec.default : "" + value;
+    }
+
+    function setParameter(name, value) {
+        var next = Object.assign({}, root.parameterValues);
+        next[name] = value;
+        root.parameterValues = next;
+    }
+
+    function typedParameters() {
+        var strategy = {};
+        var exits = {};
+        var specs = root.catalogStrategies[root.selectedStrategyIndex].params || [];
+        for (var i = 0; i < specs.length; ++i) {
+            var spec = specs[i];
+            var raw = root.parameterValue(spec);
+            var value = raw;
+            if (spec.type === "int") value = Number(raw);
+            if (spec.type === "float") value = Number(raw);
+            if (raw.trim() === "" || (spec.type !== "categorical" && !Number.isFinite(value))) {
+                root.formError = (spec.label || spec.name) + " needs a valid value";
+                return null;
+            }
+            if (spec.min !== null && spec.min !== undefined && value < spec.min
+                    || spec.max !== null && spec.max !== undefined && value > spec.max
+                    || spec.type === "int" && !Number.isInteger(value)
+                    || spec.choices && spec.choices.indexOf(raw) < 0) {
+                root.formError = (spec.label || spec.name) + " is outside its allowed range";
+                return null;
+            }
+            if (spec.exit_group) exits[spec.name] = value;
+            else strategy[spec.name] = value;
+        }
+        root.formError = "";
+        return { strategy_params: strategy, exit_params: exits };
     }
 
     Component.onCompleted: refreshAll()
@@ -101,18 +147,14 @@ Dialog {
             nameField.text = (s.label || s.name || "Strategy") + " " + root.chosenSymbol;
         }
 
-        // Apply parameter defaults if provided in strategy specs
+        // Apply typed defaults from the selected catalog entry.
         var params = s.params || s.parameters || [];
+        var defaults = {};
         for (var p = 0; p < params.length; ++p) {
             var item = params[p];
-            if (item.name === "fast_period" && item.default !== undefined) {
-                root.paramFastPeriod = "" + item.default;
-            } else if (item.name === "slow_period" && item.default !== undefined) {
-                root.paramSlowPeriod = "" + item.default;
-            } else if (item.name === "stop_loss_pct" && item.default !== undefined) {
-                root.paramStopLossPct = "" + item.default;
-            }
+            defaults[item.name] = "" + item.default;
         }
+        root.parameterValues = defaults;
     }
 
     ColumnLayout {
@@ -174,6 +216,26 @@ Dialog {
             Layout.fillWidth: true
             visible: !root.inReview
             placeholderText: "Deployment name"
+        }
+
+        ComboBox {
+            id: accountCombo
+            Layout.fillWidth: true
+            visible: !root.inReview
+            model: root.executionModels.accounts
+            textRole: "name"
+            valueRole: "id"
+            currentIndex: indexOfValue(root.accountId)
+            onActivated: root.accountId = currentValue
+        }
+
+        Text {
+            Layout.fillWidth: true
+            visible: root.formError !== ""
+            text: root.formError
+            color: Theme.negativeSoft
+            font.pixelSize: Theme.typeLabel
+            wrapMode: Text.WordWrap
         }
 
         // ==================== CATALOG FIRST WORKFLOW ====================
@@ -269,7 +331,7 @@ Dialog {
                     ComboBox {
                         id: timeframeCombo
                         Layout.preferredWidth: Spacing.size90
-                        model: ["15m", "30m", "1h", "4h", "1d"]
+                        model: ["M15", "H1", "D1"]
                         currentIndex: 0
                         onActivated: function(index) {
                             root.chosenTimeframe = currentText;
@@ -351,11 +413,11 @@ Dialog {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: Spacing.size2
-                        Text { text: "Max Position Size"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
+                        Text { text: "Max Notional (BRL)"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
                         TextField {
                             Layout.fillWidth: true
-                            text: root.paramMaxPositionSize
-                            onTextChanged: root.paramMaxPositionSize = text.trim()
+                            text: root.paramMaxNotional
+                            onTextChanged: root.paramMaxNotional = text.trim()
                         }
                     }
 
@@ -425,40 +487,29 @@ Dialog {
                     font.bold: true
                 }
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Spacing.size8
-
-                    ColumnLayout {
+                Repeater {
+                    model: root.catalogStrategies.length > root.selectedStrategyIndex
+                           ? (root.catalogStrategies[root.selectedStrategyIndex].params || []) : []
+                    delegate: ColumnLayout {
+                        required property var modelData
                         Layout.fillWidth: true
-                        spacing: Spacing.size2
-                        Text { text: "Fast Period"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
-                        TextField {
-                            Layout.fillWidth: true
-                            text: root.paramFastPeriod
-                            onTextChanged: root.paramFastPeriod = text.trim()
+                        Text {
+                            text: parent.modelData.label || parent.modelData.name
+                            color: Theme.textSecondary
+                            font.pixelSize: Theme.typeLabelSmall
                         }
-                    }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: Spacing.size2
-                        Text { text: "Slow Period"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
                         TextField {
                             Layout.fillWidth: true
-                            text: root.paramSlowPeriod
-                            onTextChanged: root.paramSlowPeriod = text.trim()
+                            visible: parent.modelData.type !== "categorical"
+                            text: root.parameterValue(parent.modelData)
+                            onTextEdited: root.setParameter(parent.modelData.name, text.trim())
                         }
-                    }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: Spacing.size2
-                        Text { text: "Stop Loss (%)"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
-                        TextField {
+                        ComboBox {
                             Layout.fillWidth: true
-                            text: root.paramStopLossPct
-                            onTextChanged: root.paramStopLossPct = text.trim()
+                            visible: parent.modelData.type === "categorical"
+                            model: parent.modelData.choices || []
+                            currentIndex: (parent.modelData.choices || []).indexOf(root.parameterValue(parent.modelData))
+                            onActivated: root.setParameter(parent.modelData.name, currentText)
                         }
                     }
                 }
@@ -579,10 +630,10 @@ Dialog {
                     Text { text: root.chosenSymbol + " · " + root.chosenTimeframe; color: Theme.textStrong; font.bold: true; font.pixelSize: Theme.typeLabel }
 
                     Text { text: "Parameters:"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
-                    Text { text: "fast=" + root.paramFastPeriod + ", slow=" + root.paramSlowPeriod + ", stop_loss=" + root.paramStopLossPct + "%"; color: Theme.textStrong; font.pixelSize: Theme.typeLabel }
+                    Text { text: JSON.stringify(root.parameterValues); color: Theme.textStrong; font.pixelSize: Theme.typeLabel; wrapMode: Text.WordWrap; Layout.fillWidth: true }
 
                     Text { text: "Sizing & Risk:"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
-                    Text { text: "Qty=" + root.paramQuantity + ", MaxPos=" + root.paramMaxPositionSize + ", MaxLoss=" + root.paramMaxDailyDrawdown; color: Theme.textStrong; font.pixelSize: Theme.typeLabel }
+                    Text { text: "Qty=" + root.paramQuantity + ", MaxNotional=" + root.paramMaxNotional + ", MaxLoss=" + root.paramMaxDailyDrawdown; color: Theme.textStrong; font.pixelSize: Theme.typeLabel }
 
                     Text { text: "Costs:"; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
                     Text { text: "PtVal=" + root.paramPointValue + ", Slip=" + root.paramSlippage + ", Comm=" + root.paramCommission; color: Theme.textStrong; font.pixelSize: Theme.typeLabel }
@@ -626,9 +677,9 @@ Dialog {
             Button {
                 visible: root.isCatalogMode && !root.inReview
                 text: "Review"
-                enabled: nameField.text.trim() !== "" && root.chosenSymbol !== "" && root.chosenTimeframe !== "" && root.accountId !== ""
+                enabled: nameField.text.trim() !== "" && root.chosenSymbol !== "" && root.chosenTimeframe !== "" && root.accountId !== "" && root.catalogStrategies.length > 0
                 onClicked: {
-                    root.inReview = true;
+                    if (root.typedParameters() !== null) root.inReview = true;
                 }
             }
 
@@ -636,9 +687,8 @@ Dialog {
                 visible: root.isCatalogMode && root.inReview
                 text: "Deploy Paper Strategy"
                 onClicked: {
-                    var fast = parseInt(root.paramFastPeriod, 10) || 10;
-                    var slow = parseInt(root.paramSlowPeriod, 10) || 30;
-                    var stopLoss = parseFloat(root.paramStopLossPct) || 1.5;
+                    var params = root.typedParameters();
+                    if (params === null) return;
 
                     var payload = {
                         paper_account_id: root.accountId,
@@ -646,26 +696,22 @@ Dialog {
                         broker_mode: "paper",
                         catalog: {
                             strategy_name: root.chosenStrategyName,
-                            strategy_params: {
-                                fast_period: fast,
-                                slow_period: slow
-                            },
-                            exit_params: {
-                                stop_loss_pct: stopLoss
-                            },
+                            strategy_params: params.strategy_params,
+                            exit_params: params.exit_params,
                             symbol: root.chosenSymbol,
                             timeframe: root.chosenTimeframe,
                             sizing_config: {
                                 quantity: root.paramQuantity
                             },
                             risk_config: {
-                                max_position_size: root.paramMaxPositionSize,
-                                max_daily_drawdown: root.paramMaxDailyDrawdown
+                                max_notional: root.paramMaxNotional,
+                                max_daily_loss: root.paramMaxDailyDrawdown
                             },
                             paper_cost_config: {
                                 point_value: root.paramPointValue,
-                                slippage: root.paramSlippage,
-                                commission: root.paramCommission
+                                slippage_points: root.paramSlippage,
+                                cost_per_contract: root.paramCommission,
+                                cost_bps: "0"
                             }
                         }
                     };

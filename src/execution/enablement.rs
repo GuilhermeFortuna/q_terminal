@@ -23,7 +23,7 @@ pub enum WorkerStatus {
 impl WorkerStatus {
     pub fn from_api(status: &str) -> Self {
         match status {
-            "active" => Self::Active,
+            "healthy" | "active" => Self::Active,
             _ => Self::Offline,
         }
     }
@@ -120,7 +120,7 @@ pub fn enabled(cmd: CommandKind, health: &Health) -> Enablement {
                 }
             }
         }
-        CommandKind::Start | CommandKind::CreateDeployment => {
+        CommandKind::Start => {
             if !health.postgres_available {
                 return Enablement::Disabled {
                     reason: "Postgres unavailable".into(),
@@ -133,7 +133,10 @@ pub fn enabled(cmd: CommandKind, health: &Health) -> Enablement {
             }
             Enablement::Enabled
         }
-        CommandKind::CreateAccount | CommandKind::Resolve | CommandKind::EditDeployment => {
+        CommandKind::CreateAccount
+        | CommandKind::CreateDeployment
+        | CommandKind::Resolve
+        | CommandKind::EditDeployment => {
             if !health.postgres_available {
                 return Enablement::Disabled {
                     reason: "Postgres unavailable".into(),

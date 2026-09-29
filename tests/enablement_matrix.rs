@@ -217,7 +217,7 @@ fn expectations_for(scenario: &Scenario) -> Vec<Expectation> {
             },
             Expectation {
                 cmd: CommandKind::CreateDeployment,
-                enabled: false,
+                enabled: true,
             },
             Expectation {
                 cmd: CommandKind::CreateAccount,

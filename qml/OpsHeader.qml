@@ -14,8 +14,20 @@ Rectangle {
     required property ExecutionModels executionModels
 
     property string killSwitchActionId: ""
+    property string killSwitchMessage: ""
+
+    Timer {
+        interval: 100
+        repeat: true
+        running: root.killSwitchActionId !== ""
+        onTriggered: {
+            var phase = root.executionControls.action_phase(root.killSwitchActionId);
+            root.killSwitchMessage = root.executionControls.action_message(root.killSwitchActionId);
+            if (phase === "settled" || phase === "refused") root.killSwitchActionId = "";
+        }
+    }
     readonly property bool workerUnavailable: !opsStatus.worker_heartbeat_known
-                                          || opsStatus.worker_status !== "active"
+                                          || opsStatus.worker_status !== "healthy" && opsStatus.worker_status !== "active"
                                           || opsStatus.worker_heartbeat_age_s > 30.0
     readonly property string heartbeatAge: opsStatus.worker_heartbeat_known
                                         ? Format.formatAge(opsStatus.worker_heartbeat_age_s) : "unknown"
@@ -45,6 +57,7 @@ Rectangle {
         onConfirmed: {
             var id = root.executionControls.request("kill_switch_set", JSON.stringify({ reason: "Operator engaged kill switch" }));
             root.killSwitchActionId = id;
+            root.killSwitchMessage = id !== "" ? "Engaging kill switch…" : "Kill switch command unavailable";
         }
     }
 
@@ -55,6 +68,7 @@ Rectangle {
         onConfirmed: {
             var id = root.executionControls.request("kill_switch_clear", "{}");
             root.killSwitchActionId = id;
+            root.killSwitchMessage = id !== "" ? "Releasing kill switch…" : "Kill switch command unavailable";
         }
     }
 
@@ -153,6 +167,16 @@ Rectangle {
                     Layout.alignment: Qt.AlignVCenter
                 }
             }
+        }
+
+        // Main status bar
+        Text {
+            Layout.fillWidth: true
+            visible: root.killSwitchMessage !== ""
+            text: root.killSwitchMessage
+            color: Theme.textSecondary
+            font.pixelSize: Theme.typeLabel
+            wrapMode: Text.WordWrap
         }
 
         // Main status bar

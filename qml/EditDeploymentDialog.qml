@@ -27,24 +27,52 @@ Dialog {
     property string timeframe: ""
     property string accountId: ""
     property string brokerMode: "paper"
+    property var strategyParams: ({})
+    property var originalStrategyParams: ({})
+    property var exitParams: ({})
+    property var originalSizingConfig: ({})
+    property var originalRiskConfig: ({})
+    property var originalPaperCostConfig: ({})
+
+    function setStrategyParam(name, value) {
+        var next = Object.assign({}, root.strategyParams);
+        next[name] = value;
+        root.strategyParams = next;
+    }
+
+    function submittedStrategyParams() {
+        var values = {};
+        var names = Object.keys(root.strategyParams);
+        for (var i = 0; i < names.length; ++i) {
+            var name = names[i];
+            var raw = root.strategyParams[name];
+            var old = root.originalStrategyParams[name];
+            if (typeof old === "number") {
+                var number = Number(raw);
+                if (raw === "" || !Number.isFinite(number)
+                        || Number.isInteger(old) && !Number.isInteger(number)) {
+                    root.submittedMessage = name + " needs a valid number";
+                    return null;
+                }
+                values[name] = number;
+            } else {
+                values[name] = raw;
+            }
+        }
+        return values;
+    }
 
     // Editable parameter fields
-    property string paramFastPeriod: "10"
-    property string paramSlowPeriod: "30"
-    property string paramStopLossPct: "1.5"
     property string paramQuantity: "1"
-    property string paramMaxPositionSize: "2"
+    property string paramMaxNotional: "500000"
     property string paramMaxDailyDrawdown: "500.00"
     property string paramPointValue: "0.2"
     property string paramSlippage: "0.5"
     property string paramCommission: "1.0"
 
     // Baseline original values to detect changes
-    property string origFastPeriod: "10"
-    property string origSlowPeriod: "30"
-    property string origStopLossPct: "1.5"
     property string origQuantity: "1"
-    property string origMaxPositionSize: "2"
+    property string origMaxNotional: "500000"
     property string origMaxDailyDrawdown: "500.00"
     property string origPointValue: "0.2"
     property string origSlippage: "0.5"
@@ -78,48 +106,41 @@ Dialog {
                 // Extract strategy params
                 var cfg = d.compiled_config || {};
                 var sparams = cfg.strategy_params || {};
-                if (sparams.fast_period !== undefined) {
-                    root.paramFastPeriod = "" + sparams.fast_period;
-                    root.origFastPeriod = root.paramFastPeriod;
-                }
-                if (sparams.slow_period !== undefined) {
-                    root.paramSlowPeriod = "" + sparams.slow_period;
-                    root.origSlowPeriod = root.paramSlowPeriod;
-                }
-                var eparams = cfg.exit_params || {};
-                if (eparams.stop_loss_pct !== undefined) {
-                    root.paramStopLossPct = "" + eparams.stop_loss_pct;
-                    root.origStopLossPct = root.paramStopLossPct;
-                }
+                root.originalStrategyParams = Object.assign({}, sparams);
+                root.strategyParams = Object.assign({}, sparams);
+                root.exitParams = Object.assign({}, cfg.exit_params || {});
 
                 // Sizing & Risk
                 var scfg = d.sizing_config || {};
+                root.originalSizingConfig = Object.assign({}, scfg);
                 if (scfg.quantity !== undefined) {
                     root.paramQuantity = "" + scfg.quantity;
                     root.origQuantity = root.paramQuantity;
                 }
                 var rcfg = d.risk_config || {};
-                if (rcfg.max_position_size !== undefined) {
-                    root.paramMaxPositionSize = "" + rcfg.max_position_size;
-                    root.origMaxPositionSize = root.paramMaxPositionSize;
+                root.originalRiskConfig = Object.assign({}, rcfg);
+                if (rcfg.max_notional !== undefined) {
+                    root.paramMaxNotional = "" + rcfg.max_notional;
+                    root.origMaxNotional = root.paramMaxNotional;
                 }
-                if (rcfg.max_daily_drawdown !== undefined) {
-                    root.paramMaxDailyDrawdown = "" + rcfg.max_daily_drawdown;
+                if (rcfg.max_daily_loss !== undefined) {
+                    root.paramMaxDailyDrawdown = "" + rcfg.max_daily_loss;
                     root.origMaxDailyDrawdown = root.paramMaxDailyDrawdown;
                 }
 
                 // Paper costs
                 var pcfg = d.paper_cost_config || {};
+                root.originalPaperCostConfig = Object.assign({}, pcfg);
                 if (pcfg.point_value !== undefined) {
                     root.paramPointValue = "" + pcfg.point_value;
                     root.origPointValue = root.paramPointValue;
                 }
-                if (pcfg.slippage !== undefined) {
-                    root.paramSlippage = "" + pcfg.slippage;
+                if (pcfg.slippage_points !== undefined) {
+                    root.paramSlippage = "" + pcfg.slippage_points;
                     root.origSlippage = root.paramSlippage;
                 }
-                if (pcfg.commission !== undefined) {
-                    root.paramCommission = "" + pcfg.commission;
+                if (pcfg.cost_per_contract !== undefined) {
+                    root.paramCommission = "" + pcfg.cost_per_contract;
                     root.origCommission = root.paramCommission;
                 }
             } catch (e) {}
@@ -288,11 +309,11 @@ Dialog {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: Spacing.size2
-                        Text { text: "Max Position Size"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
+                        Text { text: "Max Notional (BRL)"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
                         TextField {
                             Layout.fillWidth: true
-                            text: root.paramMaxPositionSize
-                            onTextChanged: root.paramMaxPositionSize = text.trim()
+                            text: root.paramMaxNotional
+                            onTextChanged: root.paramMaxNotional = text.trim()
                         }
                     }
 
@@ -362,40 +383,16 @@ Dialog {
                     font.bold: true
                 }
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Spacing.size8
-
-                    ColumnLayout {
+                Repeater {
+                    model: Object.keys(root.strategyParams)
+                    delegate: ColumnLayout {
+                        required property string modelData
                         Layout.fillWidth: true
-                        spacing: Spacing.size2
-                        Text { text: "Fast Period"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
+                        Text { text: parent.modelData; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
                         TextField {
                             Layout.fillWidth: true
-                            text: root.paramFastPeriod
-                            onTextChanged: root.paramFastPeriod = text.trim()
-                        }
-                    }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: Spacing.size2
-                        Text { text: "Slow Period"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
-                        TextField {
-                            Layout.fillWidth: true
-                            text: root.paramSlowPeriod
-                            onTextChanged: root.paramSlowPeriod = text.trim()
-                        }
-                    }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: Spacing.size2
-                        Text { text: "Stop Loss (%)"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabelSmall }
-                        TextField {
-                            Layout.fillWidth: true
-                            text: root.paramStopLossPct
-                            onTextChanged: root.paramStopLossPct = text.trim()
+                            text: "" + root.strategyParams[parent.modelData]
+                            onTextEdited: root.setStrategyParam(parent.modelData, text.trim())
                         }
                     }
                 }
@@ -443,25 +440,17 @@ Dialog {
                     Text { text: "PREVIOUS"; color: Theme.textMuted; font.pixelSize: Theme.typeLabelSmall; font.bold: true }
                     Text { text: "NEW"; color: Theme.textMuted; font.pixelSize: Theme.typeLabelSmall; font.bold: true }
 
-                    Text { text: "Fast Period"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabel }
-                    Text { text: root.origFastPeriod; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
-                    Text { text: root.paramFastPeriod; color: root.origFastPeriod !== root.paramFastPeriod ? Theme.accent : Theme.textStrong; font.bold: root.origFastPeriod !== root.paramFastPeriod; font.pixelSize: Theme.typeLabel }
-
-                    Text { text: "Slow Period"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabel }
-                    Text { text: root.origSlowPeriod; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
-                    Text { text: root.paramSlowPeriod; color: root.origSlowPeriod !== root.paramSlowPeriod ? Theme.accent : Theme.textStrong; font.bold: root.origSlowPeriod !== root.paramSlowPeriod; font.pixelSize: Theme.typeLabel }
-
-                    Text { text: "Stop Loss %"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabel }
-                    Text { text: root.origStopLossPct; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
-                    Text { text: root.paramStopLossPct; color: root.origStopLossPct !== root.paramStopLossPct ? Theme.accent : Theme.textStrong; font.bold: root.origStopLossPct !== root.paramStopLossPct; font.pixelSize: Theme.typeLabel }
+                    Text { text: "Parameters"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabel }
+                    Text { text: JSON.stringify(root.originalStrategyParams); color: Theme.textMuted; font.pixelSize: Theme.typeLabel; wrapMode: Text.WordWrap }
+                    Text { text: JSON.stringify(root.strategyParams); color: Theme.textStrong; font.pixelSize: Theme.typeLabel; wrapMode: Text.WordWrap }
 
                     Text { text: "Quantity"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabel }
                     Text { text: root.origQuantity; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
                     Text { text: root.paramQuantity; color: root.origQuantity !== root.paramQuantity ? Theme.accent : Theme.textStrong; font.bold: root.origQuantity !== root.paramQuantity; font.pixelSize: Theme.typeLabel }
 
-                    Text { text: "Max Pos Size"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabel }
-                    Text { text: root.origMaxPositionSize; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
-                    Text { text: root.paramMaxPositionSize; color: root.origMaxPositionSize !== root.paramMaxPositionSize ? Theme.accent : Theme.textStrong; font.bold: root.origMaxPositionSize !== root.paramMaxPositionSize; font.pixelSize: Theme.typeLabel }
+                    Text { text: "Max Notional"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabel }
+                    Text { text: root.origMaxNotional; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
+                    Text { text: root.paramMaxNotional; color: root.origMaxNotional !== root.paramMaxNotional ? Theme.accent : Theme.textStrong; font.bold: root.origMaxNotional !== root.paramMaxNotional; font.pixelSize: Theme.typeLabel }
 
                     Text { text: "Point Value"; color: Theme.textSecondary; font.pixelSize: Theme.typeLabel }
                     Text { text: root.origPointValue; color: Theme.textMuted; font.pixelSize: Theme.typeLabel }
@@ -520,33 +509,25 @@ Dialog {
                 visible: root.inReview && !root.hasConflict
                 text: "Submit Replacement"
                 onClicked: {
-                    var fast = parseInt(root.paramFastPeriod, 10) || 10;
-                    var slow = parseInt(root.paramSlowPeriod, 10) || 30;
-                    var stopLoss = parseFloat(root.paramStopLossPct) || 1.5;
+                    var strategyParams = root.submittedStrategyParams();
+                    if (strategyParams === null) return;
 
                     var payload = {
                         deployment_id: root.deploymentId,
                         expected_revision: root.currentRevision,
                         configuration: {
-                            strategy_params: {
-                                fast_period: fast,
-                                slow_period: slow
-                            },
-                            exit_params: {
-                                stop_loss_pct: stopLoss
-                            },
-                            sizing_config: {
-                                quantity: root.paramQuantity
-                            },
-                            risk_config: {
-                                max_position_size: root.paramMaxPositionSize,
-                                max_daily_drawdown: root.paramMaxDailyDrawdown
-                            },
-                            paper_cost_config: {
+                            strategy_params: strategyParams,
+                            exit_params: root.exitParams,
+                            sizing_config: Object.assign({}, root.originalSizingConfig, { quantity: root.paramQuantity }),
+                            risk_config: Object.assign({}, root.originalRiskConfig, {
+                                max_notional: root.paramMaxNotional,
+                                max_daily_loss: root.paramMaxDailyDrawdown
+                            }),
+                            paper_cost_config: Object.assign({}, root.originalPaperCostConfig, {
                                 point_value: root.paramPointValue,
-                                slippage: root.paramSlippage,
-                                commission: root.paramCommission
-                            }
+                                slippage_points: root.paramSlippage,
+                                cost_per_contract: root.paramCommission
+                            })
                         }
                     };
 

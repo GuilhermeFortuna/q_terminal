@@ -76,6 +76,7 @@ struct PendingAction {
     status_code: u16,
     error_code: String,
     error_message: String,
+    response_id: String,
 }
 
 #[cxx_qt::bridge]
@@ -147,6 +148,9 @@ pub mod ffi {
 
         #[qinvokable]
         fn action_error_code(self: Pin<&mut ExecutionControls>, action_id: QString) -> QString;
+
+        #[qinvokable]
+        fn action_response_id(self: Pin<&mut ExecutionControls>, action_id: QString) -> QString;
 
         #[qinvokable]
         fn is_deployment_editable(
@@ -411,7 +415,7 @@ impl ExecutionControlsRust {
             }),
             CommandKind::KillSwitchClear => Some(Command::KillSwitch {
                 enabled: false,
-                confirm: false,
+                confirm: true,
                 reason: None,
                 actor: actor.to_string(),
             }),
@@ -744,6 +748,7 @@ impl ffi::ExecutionControls {
                 status_code: 0,
                 error_code: String::new(),
                 error_message: String::new(),
+                response_id: String::new(),
             },
         );
         self.as_mut()
@@ -775,24 +780,51 @@ impl ffi::ExecutionControls {
                             Ok(outcome) if outcome.status >= 200 && outcome.status < 300 => {
                                 action.phase = ActionPhase::AwaitingStream;
                                 action.status_code = outcome.status;
+                                action.response_id = outcome
+                                    .body
+                                    .get("id")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or("")
+                                    .to_string();
                             }
                             Ok(outcome) => {
                                 action.phase = ActionPhase::Refused;
                                 action.status_code = outcome.status;
+                                let detail = outcome.body.get("detail");
                                 action.error_code = outcome
                                     .body
                                     .get("code")
                                     .and_then(|v| v.as_str())
-                                    .or_else(|| outcome.body.get("detail").and_then(|v| v.as_str()))
                                     .unwrap_or("command_rejected")
                                     .to_string();
                                 action.error_message = outcome
                                     .body
                                     .get("message")
                                     .and_then(|v| v.as_str())
-                                    .or_else(|| outcome.body.get("detail").and_then(|v| v.as_str()))
-                                    .unwrap_or("command rejected")
-                                    .to_string();
+                                    .map(String::from)
+                                    .or_else(|| detail.and_then(Value::as_str).map(String::from))
+                                    .or_else(|| {
+                                        detail.and_then(Value::as_array).map(|items| {
+                                            items
+                                                .iter()
+                                                .map(|item| {
+                                                    let field = item
+                                                        .get("loc")
+                                                        .and_then(Value::as_array)
+                                                        .and_then(|loc| loc.last())
+                                                        .and_then(Value::as_str)
+                                                        .unwrap_or("request");
+                                                    let message = item
+                                                        .get("msg")
+                                                        .and_then(Value::as_str)
+                                                        .unwrap_or("invalid value");
+                                                    format!("{field}: {message}")
+                                                })
+                                                .collect::<Vec<_>>()
+                                                .join("; ")
+                                        })
+                                    })
+                                    .unwrap_or_else(|| "command rejected".to_string());
                             }
                             Err(CommandError::Transport(msg)) => {
                                 action.phase = ActionPhase::Refused;
@@ -887,6 +919,14 @@ impl ffi::ExecutionControls {
             .map(|a| a.error_code.as_str())
             .unwrap_or("");
         QString::from(code)
+    }
+
+    pub fn action_response_id(self: Pin<&mut Self>, action_id: QString) -> QString {
+        self.rust()
+            .actions
+            .get(&action_id.to_string())
+            .map(|action| QString::from(&action.response_id))
+            .unwrap_or_default()
     }
 
     pub fn deployment_edit_disabled_reason(
