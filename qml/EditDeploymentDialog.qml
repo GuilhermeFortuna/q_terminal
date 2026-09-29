@@ -4,7 +4,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import qml
 
-Dialog {
+AppDialog {
     id: root
     title: inReview ? "Review configuration changes" : ("Edit configuration · Rev " + root.currentRevision)
     modal: true

@@ -296,6 +296,9 @@ impl ExecutionModelsRust {
             let mut first_dep_id = String::new();
 
             for d in data.deployments.values() {
+                if d.archived.unwrap_or(false) {
+                    continue;
+                }
                 if first_dep_id.is_empty() {
                     first_dep_id = d.id.clone();
                 }
@@ -352,12 +355,17 @@ impl ExecutionModelsRust {
             }
 
             let sel_dep = self.selected_deployment_id.to_string();
-            let active_dep = if sel_dep.is_empty() {
-                first_dep_id
-            } else {
+            let selected_is_active = data
+                .deployments
+                .get(&sel_dep)
+                .map(|deployment| !deployment.archived.unwrap_or(false))
+                .unwrap_or(false);
+            let active_dep = if selected_is_active {
                 sel_dep
+            } else {
+                first_dep_id
             };
-            if self.selected_deployment_id.to_string() != active_dep && !active_dep.is_empty() {
+            if self.selected_deployment_id.to_string() != active_dep {
                 self.selected_deployment_id = QString::from(&active_dep);
             }
 

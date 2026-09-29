@@ -5,7 +5,7 @@ import QtQuick.Layouts
 import qml
 import "Format.js" as Format
 
-Dialog {
+AppDialog {
     id: root
     title: inReview ? "Review deployment" : "New deployment"
     modal: true

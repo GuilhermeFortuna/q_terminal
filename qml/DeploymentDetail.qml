@@ -37,7 +37,7 @@ Rectangle {
     function requestLifecycle(action, confirm) {
         var depId = root.executionModels.selected_deployment_id;
         if (depId === "") return;
-        var payload = { deployment_id: depId };
+        var payload = { deployment_id: depId, confirm: confirm };
         var id = root.executionControls.request(action, JSON.stringify(payload));
         root.lastActionId = id;
         root.lifecycleMessage = id !== "" ? "Sending deployment action…" : "Deployment action unavailable";
@@ -63,6 +63,13 @@ Rectangle {
         consequenceText: "Stops the deployment; open positions remain until flattened."
         liveWarning: root.deploymentField("broker_mode") === "mt5_live"
         onConfirmed: requestLifecycle("stop", true)
+    }
+
+    ConfirmDialog {
+        id: archiveDialog
+        actionTitle: "Delete deployment"
+        consequenceText: "Removes this deployment from the active list. Its execution and audit history will be retained. Stop it, flatten any open position, and resolve outstanding orders first."
+        onConfirmed: requestLifecycle("archive_deployment", true)
     }
 
     EditDeploymentDialog {
@@ -276,7 +283,8 @@ Rectangle {
                             { label: "Start", kind: "start", confirm: false },
                             { label: "Pause", kind: "pause", confirm: false },
                             { label: "Stop", kind: "stop", confirm: true },
-                            { label: "Flatten", kind: "flatten", confirm: true }
+                            { label: "Flatten", kind: "flatten", confirm: true },
+                            { label: "Delete", kind: "archive_deployment", confirm: true }
                         ]
 
                         delegate: Rectangle {
@@ -284,9 +292,13 @@ Rectangle {
                             height: Spacing.size24
                             implicitWidth: actText.implicitWidth + 16
                             radius: Spacing.size4
-                            opacity: root.executionControls.is_command_enabled(modelData.kind) ? 1.0 : 0.4
-                            color: actMouse.containsMouse ? Theme.accentStrong : Theme.accentPressed
-                            border.color: Theme.accent
+                            readonly property bool allowed: root.executionControls.is_command_enabled(modelData.kind)
+                                   && (modelData.kind !== "archive_deployment" || root.deploymentField("lifecycle") !== "running")
+                            opacity: allowed ? 1.0 : 0.4
+                            color: modelData.kind === "archive_deployment"
+                                   ? (actMouse.containsMouse && allowed ? Theme.negativeStrong : Theme.criticalSurface)
+                                   : (actMouse.containsMouse ? Theme.accentStrong : Theme.accentPressed)
+                            border.color: modelData.kind === "archive_deployment" ? Theme.negativeStrong : Theme.accent
 
                             Text {
                                 id: actText
@@ -301,14 +313,16 @@ Rectangle {
                                 id: actMouse
                                 anchors.fill: parent
                                 hoverEnabled: true
-                                enabled: root.executionControls.is_command_enabled(modelData.kind)
+                                enabled: parent.allowed
                                 onClicked: {
                                     if (modelData.kind === "flatten") {
                                         flattenDialog.open();
                                     } else if (modelData.kind === "stop") {
                                         stopDialog.open();
+                                    } else if (modelData.kind === "archive_deployment") {
+                                        archiveDialog.open();
                                     } else {
-                                        requestLifecycle(modelData.kind, false);
+                                        requestLifecycle(modelData.kind, modelData.confirm);
                                     }
                                 }
                             }

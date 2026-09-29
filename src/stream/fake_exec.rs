@@ -23,7 +23,7 @@ pub fn ts(n: i64) -> String {
 pub fn deployment(id: &str, lifecycle: &str) -> Value {
     json!({"entity": "deployment", "id": id, "deployment_id": id, "account_id": ACCOUNT,
            "broker_mode": "paper", "config_hash": "abc", "lifecycle": lifecycle,
-           "live_activation_enabled": false, "name": format!("dep-{id}"),
+           "live_activation_enabled": false, "archived": false, "name": format!("dep-{id}"),
            "strategy_name": "momentum_alpha", "strategy_version": 1,
            "symbol": "PETR4", "timeframe": "1m", "updated_at": ts(0)})
 }

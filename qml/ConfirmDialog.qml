@@ -4,8 +4,9 @@ import qml
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Dialog {
+AppDialog {
     id: root
+    title: root.actionTitle
     modal: true
     focus: true
     standardButtons: Dialog.NoButton
@@ -24,15 +25,6 @@ Dialog {
     ColumnLayout {
         anchors.fill: parent
         spacing: Spacing.size12
-
-        Text {
-            text: root.actionTitle
-            font.pixelSize: Theme.typeBodyLarge
-            font.bold: true
-            color: Theme.textStrong
-            Layout.fillWidth: true
-            wrapMode: Text.WordWrap
-        }
 
         Rectangle {
             visible: root.liveWarning

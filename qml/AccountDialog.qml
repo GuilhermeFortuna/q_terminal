@@ -4,7 +4,7 @@ import qml
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Dialog {
+AppDialog {
     id: root
     title: "Create paper account"
     modal: true

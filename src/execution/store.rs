@@ -1,7 +1,8 @@
 //! The terminal's exact, live, in-memory copy of execution state (Q-046).
 //!
-//! The store replaces entities by identifier with the state an event carries. It does no
-//! position or balance arithmetic, and it keeps decimals as the strings the contract uses.
+//! The store replaces entities by identifier with the state an event carries. An archive
+//! marker removes a deployment from active state. It does no position or balance arithmetic,
+//! and it keeps decimals as the strings the contract uses.
 
 use crate::contracts_stream::{
     ExecutionAccount, ExecutionControl, ExecutionDecisionState, ExecutionDeploymentState,
@@ -353,7 +354,14 @@ impl ExecutionStore {
     pub fn apply(&mut self, event: ExecutionEvent) -> bool {
         let limits = self.limits;
         let changed = match event {
-            ExecutionEvent::Deployment(d) => upsert(&mut self.data.deployments, d.id.clone(), d),
+            ExecutionEvent::Deployment(d) => {
+                let id = d.id.clone();
+                if d.archived.unwrap_or(false) {
+                    self.data.deployments.remove(&id).is_some()
+                } else {
+                    upsert(&mut self.data.deployments, id, d)
+                }
+            }
             ExecutionEvent::Decision(d) => ring_upsert(
                 &mut self.data.decisions,
                 &d.deployment_id.clone(),

@@ -4,7 +4,7 @@ import qml
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Dialog {
+AppDialog {
     id: root
     title: "Resolve unknown order"
     modal: true

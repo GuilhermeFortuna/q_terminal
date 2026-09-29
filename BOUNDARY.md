@@ -29,6 +29,7 @@ and shows effects only when the execution stream delivers them:
 - **Create deployment** — `POST /api/v1/execution/deployments` (catalog-first paper strategy selection with typed entry/exit parameters, exact symbol search, timeframe, sizing, risk and paper costs, or saved-run picker; paper mode only in the dev workflow; no result browser)
 - **Edit deployment configuration (Q-069)** — `PATCH /api/v1/execution/deployments/{id}/configuration` (draft or paused-flat deployments only; editable parameters, sizing, risk and paper costs; expected revision and actor; symbol, timeframe, account and strategy identity remain immutable; no strategy code editing)
 - **Lifecycle** — `POST /api/v1/execution/deployments/{id}/actions` (`start`, `pause`, `stop`)
+- **Delete deployment** — same actions route with `action: archive` (confirmed; only when not running, flat, and with no pending or unsettled orders; audit records are retained)
 - **Flatten** — same actions route with `action: flatten` (confirmed)
 - **Kill switch** — `PUT /api/v1/execution/kill-switch` (engage and release, both confirmed)
 - **Resolve unknown order** — `POST /api/v1/execution/orders/{id}/resolve` (no default outcome; filled requires price, quantity, and time)

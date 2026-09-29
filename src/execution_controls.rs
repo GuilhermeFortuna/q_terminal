@@ -49,6 +49,9 @@ enum Settlement {
         deployment_id: String,
         expected_revision: i64,
     },
+    DeploymentArchived {
+        deployment_id: String,
+    },
     KillSwitch {
         enabled: bool,
     },
@@ -382,7 +385,11 @@ impl ExecutionControlsRust {
                     configuration,
                 })
             }
-            CommandKind::Start | CommandKind::Pause | CommandKind::Stop | CommandKind::Flatten => {
+            CommandKind::Start
+            | CommandKind::Pause
+            | CommandKind::Stop
+            | CommandKind::Flatten
+            | CommandKind::ArchiveDeployment => {
                 let deployment_id = args
                     .get("deployment_id")
                     .and_then(|v| v.as_str())
@@ -395,12 +402,15 @@ impl ExecutionControlsRust {
                     CommandKind::Pause => "pause",
                     CommandKind::Stop => "stop",
                     CommandKind::Flatten => "flatten",
+                    CommandKind::ArchiveDeployment => "archive",
                     _ => return None,
                 };
                 Some(Command::Lifecycle {
                     deployment_id: deployment_id.to_string(),
                     action: action.to_string(),
-                    confirm: kind == CommandKind::Flatten || kind == CommandKind::Stop,
+                    confirm: kind == CommandKind::Flatten
+                        || kind == CommandKind::Stop
+                        || kind == CommandKind::ArchiveDeployment,
                     actor: actor.to_string(),
                 })
             }
@@ -488,6 +498,13 @@ impl ExecutionControlsRust {
                     expected_revision,
                 })
             }
+            CommandKind::ArchiveDeployment => Some(Settlement::DeploymentArchived {
+                deployment_id: args
+                    .get("deployment_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            }),
             CommandKind::Start => Some(Settlement::DeploymentLifecycle {
                 deployment_id: args
                     .get("deployment_id")
@@ -546,6 +563,11 @@ impl ExecutionControlsRust {
                 .get(deployment_id)
                 .map(|d| d.config_revision.unwrap_or(0) > *expected_revision)
                 .unwrap_or(false),
+            Settlement::DeploymentArchived { deployment_id } => data
+                .deployments
+                .get(deployment_id)
+                .map(|d| d.archived.unwrap_or(false))
+                .unwrap_or(true),
             Settlement::DeploymentLifecycle {
                 deployment_id,
                 lifecycle,

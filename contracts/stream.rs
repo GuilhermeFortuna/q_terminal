@@ -81,6 +81,7 @@ pub struct ExecutionDecisionState {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExecutionDeploymentState {
     pub account_id: UUID,
+    pub archived: Option<bool>,
     pub broker_mode: BrokerMode,
     pub compiled_config: Option<serde_json::Value>,
     pub config_hash: String,

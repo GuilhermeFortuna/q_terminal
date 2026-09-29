@@ -38,6 +38,7 @@ pub enum CommandKind {
     CreateAccount,
     CreateDeployment,
     EditDeployment,
+    ArchiveDeployment,
     Start,
     Pause,
     Stop,
@@ -48,10 +49,11 @@ pub enum CommandKind {
 }
 
 impl CommandKind {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::CreateAccount,
         Self::CreateDeployment,
         Self::EditDeployment,
+        Self::ArchiveDeployment,
         Self::Start,
         Self::Pause,
         Self::Stop,
@@ -66,6 +68,7 @@ impl CommandKind {
             "create_account" => Some(Self::CreateAccount),
             "create_deployment" => Some(Self::CreateDeployment),
             "edit_deployment" => Some(Self::EditDeployment),
+            "archive_deployment" => Some(Self::ArchiveDeployment),
             "start" => Some(Self::Start),
             "pause" => Some(Self::Pause),
             "stop" => Some(Self::Stop),
@@ -137,6 +140,14 @@ pub fn enabled(cmd: CommandKind, health: &Health) -> Enablement {
         | CommandKind::CreateDeployment
         | CommandKind::Resolve
         | CommandKind::EditDeployment => {
+            if !health.postgres_available {
+                return Enablement::Disabled {
+                    reason: "Postgres unavailable".into(),
+                };
+            }
+            Enablement::Enabled
+        }
+        CommandKind::ArchiveDeployment => {
             if !health.postgres_available {
                 return Enablement::Disabled {
                     reason: "Postgres unavailable".into(),

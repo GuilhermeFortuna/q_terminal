@@ -74,7 +74,7 @@ The live chart slice provides a read-only, reactive candlestick chart window dis
 
 ## The Operations Workspace
 
-The operations workspace is the terminal's execution surface. It is arranged by the shell into panels (see above) and is driven by the in-memory execution store plus a two-second health/positions poller. Q-048 adds command controls (accounts, deployments, lifecycle, flatten, kill switch, resolve) with confirmations and §8.1 enablement. Q-069 adds catalog-first paper deployment configuration, paused-flat deployment editing, paper dispatch audit details, and deployment performance. A newly created paper account appears through its opening ledger event and becomes the selected account; the deployment form also lets the operator choose another account. Command refusals are shown in the operations panel.
+The operations workspace is the terminal's execution surface. It is arranged by the shell into panels (see above) and is driven by the in-memory execution store plus a two-second health/positions poller. Q-048 adds command controls (accounts, deployments, lifecycle, flatten, kill switch, resolve) with confirmations and §8.1 enablement. Q-069 adds catalog-first paper deployment configuration, paused-flat deployment editing, paper dispatch audit details, and deployment performance. Non-running, flat deployments can be deleted through a confirmed archive action once pending actions and unsettled orders are resolved; execution and audit records remain retained. A newly created paper account appears through its opening ledger event and becomes the selected account; the deployment form also lets the operator choose another account. Command refusals are shown in the operations panel.
 
 ### What It Shows
 

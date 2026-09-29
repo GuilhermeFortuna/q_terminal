@@ -67,6 +67,7 @@ This document establishes the 1:1 mapping between each visual field, signal, pan
 | [x] Pending Action (Desired) | `deployment.pending_action` | `qml/DeploymentDetail.qml` header | Mapped |
 | [x] Last Bar Close Time | `deployment.last_bar_close_time` | `qml/DeploymentDetail.qml` header | Mapped (formatted UTC time) |
 | [x] Lifecycle Actions (Start, Pause, Stop) | `Button` controls | `qml/DeploymentDetail.qml` action bar + `ConfirmDialog.qml` | Mapped (Q-048) |
+| [x] Delete Deployment | Archive action and `archived` stream marker | `qml/DeploymentDetail.qml` action bar | Mapped; execution and audit records remain retained |
 | [x] Monitor Live Action | `Button` (`openExecutionMonitor`) | N/A | Omitted: Native terminal view |
 | [x] Flatten Action | `Button` (`setConfirmKind('flatten')`) | `qml/DeploymentDetail.qml` + `ConfirmDialog.qml` | Mapped (Q-048) |
 | [x] Open Position Side | `deployment.open_position.side` (`long`/`short`/flat) | `qml/DeploymentDetail.qml` Position card | Mapped |
