@@ -206,7 +206,7 @@ Rectangle {
         x: 0
         width: Spacing.size320
         padding: Spacing.size12
-        modal: false
+        modal: true
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
@@ -240,12 +240,30 @@ Rectangle {
                     font.pixelSize: Theme.typeLabelSmall
                 }
 
-                IconButton {
-                    iconSource: Icons.close
+                Rectangle {
                     implicitWidth: Spacing.size20
                     implicitHeight: Spacing.size20
-                    toolTip: qsTr("Close")
-                    onClicked: studyPopup.close()
+                    radius: Theme.radiusSmall
+                    color: closeHover.hovered ? Theme.surfaceHover : Theme.transparent
+                    border.color: Theme.borderSubtle
+                    border.width: Theme.borderWidth
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "×"
+                        color: Theme.textSecondary
+                        font.family: Theme.uiFont
+                        font.pixelSize: Theme.typeLabel
+                    }
+
+                    HoverHandler {
+                        id: closeHover
+                        cursorShape: Qt.PointingHandCursor
+                    }
+
+                    TapHandler {
+                        onTapped: studyPopup.close()
+                    }
                 }
             }
 
@@ -271,14 +289,12 @@ Rectangle {
                         Layout.fillWidth: true
                         implicitHeight: Spacing.size28
                         radius: Theme.radiusSmall
-                        color: activeRowHover.containsMouse ? Theme.surfaceSelected : Theme.surfaceRaised
+                        color: activeRowHover.hovered ? Theme.surfaceSelected : Theme.surfaceRaised
                         border.color: Theme.borderSubtle
                         border.width: Theme.borderWidth
 
-                        MouseArea {
+                        HoverHandler {
                             id: activeRowHover
-                            anchors.fill: parent
-                            hoverEnabled: true
                         }
 
                         RowLayout {
@@ -315,7 +331,7 @@ Rectangle {
                                     implicitWidth: Spacing.size16
                                     implicitHeight: Spacing.size16
                                     radius: Spacing.radiusSmall
-                                    color: decMouse.containsMouse ? Theme.surfaceHover : Theme.transparent
+                                    color: decHover.hovered ? Theme.surfaceHover : Theme.transparent
                                     border.color: Theme.borderSubtle
                                     border.width: Theme.borderWidth
 
@@ -323,15 +339,17 @@ Rectangle {
                                         anchors.centerIn: parent
                                         text: "−"
                                         color: Theme.textSecondary
+                                        font.family: Theme.uiFont
                                         font.pixelSize: Theme.typeLabelSmall
                                     }
 
-                                    MouseArea {
-                                        id: decMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
+                                    HoverHandler {
+                                        id: decHover
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.adjustPeriod(activeRow.modelData, -1)
+                                    }
+
+                                    TapHandler {
+                                        onTapped: root.adjustPeriod(activeRow.modelData, -1)
                                     }
                                 }
 
@@ -339,7 +357,7 @@ Rectangle {
                                     implicitWidth: Spacing.size16
                                     implicitHeight: Spacing.size16
                                     radius: Spacing.radiusSmall
-                                    color: incMouse.containsMouse ? Theme.surfaceHover : Theme.transparent
+                                    color: incHover.hovered ? Theme.surfaceHover : Theme.transparent
                                     border.color: Theme.borderSubtle
                                     border.width: Theme.borderWidth
 
@@ -347,25 +365,45 @@ Rectangle {
                                         anchors.centerIn: parent
                                         text: "+"
                                         color: Theme.textSecondary
+                                        font.family: Theme.uiFont
                                         font.pixelSize: Theme.typeLabelSmall
                                     }
 
-                                    MouseArea {
-                                        id: incMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
+                                    HoverHandler {
+                                        id: incHover
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.adjustPeriod(activeRow.modelData, 1)
+                                    }
+
+                                    TapHandler {
+                                        onTapped: root.adjustPeriod(activeRow.modelData, 1)
                                     }
                                 }
                             }
 
-                            IconButton {
-                                iconSource: Icons.close
-                                implicitWidth: Spacing.size20
-                                implicitHeight: Spacing.size20
-                                toolTip: qsTr("Remove")
-                                onClicked: root.removeStudy(activeRow.modelData.id)
+                            Rectangle {
+                                implicitWidth: Spacing.size18
+                                implicitHeight: Spacing.size18
+                                radius: Spacing.radiusSmall
+                                color: removeHover.hovered ? Theme.surfaceHover : Theme.transparent
+                                border.color: Theme.borderSubtle
+                                border.width: Theme.borderWidth
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "×"
+                                    color: Theme.textSecondary
+                                    font.family: Theme.uiFont
+                                    font.pixelSize: Theme.typeLabelSmall
+                                }
+
+                                HoverHandler {
+                                    id: removeHover
+                                    cursorShape: Qt.PointingHandCursor
+                                }
+
+                                TapHandler {
+                                    onTapped: root.removeStudy(activeRow.modelData.id)
+                                }
                             }
                         }
                     }
@@ -466,23 +504,28 @@ Rectangle {
         }
     }
 
-    component StudyAddRow: Rectangle {
+    component StudyAddRow: Button {
         id: addRow
         required property string label
         required property string subtitle
-        property bool enabled: true
         signal activated()
 
-        width: parent ? parent.width : implicitWidth
-        implicitHeight: Spacing.size32
-        radius: Theme.radiusSmall
-        color: addRowMouse.containsMouse && addRow.enabled ? Theme.surfaceSelected : Theme.transparent
-        opacity: addRow.enabled ? 1.0 : 0.4
+        Layout.fillWidth: true
+        implicitHeight: Spacing.size36
+        hoverEnabled: true
 
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: Spacing.size8
-            anchors.rightMargin: Spacing.size8
+        HoverHandler {
+            cursorShape: addRow.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+        }
+
+        background: Rectangle {
+            radius: Theme.radiusSmall
+            color: addRow.down ? Theme.accentPressed : (addRow.hovered ? Theme.surfaceSelected : Theme.transparent)
+            border.color: addRow.visualFocus ? Theme.accent : Theme.transparent
+            border.width: Theme.borderWidth
+        }
+
+        contentItem: RowLayout {
             spacing: Spacing.size6
 
             ColumnLayout {
@@ -506,22 +549,16 @@ Rectangle {
                 }
             }
 
-            Image {
-                source: Icons.plus
-                sourceSize.width: Spacing.iconSmall
-                sourceSize.height: Spacing.iconSmall
-                opacity: 0.7
+            Text {
+                text: "+"
+                color: Theme.textSecondary
+                font.family: Theme.uiFont
+                font.pixelSize: Theme.typeBody
+                font.weight: Typography.weightMedium
                 Layout.alignment: Qt.AlignVCenter
             }
         }
 
-        MouseArea {
-            id: addRowMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: addRow.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-            enabled: addRow.enabled
-            onClicked: addRow.activated()
-        }
+        onClicked: addRow.activated()
     }
 }

@@ -840,13 +840,13 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
-                    Image {
+                    Text {
                         visible: chipMouse.containsMouse
-                        source: Icons.close
-                        sourceSize.width: Spacing.iconSmall
-                        sourceSize.height: Spacing.iconSmall
+                        text: "×"
+                        color: Theme.textSecondary
+                        font.family: Theme.uiFont
+                        font.pixelSize: Theme.typeLabelSmall
                         anchors.verticalCenter: parent.verticalCenter
-                        opacity: 0.8
                     }
                 }
 
