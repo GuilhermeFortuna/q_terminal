@@ -20,5 +20,6 @@ AppTextField 1.0 AppTextField.qml
 AppComboBox 1.0 AppComboBox.qml
 ChartIdentity 1.0 ChartIdentity.qml
 ChartTargetPicker 1.0 ChartTargetPicker.qml
+StudyPicker 1.0 StudyPicker.qml
 ChartTargetPrompt 1.0 ChartTargetPrompt.qml
 BarReadout 1.0 BarReadout.qml

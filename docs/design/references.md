@@ -51,6 +51,7 @@ an implementing agent works with each one.
 | Wireshark | Dense professional tables: row height, zebra treatment, column alignment, selection and detail-pane pairing at thousands of rows. |
 | MuseScore 4 | Mature Qt desktop structure: toolbar density, panel headers, inspector patterns. |
 | Grafana, Linear | Dark-theme hierarchy and restraint at high density; status and badge semantics. |
+| TradingView indicator legend | Chart-study picker and active-study list (Q-075): compact legend rows with colour swatch, short name and parameter summary; add/remove via a single toolbar control; parameters edited inline in a small popover rather than a modal wizard. |
 | Figma community trading kits — TradeStackUI, Trading Orderbook UI Kit Template, PopTrade | Order-entry and order-book visual treatment. Identified by search and not yet opened; confirm each is actually good before a spec cites it. |
 
 ## Using this register

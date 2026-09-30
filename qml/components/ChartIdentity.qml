@@ -170,6 +170,12 @@ Rectangle {
                 Layout.alignment: Qt.AlignVCenter
             }
 
+            StudyPicker {
+                feed: root.feed
+                previewState: root.previewState
+                Layout.alignment: Qt.AlignVCenter
+            }
+
             Item {
                 Layout.fillWidth: true
             }

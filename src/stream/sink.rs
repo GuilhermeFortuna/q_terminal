@@ -118,10 +118,10 @@ impl From<crate::stream::topic_state::BarColumns> for q_buffers::frame::BarColum
             high: c.high,
             low: c.low,
             close: c.close,
-            tick_volume: None,
+            tick_volume: Some(c.volume.iter().map(|v| *v as i64).collect()),
             spread: None,
             real_volume: None,
-            label: q_buffers::frame::TimeLabel::Utc,
+            label: q_buffers::frame::TimeLabel::BrasiliaWallclock,
         }
     }
 }

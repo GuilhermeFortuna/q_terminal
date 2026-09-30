@@ -10,6 +10,7 @@ use crate::contracts_stream::{ExecutionDecisionState, ExecutionFillEvent};
 use crate::execution::markers::{self, Marker};
 use crate::execution::overlays::{self, Hit, Layer, OverlaySeries, View};
 use crate::history::{HistoryController, Loaded, DEFAULT_HISTORY_BARS};
+use crate::studies::{PriceSource, StudyKind, StudySet};
 
 #[derive(Debug, Clone)]
 pub enum BarDelivery {
@@ -206,6 +207,24 @@ pub mod ffi {
         /// bars and one forming bar, in whole cents.
         #[qinvokable]
         fn load_preview_bars(self: Pin<&mut BarFeed>, count: i32);
+
+        #[qinvokable]
+        fn add_study(
+            self: Pin<&mut BarFeed>,
+            kind: QString,
+            period: i64,
+            source: QString,
+            num_std: f64,
+        ) -> i64;
+
+        #[qinvokable]
+        fn remove_study(self: Pin<&mut BarFeed>, study_id: i64) -> bool;
+
+        #[qinvokable]
+        fn study_list_json(self: &BarFeed) -> QString;
+
+        #[qinvokable]
+        fn set_study_palette_json(self: Pin<&mut BarFeed>, json: QString);
 
         #[qinvokable]
         fn target_generation(self: &BarFeed) -> i64;
@@ -470,7 +489,12 @@ pub struct BarFeedRust {
     pub price_decimals: u32,
     decisions: Vec<ExecutionDecisionState>,
     fills: Vec<ExecutionFillEvent>,
-    overlay_series: Vec<OverlaySeries>,
+    deployment_overlays: Vec<OverlaySeries>,
+    study_set: StudySet,
+    bar_tick_volume: Vec<i64>,
+    bar_real_volume: Vec<i64>,
+    forming_tick_volume: Option<i64>,
+    forming_real_volume: Option<i64>,
     markers: Vec<Marker>,
     /// What the cached markers were placed against: bar count, first bar time, rows revision.
     markers_key: Option<(usize, i64, u64)>,
@@ -573,7 +597,12 @@ impl BarFeedRust {
             price_decimals: MIN_PRICE_DECIMALS,
             decisions: Vec::new(),
             fills: Vec::new(),
-            overlay_series: Vec::new(),
+            deployment_overlays: Vec::new(),
+            study_set: StudySet::new(),
+            bar_tick_volume: Vec::new(),
+            bar_real_volume: Vec::new(),
+            forming_tick_volume: None,
+            forming_real_volume: None,
             markers: Vec::new(),
             markers_key: None,
             rows_rev: 0,
@@ -654,7 +683,12 @@ impl BarFeedRust {
         self.bar_hlc.clear();
         self.forming = None;
         self.price_decimals = MIN_PRICE_DECIMALS;
-        self.overlay_series.clear();
+        self.deployment_overlays.clear();
+        self.study_set.clear();
+        self.bar_tick_volume.clear();
+        self.bar_real_volume.clear();
+        self.forming_tick_volume = None;
+        self.forming_real_volume = None;
         self.markers.clear();
         self.markers_key = None;
         self.layers.clear();
@@ -703,7 +737,9 @@ impl BarFeedRust {
     pub fn build_overlays(&mut self, view: View) {
         self.refresh_markers();
         let opens = self.bar_opens_ms();
-        let mut layers = overlays::line_layers(&self.overlay_series, &opens, view);
+        let mut merged: Vec<OverlaySeries> = self.deployment_overlays.clone();
+        merged.extend(self.study_set.overlays().iter().cloned());
+        let mut layers = overlays::line_layers(&merged, &opens, view);
         let (marker_layers, hits) = overlays::marker_layers(&self.markers, &self.bar_hlc, view);
         layers.extend(marker_layers);
         self.layers = layers;
@@ -753,7 +789,7 @@ impl BarFeedRust {
             self.bar_times.first().copied().unwrap_or(0),
             self.rows_rev,
         ));
-        self.overlay_series = (0..overlays)
+        self.deployment_overlays = (0..overlays)
             .map(|k| OverlaySeries {
                 key: format!("bench-{k}"),
                 label: format!("bench {k}"),
@@ -763,6 +799,8 @@ impl BarFeedRust {
                     overlays::Pane::Oscillator
                 },
                 rgba: 0x2962ffff,
+                color_role: None,
+                osc_slot: None,
                 points: (0..bars)
                     .map(|i| (t0 + i as i64 * 60_000, Some(close(i) + k as f64)))
                     .collect(),
@@ -805,13 +843,67 @@ impl BarFeedRust {
             self.stale_dropped += 1;
             return false;
         }
-        self.overlay_series = series;
+        self.deployment_overlays = series;
         self.overlay_revision += 1;
         true
     }
 
     pub fn overlay_series(&self) -> &[OverlaySeries] {
-        &self.overlay_series
+        &self.deployment_overlays
+    }
+
+    fn study_bar_columns(&self) -> BarColumns {
+        BarColumns {
+            time: self.bar_times.clone(),
+            open: self.bar_opens.clone(),
+            high: self.bar_hlc.iter().map(|h| h.0).collect(),
+            low: self.bar_hlc.iter().map(|h| h.1).collect(),
+            close: self.bar_hlc.iter().map(|h| h.2).collect(),
+            tick_volume: if self.series_vols.tick_volume {
+                Some(self.bar_tick_volume.clone())
+            } else {
+                None
+            },
+            spread: None,
+            real_volume: if self.series_vols.real_volume {
+                Some(self.bar_real_volume.clone())
+            } else {
+                None
+            },
+            label: self.series_label,
+        }
+    }
+
+    fn forming_bar_columns(&self) -> Option<BarColumns> {
+        self.forming
+            .map(|(time, open, high, low, close)| BarColumns {
+                time: vec![time],
+                open: vec![open],
+                high: vec![high],
+                low: vec![low],
+                close: vec![close],
+                tick_volume: self
+                    .forming_tick_volume
+                    .map(|v| vec![v])
+                    .or_else(|| self.series_vols.tick_volume.then(|| vec![0])),
+                spread: None,
+                real_volume: self
+                    .forming_real_volume
+                    .map(|v| vec![v])
+                    .or_else(|| self.series_vols.real_volume.then(|| vec![0])),
+                label: self.series_label,
+            })
+    }
+
+    pub fn refresh_studies(&mut self) {
+        if self.study_set.specs().is_empty() {
+            return;
+        }
+        let completed = self.study_bar_columns();
+        let forming = self.forming_bar_columns();
+        self.study_set
+            .rebuild(self.series_label, &[completed], forming.as_ref());
+        self.overlay_revision += 1;
     }
 
     fn observe_price(&mut self, price: f64) {
@@ -833,6 +925,8 @@ impl BarFeedRust {
     fn sync_forming(&mut self) {
         if !self.series.has_forming {
             self.forming = None;
+            self.forming_tick_volume = None;
+            self.forming_real_volume = None;
         }
     }
 
@@ -1049,9 +1143,18 @@ impl BarFeedRust {
             self.bar_opens.extend_from_slice(&bars.open);
             self.bar_hlc
                 .extend((0..bar_count).map(|i| (bars.high[i], bars.low[i], bars.close[i])));
+            if let Some(tv) = &bars.tick_volume {
+                self.series_vols.tick_volume = true;
+                self.bar_tick_volume.extend(tv.iter().copied());
+            }
+            if let Some(rv) = &bars.real_volume {
+                self.series_vols.real_volume = true;
+                self.bar_real_volume.extend(rv.iter().copied());
+            }
             self.observe_prices(&bars);
             let _ = self.series.load_history(bars);
             self.sync_forming();
+            self.refresh_studies();
         }
         self.history.finish_load(
             Loaded {
@@ -1073,7 +1176,20 @@ impl BarFeedRust {
         }
     }
 
-    fn adapt_bars(&self, bars: BarColumns) -> BarColumns {
+    /// On a live-only chart, the first stream batch may introduce tick or real volume columns.
+    /// Adopt that profile before `adapt_bars` so `LiveBarSeries` and study volume agree.
+    fn admit_volume_profile(&mut self, bars: &BarColumns) {
+        if self.series.bar_count > 0 || self.series.has_forming {
+            return;
+        }
+        let incoming = VolumeSet::from_bars(bars);
+        if incoming.tick_volume || incoming.spread || incoming.real_volume {
+            self.series_vols = incoming;
+            self.series_label = bars.label;
+        }
+    }
+
+    fn adapt_bars(&mut self, bars: BarColumns) -> BarColumns {
         let c = bars.time.len();
         let tick_volume = if self.series_vols.tick_volume {
             bars.tick_volume.or_else(|| Some(vec![0; c]))
@@ -1123,6 +1239,7 @@ impl BarFeedRust {
     fn apply_delivery_now(&mut self, delivery: BarDelivery) {
         match delivery {
             BarDelivery::Completed(bars) => {
+                self.admit_volume_profile(&bars);
                 let count = bars.time.len() as i64;
                 let adapted = self.adapt_bars(bars);
                 self.observe_prices(&adapted);
@@ -1133,30 +1250,70 @@ impl BarFeedRust {
                     adapted.low.clone(),
                     adapted.close.clone(),
                 );
-                if self.series.ingest_completed(adapted).is_ok() {
+                let tick_vol = adapted.tick_volume.clone();
+                let real_vol = adapted.real_volume.clone();
+                let ingest = if self.series.bar_count == 0 && !self.series.has_forming {
+                    self.series.load_history(adapted)
+                } else {
+                    self.series.ingest_completed(adapted)
+                };
+                if ingest.is_ok() {
                     for (i, t) in times.into_iter().enumerate() {
                         let open = opens[i];
                         let hlc = (highs[i], lows[i], closes[i]);
+                        let vol_cols = (
+                            tick_vol.as_ref().and_then(|v| v.get(i)),
+                            real_vol.as_ref().and_then(|v| v.get(i)),
+                        );
                         match self.bar_times.last().copied() {
                             Some(last) if t > last => {
                                 self.bar_times.push(t);
                                 self.bar_opens.push(open);
                                 self.bar_hlc.push(hlc);
+                                if let Some(tv) = vol_cols.0 {
+                                    self.bar_tick_volume.push(*tv);
+                                }
+                                if let Some(rv) = vol_cols.1 {
+                                    self.bar_real_volume.push(*rv);
+                                }
                             }
                             Some(last) if t == last => {
                                 *self.bar_times.last_mut().unwrap() = t;
                                 *self.bar_opens.last_mut().unwrap() = open;
                                 *self.bar_hlc.last_mut().unwrap() = hlc;
+                                if let Some(tv) = vol_cols.0 {
+                                    if let Some(slot) = self.bar_tick_volume.last_mut() {
+                                        *slot = *tv;
+                                    }
+                                }
+                                if let Some(rv) = vol_cols.1 {
+                                    if let Some(slot) = self.bar_real_volume.last_mut() {
+                                        *slot = *rv;
+                                    }
+                                }
                             }
                             Some(_) => {}
                             None => {
                                 self.bar_times.push(t);
                                 self.bar_opens.push(open);
                                 self.bar_hlc.push(hlc);
+                                if let Some(tv) = vol_cols.0 {
+                                    self.bar_tick_volume.push(*tv);
+                                }
+                                if let Some(rv) = vol_cols.1 {
+                                    self.bar_real_volume.push(*rv);
+                                }
                             }
                         }
                     }
+                    if tick_vol.is_some() {
+                        self.series_vols.tick_volume = true;
+                    }
+                    if real_vol.is_some() {
+                        self.series_vols.real_volume = true;
+                    }
                     self.sync_forming();
+                    self.refresh_studies();
                     self.applied += count;
                     self.last_applied_instant = Some(Instant::now());
                     self.data_age_ms = 0;
@@ -1166,6 +1323,7 @@ impl BarFeedRust {
                 }
             }
             BarDelivery::Forming(bars) => {
+                self.admit_volume_profile(&bars);
                 let latest = match (
                     bars.time.first(),
                     bars.open.first(),
@@ -1179,16 +1337,27 @@ impl BarFeedRust {
                     _ => None,
                 };
                 let adapted = self.adapt_bars(bars);
+                let tick_vol = adapted.tick_volume.clone();
+                let real_vol = adapted.real_volume.clone();
                 if self.series.ingest_forming(adapted).is_ok() {
                     // Kept only when the series accepted it, so the readout never shows a
                     // forming bar the chart does not draw.
                     self.forming = latest;
+                    if tick_vol.is_some() {
+                        self.series_vols.tick_volume = true;
+                    }
+                    if real_vol.is_some() {
+                        self.series_vols.real_volume = true;
+                    }
+                    self.forming_tick_volume = tick_vol.as_ref().and_then(|v| v.first()).copied();
+                    self.forming_real_volume = real_vol.as_ref().and_then(|v| v.first()).copied();
                     if let Some((_, open, high, low, close)) = latest {
                         for price in [open, high, low, close] {
                             self.observe_price(price);
                         }
                     }
                     self.sync_forming();
+                    self.refresh_studies();
                     self.applied += 1;
                     self.last_applied_instant = Some(Instant::now());
                     self.data_age_ms = 0;
@@ -1306,6 +1475,73 @@ impl ffi::BarFeed {
         let rev = self.rust().overlay_revision;
         self.as_mut().rust_mut().overlay_revision = rev - 1;
         self.as_mut().set_overlay_revision(rev);
+    }
+
+    pub fn add_study(
+        mut self: std::pin::Pin<&mut Self>,
+        kind: QString,
+        period: i64,
+        source: QString,
+        num_std: f64,
+    ) -> i64 {
+        let kind = StudyKind::parse(&kind.to_string()).unwrap_or(StudyKind::Sma);
+        let source = PriceSource::parse(&source.to_string()).unwrap_or(PriceSource::Close);
+        match self
+            .as_mut()
+            .rust_mut()
+            .study_set
+            .add_study(kind, period, source, num_std)
+        {
+            Ok(id) => {
+                self.as_mut().rust_mut().refresh_studies();
+                let rev = self.rust().overlay_revision;
+                self.as_mut().rust_mut().overlay_revision = rev - 1;
+                self.as_mut().set_overlay_revision(rev);
+                id as i64
+            }
+            Err(_) => -1,
+        }
+    }
+
+    pub fn remove_study(mut self: std::pin::Pin<&mut Self>, study_id: i64) -> bool {
+        let removed = self
+            .as_mut()
+            .rust_mut()
+            .study_set
+            .remove_study(study_id as u64);
+        if removed {
+            self.as_mut().rust_mut().refresh_studies();
+            let rev = self.rust().overlay_revision;
+            self.as_mut().rust_mut().overlay_revision = rev - 1;
+            self.as_mut().set_overlay_revision(rev);
+        }
+        removed
+    }
+
+    #[allow(clippy::needless_arbitrary_self_type)]
+    pub fn study_list_json(self: &Self) -> QString {
+        QString::from(&self.rust().study_set.study_list_json())
+    }
+
+    pub fn set_study_palette_json(mut self: std::pin::Pin<&mut Self>, json: QString) {
+        let v: serde_json::Value = serde_json::from_str(&json.to_string()).unwrap_or_default();
+        let mut palette = [0u32; 8];
+        if let Some(arr) = v.as_array() {
+            for (i, item) in arr.iter().take(8).enumerate() {
+                if let Some(hex) = item.as_str().and_then(|s| s.strip_prefix('#')) {
+                    if hex.len() == 6 {
+                        if let Ok(v) = u32::from_str_radix(hex, 16) {
+                            palette[i] = (v << 8) | 0xff;
+                        }
+                    }
+                }
+            }
+        }
+        self.as_mut()
+            .rust_mut()
+            .study_set
+            .set_study_palette(palette);
+        self.as_mut().rust_mut().refresh_studies();
     }
 
     pub fn set_overlays_json(
@@ -2237,5 +2473,80 @@ mod tests {
         feed.reset_for_target("VALE3", "5m", 2);
         assert!(!feed.bar_snapshot(0).valid);
         assert!(!feed.bar_snapshot(1).valid);
+    }
+
+    #[test]
+    fn study_overlays_follow_completed_and_forming_bars() {
+        let mut feed = BarFeedRust::new("PETR4", "1m");
+        feed.history.open_gate();
+        feed.study_set
+            .add_study(StudyKind::Sma, 2, PriceSource::Close, 2.0)
+            .unwrap();
+
+        feed.apply_delivery(BarDelivery::Completed(make_bar_columns(
+            60_000, 10.0, 11.0, 9.0, 10.0,
+        )));
+        feed.apply_delivery(BarDelivery::Completed(make_bar_columns(
+            120_000, 10.0, 11.0, 9.0, 12.0,
+        )));
+        let committed = feed.study_set.overlays()[0].points.len();
+        assert_eq!(committed, 2);
+
+        feed.apply_delivery(BarDelivery::Forming(make_bar_columns(
+            180_000, 10.0, 11.0, 9.0, 99.0,
+        )));
+        assert_eq!(feed.study_set.overlays()[0].points.len(), 3);
+        let preview = feed.study_set.overlays()[0].points.last().unwrap().1;
+
+        feed.apply_delivery(BarDelivery::Completed(make_bar_columns(
+            180_000, 10.0, 11.0, 9.0, 14.0,
+        )));
+        assert_eq!(feed.study_set.overlays()[0].points.len(), 3);
+        assert_ne!(
+            feed.study_set.overlays()[0].points.last().unwrap().1,
+            preview
+        );
+    }
+
+    #[test]
+    fn target_reset_clears_study_set() {
+        let mut feed = BarFeedRust::new("PETR4", "1m");
+        feed.history.open_gate();
+        feed.study_set
+            .add_study(StudyKind::Ema, 3, PriceSource::Close, 2.0)
+            .unwrap();
+        feed.apply_delivery(BarDelivery::Completed(make_bar_columns(
+            60_000, 10.0, 11.0, 9.0, 10.0,
+        )));
+        assert!(!feed.study_set.overlays().is_empty());
+
+        feed.reset_for_target("VALE3", "1m", 1);
+        assert!(feed.study_set.specs().is_empty());
+        assert!(feed.study_set.overlays().is_empty());
+    }
+
+    #[test]
+    fn deployment_overlays_unchanged_when_studies_added() {
+        let mut feed = BarFeedRust::new("PETR4", "1m");
+        feed.history.open_gate();
+        feed.deployment_overlays.push(OverlaySeries {
+            key: "deploy".into(),
+            label: "deploy".into(),
+            pane: overlays::Pane::Price,
+            rgba: 0x112233ff,
+            color_role: None,
+            osc_slot: None,
+            points: vec![(1, Some(1.0))],
+        });
+        let before = feed.deployment_overlays.clone();
+        feed.study_set
+            .add_study(StudyKind::Rsi, 14, PriceSource::Close, 2.0)
+            .unwrap();
+        feed.apply_delivery(BarDelivery::Completed(make_bar_columns(
+            60_000, 10.0, 11.0, 9.0, 10.0,
+        )));
+        feed.refresh_studies();
+        assert_eq!(feed.deployment_overlays, before);
+        assert!(!feed.study_set.overlays().is_empty());
     }
 }

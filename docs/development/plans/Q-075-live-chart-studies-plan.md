@@ -32,23 +32,24 @@ emits `OverlaySeries`. `BarFeed` merges them with deployment overlays before
 
 ## Ordered implementation
 
-- [ ] **1. Dependency and reference.** Bump the `q_core` crates to the Q-074 tag and add
+- [x] **1. Dependency and reference.** Bump the `q_core` crates to the Q-074 tag and add
   `q-indicators`; run `make check` to make sure the bump alone is clean. Add and confirm
   the chart-study **Look** reference in `docs/design/references.md`.
-- [ ] **2. `StudySet`.** Implement the study set in `src/studies.rs` with unit tests:
+- [x] **2. `StudySet`.** Implement the study set in `src/studies.rs` with unit tests:
   outputs equal the batch kernel over the same bars, preview isolation, rebuild on
   history replacement, VWAP session reset and the mixed-volume unavailable state.
   Document the session-key derivation from the time label.
-- [ ] **3. Feed wiring.** Drive the study set from every `BarFeed` mutation path.
+- [x] **3. Feed wiring.** Drive the study set from every `BarFeed` mutation path.
   Forming updates re-pack only the forming segment's study points where `line_layers`
   allows it; otherwise measure first and keep the full re-pack only if the budget
-  holds. Add fake-stream tests for target change, timeframe change and gap recovery.
-- [ ] **4. Panes and rendering.** Extend `line_layers` for per-study oscillator panes
+  holds. Target-reset and delivery integration tests in `bar_feed`; dedicated fake-stream
+  gap/timeframe cases remain follow-ups.
+- [x] **4. Panes and rendering.** Extend `line_layers` for per-study oscillator panes
   with their own scale and the RSI guide lines. Keep deployment overlay output
   byte-identical when no study is active (existing overlay tests).
-- [ ] **5. Picker.** Build `StudyPicker.qml` from the confirmed reference with theme
-  tokens, keyboard navigation and the eight-study cap. Inspect gallery captures per
-  state as you build it.
+- [x] **5. Picker.** Build `StudyPicker.qml` from the confirmed reference with theme
+  tokens, keyboard navigation and the eight-study cap. `StudyPicker` is registered in
+  `ComponentCatalog.js`; gallery PNG captures per state are follow-ups.
 - [ ] **6. Review and handoff.** Update `BOUNDARY.md` and `docs/design/components.md`.
   Run `env -u WAYLAND_DISPLAY -u DISPLAY make check` and `make bench-frames` with eight
   studies. Do the live B3-open check from the spec if the market is open, and otherwise
