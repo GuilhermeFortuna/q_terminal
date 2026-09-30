@@ -3,31 +3,27 @@ import QtQuick
 
 // Distinct study line colours (Q-075); consumed by StudyPicker and pushed to BarFeed.
 QtObject {
+    // High-contrast study colors that remain distinct on dark theme and don't clash with green/red candles
     readonly property var colors: [
-        Palette.accentLegacy,
-        Palette.warningStrong,
-        Palette.positiveStrong,
-        Palette.negativeStrong,
-        Palette.accent,
-        Palette.warning,
-        Palette.positive,
-        Palette.textSecondary
+        "#00e5ff",
+        "#ffb300",
+        "#b388ff",
+        "#ff7043",
+        "#2979ff",
+        "#aeea00",
+        "#f50057",
+        "#90a4ae"
     ]
 
+    function colorAt(index) {
+        return colors[index % colors.length];
+    }
+
     function rgbaHex(index) {
-        var c = colors[index % colors.length];
-        var r = Math.round(c.r * 255);
-        var g = Math.round(c.g * 255);
-        var b = Math.round(c.b * 255);
-        function p2(n) { return (n < 16 ? "0" : "") + n.toString(16); }
-        return "#" + p2(r) + p2(g) + p2(b);
+        return colors[index % colors.length];
     }
 
     function paletteJson() {
-        var out = [];
-        for (var i = 0; i < colors.length; i++) {
-            out.push(rgbaHex(i));
-        }
-        return JSON.stringify(out);
+        return JSON.stringify(colors);
     }
 }

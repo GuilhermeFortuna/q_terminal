@@ -213,6 +213,24 @@ impl StudySet {
         }
     }
 
+    pub fn update_study(
+        &mut self,
+        id: u64,
+        period: i64,
+        source: PriceSource,
+        num_std: f64,
+    ) -> Result<(), String> {
+        if let Some(spec) = self.specs.iter_mut().find(|s| s.id == id) {
+            validate_study_params(spec.kind, period, num_std)?;
+            spec.period = period;
+            spec.source = source;
+            spec.num_std = num_std;
+            Ok(())
+        } else {
+            Err(format!("study id {id} not found"))
+        }
+    }
+
     pub fn study_list_json(&self) -> String {
         let mut items: Vec<serde_json::Value> = Vec::new();
         for s in &self.specs {
@@ -231,9 +249,18 @@ impl StudySet {
                 PriceSource::Low => "low",
                 PriceSource::Hlc3 => "hlc3",
             };
+            let name = match s.kind {
+                StudyKind::Sma => format!("SMA ({})", s.period),
+                StudyKind::Ema => format!("EMA ({})", s.period),
+                StudyKind::Bollinger => format!("Bollinger ({}, {}σ)", s.period, s.num_std),
+                StudyKind::SessionVwap => format!("Session VWAP ({}σ)", s.num_std),
+                StudyKind::Rsi => format!("RSI ({})", s.period),
+                StudyKind::Atr => format!("ATR ({})", s.period),
+            };
             items.push(serde_json::json!({
                 "id": s.id,
                 "kind": kind,
+                "name": name,
                 "period": s.period,
                 "source": source,
                 "num_std": s.num_std,
@@ -805,5 +832,19 @@ mod tests {
             line.points[1].1.unwrap().to_bits(),
             batch_vwap.vwap[1].to_bits()
         );
+    }
+
+    #[test]
+    fn study_set_update_study_modifies_spec() {
+        let mut set = StudySet::new();
+        let id = set
+            .add_study(StudyKind::Ema, 20, PriceSource::Close, 2.0)
+            .unwrap();
+        assert!(set.update_study(id, 50, PriceSource::Open, 2.0).is_ok());
+        assert_eq!(set.specs()[0].period, 50);
+        assert_eq!(set.specs()[0].source, PriceSource::Open);
+        let json = set.study_list_json();
+        assert!(json.contains("\"name\":\"EMA (50)\""));
+        assert!(json.contains("\"period\":50"));
     }
 }

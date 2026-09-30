@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Controls
 import qml
 import "ChartAxis.js" as ChartAxis
 
@@ -787,6 +786,83 @@ Item {
         snapshot: root.barSnapshot
         pointerPrice: root.pointerPriceText
         visible: root.crosshairVisible && !!root.barSnapshot.valid
+    }
+
+    // On-chart active study legend chips (TradingView style)
+    Flow {
+        id: studyLegend
+        objectName: "chartStudyLegend"
+        x: Spacing.size8
+        y: barReadout.visible ? (barReadout.y + barReadout.height + Spacing.size4) : Spacing.size4
+        width: Math.min(chartArea.width - 2 * Spacing.size8, Spacing.size480)
+        spacing: Spacing.size4
+        z: 2
+        visible: root.feed && studyLegendRepeater.count > 0
+
+        Repeater {
+            id: studyLegendRepeater
+            model: {
+                if (!root.feed) return [];
+                try {
+                    return JSON.parse(root.feed.study_list_json()).studies || [];
+                } catch (e) {
+                    return [];
+                }
+            }
+            delegate: Rectangle {
+                id: chip
+                required property var modelData
+                implicitHeight: Spacing.size18
+                implicitWidth: chipRow.implicitWidth + Spacing.size12
+                radius: Spacing.radiusSmall
+                color: chipMouse.containsMouse ? Theme.surfaceSelected : Theme.surfaceHover
+                border.color: Theme.borderSubtle
+                border.width: Theme.borderWidth
+
+                Row {
+                    id: chipRow
+                    anchors.centerIn: parent
+                    spacing: Spacing.size4
+
+                    Rectangle {
+                        width: Spacing.size6
+                        height: Spacing.size6
+                        radius: Spacing.radiusSmall
+                        color: StudyPalette.colors[chip.modelData.palette_index % 8]
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Text {
+                        text: chip.modelData.name || (chip.modelData.kind.toUpperCase() + " " + chip.modelData.period)
+                        color: Theme.textSecondary
+                        font.family: Theme.uiFont
+                        font.pixelSize: Theme.typeLabelSmall
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Image {
+                        visible: chipMouse.containsMouse
+                        source: Icons.close
+                        sourceSize.width: Spacing.iconSmall
+                        sourceSize.height: Spacing.iconSmall
+                        anchors.verticalCenter: parent.verticalCenter
+                        opacity: 0.8
+                    }
+                }
+
+                MouseArea {
+                    id: chipMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (root.feed) {
+                            root.feed.remove_study(chip.modelData.id);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     Row {

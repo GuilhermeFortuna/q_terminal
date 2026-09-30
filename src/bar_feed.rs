@@ -218,6 +218,15 @@ pub mod ffi {
         ) -> i64;
 
         #[qinvokable]
+        fn update_study(
+            self: Pin<&mut BarFeed>,
+            study_id: i64,
+            period: i64,
+            source: QString,
+            num_std: f64,
+        ) -> bool;
+
+        #[qinvokable]
         fn remove_study(self: Pin<&mut BarFeed>, study_id: i64) -> bool;
 
         #[qinvokable]
@@ -518,6 +527,7 @@ struct PropSnapshot {
     bar_count: i64,
     has_forming: bool,
     revision: i64,
+    overlay_revision: i64,
     last_price: f64,
     first_time: i64,
     last_time: i64,
@@ -620,6 +630,7 @@ impl BarFeedRust {
             bar_count: self.bar_count,
             has_forming: self.has_forming,
             revision: self.revision,
+            overlay_revision: self.overlay_revision,
             last_price: self.last_price,
             first_time: self.first_time,
             last_time: self.last_time,
@@ -647,6 +658,7 @@ impl BarFeedRust {
         self.bar_count = p.bar_count;
         self.has_forming = p.has_forming;
         self.revision = p.revision;
+        self.overlay_revision = p.overlay_revision;
         self.last_price = p.last_price;
         self.first_time = p.first_time;
         self.last_time = p.last_time;
@@ -1385,6 +1397,7 @@ impl ffi::BarFeed {
         if after == before {
             return;
         }
+        let overlay_rev_changed = after.overlay_revision != before.overlay_revision;
         self.as_mut().rust_mut().restore_props(before);
         self.as_mut().set_symbol(after.symbol);
         self.as_mut().set_timeframe(after.timeframe);
@@ -1410,6 +1423,9 @@ impl ffi::BarFeed {
         self.as_mut().set_history_error(after.history_error);
         self.as_mut().set_history_bars(after.history_bars);
         self.as_mut().set_history_shortfall(after.history_shortfall);
+        if overlay_rev_changed {
+            self.as_mut().set_overlay_revision(after.overlay_revision);
+        }
         // Last, so the chart items repaint once the rest is consistent.
         self.as_mut().set_revision(after.revision);
     }
@@ -1501,6 +1517,29 @@ impl ffi::BarFeed {
             }
             Err(_) => -1,
         }
+    }
+
+    pub fn update_study(
+        mut self: std::pin::Pin<&mut Self>,
+        study_id: i64,
+        period: i64,
+        source: QString,
+        num_std: f64,
+    ) -> bool {
+        let source = PriceSource::parse(&source.to_string()).unwrap_or(PriceSource::Close);
+        let updated = self
+            .as_mut()
+            .rust_mut()
+            .study_set
+            .update_study(study_id as u64, period, source, num_std)
+            .is_ok();
+        if updated {
+            self.as_mut().rust_mut().refresh_studies();
+            let rev = self.rust().overlay_revision;
+            self.as_mut().rust_mut().overlay_revision = rev - 1;
+            self.as_mut().set_overlay_revision(rev);
+        }
+        updated
     }
 
     pub fn remove_study(mut self: std::pin::Pin<&mut Self>, study_id: i64) -> bool {
@@ -2548,5 +2587,25 @@ mod tests {
         feed.refresh_studies();
         assert_eq!(feed.deployment_overlays, before);
         assert!(!feed.study_set.overlays().is_empty());
+    }
+
+    #[test]
+    fn update_study_modifies_feed_studies() {
+        let mut feed = BarFeedRust::new("PETR4", "1m");
+        feed.history.open_gate();
+        let id = feed
+            .study_set
+            .add_study(StudyKind::Sma, 20, PriceSource::Close, 2.0)
+            .unwrap();
+        feed.apply_delivery(BarDelivery::Completed(make_bar_columns(
+            60_000, 10.0, 11.0, 9.0, 10.0,
+        )));
+        assert!(feed
+            .study_set
+            .update_study(id, 50, PriceSource::Open, 2.0)
+            .is_ok());
+        feed.refresh_studies();
+        assert_eq!(feed.study_set.specs()[0].period, 50);
+        assert_eq!(feed.study_set.specs()[0].source, PriceSource::Open);
     }
 }

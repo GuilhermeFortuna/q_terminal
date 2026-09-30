@@ -28,6 +28,7 @@ PanelFrame {
             id: identity
             objectName: "chartIdentity"
             width: parent.width
+            z: 10
             context: root.shell.activeChartContext
             feed: root.shell.activeFeed
             executionModels: root.shell.activeExecutionModels
@@ -38,6 +39,7 @@ PanelFrame {
             objectName: "chartPane"
             width: parent.width
             height: parent.height - identity.height
+            z: 1
             context: root.shell.activeChartContext
             feed: root.shell.activeFeed
         }
