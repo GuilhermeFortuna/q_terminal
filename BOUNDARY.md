@@ -71,6 +71,13 @@ document already permits:
 - **No Backtest / Result Browser:** Historic backtest visualization, walk-forward result browsers, and tear sheets belong in the research surface (`q_frontend`).
 - **No Dataset Catalog Explorer:** Data ingestion workflows and dataset inspection belong in dedicated tooling.
 
+### Live chart studies (Q-075)
+
+The live chart may display operator-selected `q_core` studies (moving averages, Bollinger
+bands, session VWAP, RSI, ATR) computed locally over the chart's own bar series. Studies are
+not custom formulas, scripting, alerts on indicator values, strategy signals, or parameter
+optimisation.
+
 ---
 
 ## 3. No Backend Process Ownership Rule

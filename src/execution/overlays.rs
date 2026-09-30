@@ -19,6 +19,10 @@ pub struct OverlaySeries {
     pub label: String,
     pub pane: Pane,
     pub rgba: u32,
+    /// When set, the study palette index (theme); deployment overlays leave this unset.
+    pub color_role: Option<u8>,
+    /// Independent oscillator sub-pane for live studies; deployment overlays leave unset.
+    pub osc_slot: Option<u8>,
     /// Bar open (ms) and the backend's value for it.
     pub points: Vec<(i64, Option<f64>)>,
 }
@@ -76,6 +80,8 @@ pub fn parse_chart(json: &str) -> Result<Vec<OverlaySeries>, String> {
                 Pane::Price
             },
             rgba: parse_color(ind["color"].as_str(), i),
+            color_role: None,
+            osc_slot: None,
             points,
         });
     }
@@ -223,8 +229,8 @@ pub fn marker_layers(
 /// Share of the surface height the oscillator pane takes when any oscillator is present.
 pub const OSCILLATOR_SHARE: f32 = 0.25;
 
-/// Packs overlay lines. Price-pane series use the price axis; oscillators share a pane
-/// below the bars, scaled to their visible range. `bar_opens_ms` indexes like the bars.
+/// Packs overlay lines. Price-pane series use the price axis. Oscillator series without
+/// `osc_slot` share one legacy pane; each distinct `osc_slot` gets its own scaled sub-pane.
 pub fn line_layers(series: &[OverlaySeries], bar_opens_ms: &[i64], view: View) -> Vec<Layer> {
     let mut out = Vec::new();
     if !view.valid() {
@@ -238,26 +244,123 @@ pub fn line_layers(series: &[OverlaySeries], bar_opens_ms: &[i64], view: View) -
             .and_then(|i| s.points[i].1)
     };
 
-    let osc_top = view.height * (1.0 - OSCILLATOR_SHARE);
-    let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
-    for s in series.iter().filter(|s| s.pane == Pane::Oscillator) {
-        for &open in &bar_opens_ms[view.first..last] {
-            if let Some(v) = value_at(s, open) {
-                lo = lo.min(v);
-                hi = hi.max(v);
+    let study_slots: Vec<u8> = series
+        .iter()
+        .filter(|s| s.pane == Pane::Oscillator && s.osc_slot.is_some())
+        .map(|s| s.osc_slot.unwrap())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let legacy_osc = series
+        .iter()
+        .any(|s| s.pane == Pane::Oscillator && s.osc_slot.is_none());
+    let pane_count = study_slots.len() + if legacy_osc { 1 } else { 0 };
+    let total_osc_share = if pane_count > 0 {
+        OSCILLATOR_SHARE
+    } else {
+        0.0
+    };
+    let pane_h = if pane_count > 0 {
+        (view.height * total_osc_share) / pane_count as f32
+    } else {
+        0.0
+    };
+
+    struct OscPane {
+        top: f32,
+        height: f32,
+        lo: f64,
+        hi: f64,
+        slot: Option<u8>,
+        rsi_guides: bool,
+    }
+    let mut panes: Vec<OscPane> = Vec::new();
+    let mut y_cursor = view.height;
+    if legacy_osc {
+        y_cursor -= pane_h;
+        let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+        for s in series
+            .iter()
+            .filter(|s| s.pane == Pane::Oscillator && s.osc_slot.is_none())
+        {
+            for &open in &bar_opens_ms[view.first..last] {
+                if let Some(v) = value_at(s, open) {
+                    lo = lo.min(v);
+                    hi = hi.max(v);
+                }
+            }
+        }
+        panes.push(OscPane {
+            top: y_cursor,
+            height: pane_h,
+            lo,
+            hi,
+            slot: None,
+            rsi_guides: false,
+        });
+    }
+    for slot in study_slots {
+        y_cursor -= pane_h;
+        let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+        let mut rsi = false;
+        for s in series
+            .iter()
+            .filter(|s| s.pane == Pane::Oscillator && s.osc_slot == Some(slot))
+        {
+            if s.key.contains("rsi") {
+                rsi = true;
+            }
+            for &open in &bar_opens_ms[view.first..last] {
+                if let Some(v) = value_at(s, open) {
+                    lo = lo.min(v);
+                    hi = hi.max(v);
+                }
+            }
+        }
+        if rsi {
+            lo = lo.min(0.0);
+            hi = hi.max(100.0);
+        }
+        panes.push(OscPane {
+            top: y_cursor,
+            height: pane_h,
+            lo,
+            hi,
+            slot: Some(slot),
+            rsi_guides: rsi,
+        });
+    }
+    for pane in &panes {
+        if pane.lo.is_finite() {
+            let mut sep = Layer::new(MODE_LINE_STRIP, 0x2a2a2aff);
+            let y = pane.top;
+            sep.xy.extend_from_slice(&[0.0, y, view.width, y]);
+            out.push(sep);
+        }
+        if pane.rsi_guides && pane.lo.is_finite() {
+            for level in [30.0, 70.0] {
+                let range = pane.hi - pane.lo;
+                let norm = if range > 0.0 {
+                    (pane.hi - level) / range
+                } else {
+                    0.5
+                };
+                let y = (norm as f32).mul_add(pane.height - 8.0, pane.top + 4.0);
+                let mut guide = Layer::new(MODE_LINE_STRIP, 0x3d3d3d88);
+                guide.xy.extend_from_slice(&[0.0, y, view.width, y]);
+                out.push(guide);
             }
         }
     }
-    if lo.is_finite() {
-        let mut sep = Layer::new(MODE_LINE_STRIP, 0x2a2a2aff);
-        sep.xy
-            .extend_from_slice(&[0.0, osc_top, view.width, osc_top]);
-        out.push(sep);
-    }
-    let osc_y = |v: f64| -> f32 {
-        let range = hi - lo;
-        let norm = if range > 0.0 { (hi - v) / range } else { 0.5 };
-        (norm as f32).mul_add(view.height - osc_top - 8.0, osc_top + 4.0)
+
+    let osc_y = |pane: &OscPane, v: f64| -> f32 {
+        let range = pane.hi - pane.lo;
+        let norm = if range > 0.0 {
+            (pane.hi - v) / range
+        } else {
+            0.5
+        };
+        (norm as f32).mul_add(pane.height - 8.0, pane.top + 4.0)
     };
 
     for s in series {
@@ -273,7 +376,13 @@ pub fn line_layers(series: &[OverlaySeries], bar_opens_ms: &[i64], view: View) -
                 Some(v) => {
                     let y = match s.pane {
                         Pane::Price => view.price_y(v),
-                        Pane::Oscillator => osc_y(v),
+                        Pane::Oscillator => {
+                            let pane = panes
+                                .iter()
+                                .find(|p| p.slot == s.osc_slot)
+                                .expect("osc pane");
+                            osc_y(pane, v)
+                        }
                     };
                     run.xy.extend_from_slice(&[view.bar_x(i), y]);
                 }

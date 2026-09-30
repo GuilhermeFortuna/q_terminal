@@ -98,6 +98,8 @@ fn check(first: usize, last: usize) {
         label: "Close".into(),
         pane: Pane::Price,
         rgba: 0xffffffff,
+        color_role: None,
+        osc_slot: None,
         points: (0..BARS).map(|i| (opens()[i], Some(close_of(i)))).collect(),
     }];
     let lines = line_layers(&series, &opens(), view);
@@ -180,6 +182,8 @@ fn markers_outside_the_view_are_not_drawn_and_holes_break_lines() {
         label: "x".into(),
         pane: Pane::Price,
         rgba: 1,
+        color_role: None,
+        osc_slot: None,
         points,
     };
     let lines = line_layers(&[s], &opens(), view);

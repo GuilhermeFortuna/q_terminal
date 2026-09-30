@@ -23,5 +23,6 @@ var entries = [
     { name: "ChartIdentity", states: ["rest", "switching", "loading", "stale", "disconnected"] },
     { name: "ChartTargetPicker", states: ["open", "manual", "following", "invalid", "no-data"] },
     { name: "ChartTargetPrompt", states: ["open", "error"] },
-    { name: "BarReadout", states: ["rest", "forming", "hover"] }
+    { name: "BarReadout", states: ["rest", "forming", "hover"] },
+    { name: "StudyPicker", states: ["rest", "open", "max-studies"] }
 ]
