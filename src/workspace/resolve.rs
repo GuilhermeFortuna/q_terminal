@@ -41,6 +41,7 @@ pub fn resolve_for_displays(
             windows,
             selection: file.selection.clone(),
             study_sets: file.study_sets.clone(),
+            chart_preferences: file.chart_preferences.clone(),
         },
         messages,
     )
@@ -94,6 +95,7 @@ fn merge_workspace_windows(file: &WorkspaceFile) -> WorkspaceFile {
         }],
         selection: file.selection.clone(),
         study_sets: file.study_sets.clone(),
+        chart_preferences: file.chart_preferences.clone(),
     }
 }
 

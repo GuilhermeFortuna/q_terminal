@@ -322,6 +322,7 @@ impl ffi::WorkspaceController {
                 .collect(),
             selection,
             study_sets,
+            chart_preferences: std::collections::HashMap::new(),
         };
         QString::from(serde_json::to_string(&file).unwrap_or_else(|_| "{}".into()))
     }

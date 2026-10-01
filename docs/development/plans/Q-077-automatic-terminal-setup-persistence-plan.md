@@ -19,8 +19,8 @@
 
 ## Ordered implementation
 
-- [ ] 1. Add tests in tests/workspace_autosave.rs for debounce, final-window capture, shutdown flush and write failures; use a temporary config directory and injected clock/writer, not real sleeps or user files.
-- [ ] 2. Extend src/workspace/schema.rs, store.rs and resolve.rs with WorkspaceChartPreferences and v1/v2 migrations. Implement atomic workspace/state writes and retain dirty revisions on failure. Add serialization, corrupt/future-file and failure-injection assertions.
+- [x] 1. Add tests in tests/workspace_autosave.rs for debounce, final-window capture, shutdown flush and write failures; use a temporary config directory and injected clock/writer, not real sleeps or user files.
+- [x] 2. Extend src/workspace/schema.rs, store.rs and resolve.rs with WorkspaceChartPreferences and v1/v2 migrations. Implement atomic workspace/state writes and retain dirty revisions on failure. Add serialization, corrupt/future-file and failure-injection assertions.
 - [ ] 3. Integrate src/workspace/autosave.rs and WorkspaceController with accepted study/layout/target revisions. Connect Main.qml and shell closing signals; prevent restore and teardown from scheduling destructive saves.
 - [ ] 4. Resolve saved target plus explicit config precedence before startup connects BarFeed/ChartTarget. Test session-only overrides, unavailable symbol lookup, delayed followed-deployment resolution and fallback without starting a deployment.
 - [ ] 5. Persist visible-bar count and restore live-follow. Exercise the complete close/reopen workflow through the existing offscreen harness, including switching workspaces and one-window versus final-window closure.

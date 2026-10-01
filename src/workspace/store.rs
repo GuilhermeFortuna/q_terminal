@@ -6,8 +6,17 @@ use std::path::{Path, PathBuf};
 
 use super::schema::{
     default_chart, default_single, default_trading, parse_workspace, serialize_workspace,
-    LoadError, WorkspaceFile,
+    LoadError, WorkspaceFile, CURRENT_SCHEMA_VERSION,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InjectedWriteFailure {
+    #[default]
+    None,
+    Write,
+    Sync,
+    Rename,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceReport {
@@ -21,6 +30,7 @@ pub struct WorkspaceStore {
     state_path: PathBuf,
     last_used: Option<String>,
     reports: Vec<WorkspaceReport>,
+    failure_injector: InjectedWriteFailure,
 }
 
 impl WorkspaceStore {
@@ -35,10 +45,15 @@ impl WorkspaceStore {
             state_path,
             last_used: None,
             reports: Vec::new(),
+            failure_injector: InjectedWriteFailure::None,
         };
         store.ensure_defaults();
         store.last_used = store.read_last_used();
         store
+    }
+
+    pub fn set_injected_failure(&mut self, failure: InjectedWriteFailure) {
+        self.failure_injector = failure;
     }
 
     pub fn reports(&self) -> &[WorkspaceReport] {
@@ -76,6 +91,21 @@ impl WorkspaceStore {
         parse_workspace(&content)
     }
 
+    pub fn unused_recovery_name(&self) -> String {
+        let base = "Recovery";
+        if !self.path_for(base).exists() {
+            return base.to_string();
+        }
+        let mut n = 2;
+        loop {
+            let candidate = format!("{base} {n}");
+            if !self.path_for(&candidate).exists() {
+                return candidate;
+            }
+            n += 1;
+        }
+    }
+
     pub fn load_last_or_default(&mut self) -> (WorkspaceFile, bool) {
         let fallback = default_chart();
         let name = match self.last_used.as_ref() {
@@ -83,12 +113,36 @@ impl WorkspaceStore {
             None => {
                 return match self.load("Chart") {
                     Ok(file) => (file, false),
+                    Err(LoadError::FutureVersion { found, current }) => {
+                        let mut rec = fallback;
+                        rec.name = self.unused_recovery_name();
+                        self.reports.push(WorkspaceReport {
+                            name: "Chart".to_string(),
+                            message: format!(
+                                "workspace schema {found} is newer than supported {current}; using recovery workspace '{}'",
+                                rec.name
+                            ),
+                        });
+                        (rec, true)
+                    }
                     Err(_) => (fallback, false),
                 };
             }
         };
         match self.load(&name) {
             Ok(file) => (file, false),
+            Err(LoadError::FutureVersion { found, current }) => {
+                let mut rec = fallback;
+                rec.name = self.unused_recovery_name();
+                self.reports.push(WorkspaceReport {
+                    name: name.clone(),
+                    message: format!(
+                        "could not restore '{name}': workspace schema {found} is newer than supported {current}; using recovery workspace '{}'",
+                        rec.name
+                    ),
+                });
+                (rec, true)
+            }
             Err(err) => {
                 self.reports.push(WorkspaceReport {
                     name: name.clone(),
@@ -103,7 +157,8 @@ impl WorkspaceStore {
         fs::create_dir_all(&self.dir).map_err(|e| LoadError::Io(e.to_string()))?;
         let path = self.path_for(&file.name);
         let text = serialize_workspace(file);
-        fs::write(path, text).map_err(|e| LoadError::Io(e.to_string()))?;
+        atomic_write(&self.dir, &path, &text, self.failure_injector)
+            .map_err(|e| LoadError::Io(e.to_string()))?;
         self.write_last_used(&file.name)?;
         Ok(())
     }
@@ -143,7 +198,7 @@ impl WorkspaceStore {
             let path = self.path_for(&file.name);
             if !path.exists() {
                 let text = serialize_workspace(&file);
-                let _ = fs::write(path, text);
+                let _ = atomic_write(&self.dir, &path, &text, InjectedWriteFailure::None);
             }
         }
     }
@@ -160,15 +215,25 @@ impl WorkspaceStore {
     fn write_last_used(&self, name: &str) -> Result<(), LoadError> {
         fs::create_dir_all(&self.dir).map_err(|e| LoadError::Io(e.to_string()))?;
         let text = format!("last_workspace = \"{}\"\n", name.replace('"', "\\\""));
-        fs::write(&self.state_path, text).map_err(|e| LoadError::Io(e.to_string()))?;
+        atomic_write(&self.dir, &self.state_path, &text, self.failure_injector)
+            .map_err(|e| LoadError::Io(e.to_string()))?;
         Ok(())
     }
 
-    /// Renames a corrupt file aside instead of deleting it.
+    /// Renames a corrupt file aside instead of deleting it. Future-version files are preserved unchanged.
     pub fn quarantine(&mut self, name: &str, reason: &str) -> Result<(), LoadError> {
         let path = self.path_for(name);
         if !path.exists() {
             return Ok(());
+        }
+        if let Ok(content) = fs::read_to_string(&path) {
+            if let Ok(raw) = toml::from_str::<toml::Value>(&content) {
+                if let Some(v) = raw.get("schema_version").and_then(|v| v.as_integer()) {
+                    if v as u32 > CURRENT_SCHEMA_VERSION {
+                        return Ok(());
+                    }
+                }
+            }
         }
         let quarantined = self.dir.join(format!(
             "{}.bad-{}",
@@ -185,6 +250,58 @@ impl WorkspaceStore {
         });
         Ok(())
     }
+}
+
+fn atomic_write(
+    dir: &Path,
+    dest_path: &Path,
+    content: &str,
+    failure_injector: InjectedWriteFailure,
+) -> Result<(), std::io::Error> {
+    use std::io::Write;
+
+    if failure_injector == InjectedWriteFailure::Write {
+        return Err(std::io::Error::other("injected write failure"));
+    }
+
+    let tmp_path = dir.join(format!(
+        ".tmp-{}-{}",
+        dest_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("ws"),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+
+    let res = (|| -> Result<(), std::io::Error> {
+        let mut file = fs::File::create(&tmp_path)?;
+        file.write_all(content.as_bytes())?;
+        file.flush()?;
+
+        if failure_injector == InjectedWriteFailure::Sync {
+            return Err(std::io::Error::other("injected sync failure"));
+        }
+        file.sync_all()?;
+        drop(file);
+
+        if failure_injector == InjectedWriteFailure::Rename {
+            return Err(std::io::Error::other("injected rename failure"));
+        }
+        fs::rename(&tmp_path, dest_path)?;
+
+        if let Ok(parent) = fs::File::open(dir) {
+            let _ = parent.sync_all();
+        }
+        Ok(())
+    })();
+
+    if res.is_err() {
+        let _ = fs::remove_file(&tmp_path);
+    }
+    res
 }
 
 pub fn default_workspaces_dir() -> PathBuf {
@@ -309,6 +426,120 @@ mod tests {
         store.quarantine("broken", "parse").unwrap();
         assert!(!bad.exists());
         assert!(dir.read_dir().unwrap().count() >= 1);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn future_version_is_preserved_and_uses_recovery_workspace() {
+        let dir = temp_dir("future_preservation");
+        let mut store = WorkspaceStore::open_dir(dir.clone());
+        let future_content = "schema_version = 99\nname = \"FutureWs\"\nwindows = []\nselection = { global = \"\", detached = {} }\n";
+        let future_path = store.path_for("FutureWs");
+        fs::write(&future_path, future_content).unwrap();
+        store.set_last_used("FutureWs").unwrap();
+
+        let (recovery, fallback) = store.load_last_or_default();
+        assert!(fallback);
+        assert_eq!(recovery.name, "Recovery");
+        // Verify future version file is UNCHANGED
+        let disk_content = fs::read_to_string(&future_path).unwrap();
+        assert_eq!(disk_content, future_content);
+
+        // Saving recovery workspace does NOT touch future file
+        store.save(&recovery).unwrap();
+        assert!(store.path_for("Recovery").exists());
+        let disk_content2 = fs::read_to_string(&future_path).unwrap();
+        assert_eq!(disk_content2, future_content);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn injected_write_failure_preserves_valid_file() {
+        let dir = temp_dir("injected_write");
+        let mut store = WorkspaceStore::open_dir(dir.clone());
+        let orig = store.load("Trading").unwrap();
+        let orig_text = fs::read_to_string(store.path_for("Trading")).unwrap();
+
+        let mut edited = orig.clone();
+        edited.name = "Trading".into();
+        edited.windows.clear(); // changed
+
+        store.set_injected_failure(InjectedWriteFailure::Write);
+        let res = store.save(&edited);
+        assert!(res.is_err());
+
+        // File on disk must be untouched
+        let on_disk = fs::read_to_string(store.path_for("Trading")).unwrap();
+        assert_eq!(on_disk, orig_text);
+
+        // Retrying without failure succeeds
+        store.set_injected_failure(InjectedWriteFailure::None);
+        let mut valid_edit = orig;
+        valid_edit.windows[0].composition = "custom".into();
+        assert!(store.save(&valid_edit).is_ok());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn injected_sync_failure_preserves_valid_file() {
+        let dir = temp_dir("injected_sync");
+        let mut store = WorkspaceStore::open_dir(dir.clone());
+        let orig_text = fs::read_to_string(store.path_for("Trading")).unwrap();
+
+        let mut edited = store.load("Trading").unwrap();
+        edited.windows.clear();
+
+        store.set_injected_failure(InjectedWriteFailure::Sync);
+        assert!(store.save(&edited).is_err());
+
+        let on_disk = fs::read_to_string(store.path_for("Trading")).unwrap();
+        assert_eq!(on_disk, orig_text);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn injected_rename_failure_preserves_valid_file() {
+        let dir = temp_dir("injected_rename");
+        let mut store = WorkspaceStore::open_dir(dir.clone());
+        let orig_text = fs::read_to_string(store.path_for("Trading")).unwrap();
+
+        let mut edited = store.load("Trading").unwrap();
+        edited.windows.clear();
+
+        store.set_injected_failure(InjectedWriteFailure::Rename);
+        assert!(store.save(&edited).is_err());
+
+        let on_disk = fs::read_to_string(store.path_for("Trading")).unwrap();
+        assert_eq!(on_disk, orig_text);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn quarantine_preserves_future_version_file() {
+        let dir = temp_dir("future_quarantine");
+        let mut store = WorkspaceStore::open_dir(dir.clone());
+        let future_content = "schema_version = 99\nname = \"Future\"\nwindows = []\n";
+        let future_path = store.path_for("Future");
+        fs::write(&future_path, future_content).unwrap();
+
+        store.quarantine("Future", "newer version").unwrap();
+        // File must still exist with original name, not moved to .bad-*
+        assert!(future_path.exists());
+        let count = dir
+            .read_dir()
+            .unwrap()
+            .filter(|e| {
+                e.as_ref()
+                    .unwrap()
+                    .path()
+                    .to_string_lossy()
+                    .contains(".bad-")
+            })
+            .count();
+        assert_eq!(count, 0);
+
         let _ = fs::remove_dir_all(dir);
     }
 }
