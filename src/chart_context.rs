@@ -187,10 +187,20 @@ pub mod ffi {
         #[qproperty(QString, configured_symbol)]
         #[qproperty(QString, configured_timeframe)]
         #[qproperty(QString, recent_symbols_json)]
+        #[qproperty(QString, last_manual_symbol)]
+        #[qproperty(QString, last_manual_timeframe)]
+        #[qproperty(QString, followed_deployment_id)]
+        #[qproperty(bool, is_session_override)]
         type ChartContext = super::ChartContextRust;
 
         #[qinvokable]
         fn set_configured(self: Pin<&mut ChartContext>, symbol: QString, timeframe: QString);
+
+        #[qinvokable]
+        fn set_last_manual(self: Pin<&mut ChartContext>, symbol: QString, timeframe: QString);
+
+        #[qinvokable]
+        fn set_followed_deployment(self: Pin<&mut ChartContext>, id: QString);
 
         #[qinvokable]
         fn on_target(
@@ -245,6 +255,10 @@ pub struct ChartContextRust {
     pub configured_symbol: QString,
     pub configured_timeframe: QString,
     pub recent_symbols_json: QString,
+    pub last_manual_symbol: QString,
+    pub last_manual_timeframe: QString,
+    pub followed_deployment_id: QString,
+    pub is_session_override: bool,
 
     targeter: Option<std::sync::Arc<crate::chart_target::ChartTargeter>>,
     following_name: Option<String>,
@@ -275,6 +289,10 @@ impl Default for ChartContextRust {
             configured_symbol: QString::from(""),
             configured_timeframe: QString::from(""),
             recent_symbols_json: QString::from("[]"),
+            last_manual_symbol: QString::from(""),
+            last_manual_timeframe: QString::from(""),
+            followed_deployment_id: QString::from(""),
+            is_session_override: false,
             targeter: None,
             following_name: None,
             pending_symbol: String::new(),
@@ -299,6 +317,9 @@ impl ChartContextRust {
         let is_manual = targeter.is_manual();
         self.is_manual = is_manual;
         self.chart_mode = QString::from(if is_manual { "manual" } else { "following" });
+        let (man_sym, man_tf) = targeter.last_manual();
+        self.last_manual_symbol = QString::from(&man_sym);
+        self.last_manual_timeframe = QString::from(&man_tf);
         for s in targeter.recent_symbols() {
             if !self.recents.contains(&s) {
                 self.recents.push(s);
@@ -325,6 +346,22 @@ impl ChartContextRust {
                 &serde_json::to_string(&self.recents).unwrap_or_else(|_| "[]".into()),
             );
         }
+        self.bump();
+    }
+
+    pub fn set_last_manual(&mut self, symbol: &str, timeframe: &str) {
+        if let Ok((valid_sym, valid_tf)) = crate::chart_target::validate_target(symbol, timeframe) {
+            self.last_manual_symbol = QString::from(&valid_sym);
+            self.last_manual_timeframe = QString::from(&valid_tf);
+            if let Some(targeter) = &self.targeter {
+                targeter.set_last_manual(&valid_sym, &valid_tf);
+            }
+            self.bump();
+        }
+    }
+
+    pub fn set_followed_deployment_id(&mut self, id: &str) {
+        self.followed_deployment_id = QString::from(id);
         self.bump();
     }
 
@@ -378,6 +415,9 @@ impl ChartContextRust {
         self.target_error = QString::from("");
         self.chart_mode = QString::from("manual");
         self.is_manual = true;
+        self.is_session_override = false;
+        self.last_manual_symbol = QString::from(&valid_sym);
+        self.last_manual_timeframe = QString::from(&valid_tf);
 
         if let Some(targeter) = &self.targeter {
             targeter.add_recent_symbol(&valid_sym);
@@ -524,9 +564,27 @@ impl ffi::ChartContext {
             configured_symbol,
             configured_timeframe,
             recent_symbols_json,
+            last_manual_symbol,
+            last_manual_timeframe,
+            followed_deployment_id,
+            is_session_override,
             revision,
         ) = {
             let r = self.rust();
+            let dep_id = if let Some(targeter) = &r.targeter {
+                if let Some((id, ..)) = targeter.following_target() {
+                    QString::from(&id)
+                } else {
+                    r.followed_deployment_id.clone()
+                }
+            } else {
+                r.followed_deployment_id.clone()
+            };
+            let is_override = r
+                .targeter
+                .as_ref()
+                .map(|t| t.is_session_override())
+                .unwrap_or(r.is_session_override);
             (
                 r.symbol_line.clone(),
                 r.source_label.clone(),
@@ -544,6 +602,10 @@ impl ffi::ChartContext {
                 r.configured_symbol.clone(),
                 r.configured_timeframe.clone(),
                 r.recent_symbols_json.clone(),
+                r.last_manual_symbol.clone(),
+                r.last_manual_timeframe.clone(),
+                dep_id,
+                is_override,
                 r.revision,
             )
         };
@@ -563,6 +625,12 @@ impl ffi::ChartContext {
         self.as_mut().set_configured_symbol(configured_symbol);
         self.as_mut().set_configured_timeframe(configured_timeframe);
         self.as_mut().set_recent_symbols_json(recent_symbols_json);
+        self.as_mut().set_last_manual_symbol(last_manual_symbol);
+        self.as_mut()
+            .set_last_manual_timeframe(last_manual_timeframe);
+        self.as_mut()
+            .set_followed_deployment_id(followed_deployment_id);
+        self.as_mut().set_is_session_override(is_session_override);
         self.as_mut().set_revision(revision);
     }
 
@@ -570,6 +638,24 @@ impl ffi::ChartContext {
         self.as_mut()
             .rust_mut()
             .set_configured(&symbol.to_string(), &timeframe.to_string());
+        self.sync_props();
+    }
+
+    pub fn set_last_manual(
+        mut self: std::pin::Pin<&mut Self>,
+        symbol: QString,
+        timeframe: QString,
+    ) {
+        self.as_mut()
+            .rust_mut()
+            .set_last_manual(&symbol.to_string(), &timeframe.to_string());
+        self.sync_props();
+    }
+
+    pub fn set_followed_deployment(mut self: std::pin::Pin<&mut Self>, id: QString) {
+        self.as_mut()
+            .rust_mut()
+            .set_followed_deployment_id(&id.to_string());
         self.sync_props();
     }
 
@@ -699,6 +785,27 @@ pub unsafe fn set_configured(ctx: *mut ffi::ChartContext, symbol: &str, timefram
 
 /// # Safety
 /// `ctx` must be a valid `ChartContext` pointer.
+pub unsafe fn set_last_manual(ctx: *mut ffi::ChartContext, symbol: &str, timeframe: &str) {
+    if ctx.is_null() {
+        return;
+    }
+    let mut pin = std::pin::Pin::new_unchecked(&mut *ctx);
+    pin.as_mut()
+        .set_last_manual(QString::from(symbol), QString::from(timeframe));
+}
+
+/// # Safety
+/// `ctx` must be a valid `ChartContext` pointer.
+pub unsafe fn set_followed_deployment(ctx: *mut ffi::ChartContext, id: &str) {
+    if ctx.is_null() {
+        return;
+    }
+    let mut pin = std::pin::Pin::new_unchecked(&mut *ctx);
+    pin.as_mut().set_followed_deployment(QString::from(id));
+}
+
+/// # Safety
+/// `ctx` must be a valid `ChartContext` pointer.
 pub unsafe fn notify_target(
     ctx: *mut ffi::ChartContext,
     following: Option<(&str, &str, &str, bool)>,
@@ -737,6 +844,18 @@ pub unsafe fn notify_retarget(ctx: *mut ffi::ChartContext, symbol: &str, timefra
     let mut pin = std::pin::Pin::new_unchecked(&mut *ctx);
     pin.as_mut()
         .on_retarget(QString::from(symbol), QString::from(timeframe));
+}
+
+/// # Safety
+/// `ctx` must be a valid `ChartContext` pointer.
+pub unsafe fn notify_target_error(ctx: *mut ffi::ChartContext, error: &str) {
+    if ctx.is_null() {
+        return;
+    }
+    let mut pin = std::pin::Pin::new_unchecked(&mut *ctx);
+    pin.as_mut().rust_mut().target_error = QString::from(error);
+    pin.as_mut().rust_mut().bump();
+    pin.as_mut().sync();
 }
 
 /// Binds the shared bar feed used to refresh identity labels.

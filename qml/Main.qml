@@ -121,7 +121,57 @@ Item {
         return id;
     }
 
-    function saveWorkspace(name) {
+    Timer {
+        id: autosaveTimer
+        interval: 500
+        repeat: false
+        onTriggered: shell.flushPending()
+    }
+
+    function scheduleAutosave() {
+        if (workspaceController.is_restoring) {
+            return;
+        }
+        workspaceController.mark_dirty();
+        autosaveTimer.restart();
+    }
+
+    function captureChartPreferences() {
+        var chartPrefs = {};
+        if (activeChartContext) {
+            var visibleBars = 120;
+            var chart = shell.panelItem("chart");
+            if (chart && chart.chartPane && chart.chartPane.viewport) {
+                var vc = chart.chartPane.viewport.visibleCount();
+                if (vc > 0) {
+                    visibleBars = vc;
+                } else if (chart.chartPane.viewport.visibleBars > 0) {
+                    visibleBars = chart.chartPane.viewport.visibleBars;
+                }
+            }
+            var sym = activeChartContext.active_symbol || "PETR4";
+            var tf = activeChartContext.active_timeframe || "1m";
+            if (activeChartContext.is_session_override && activeChartContext.last_manual_symbol) {
+                sym = activeChartContext.last_manual_symbol;
+                if (activeChartContext.last_manual_timeframe) {
+                    tf = activeChartContext.last_manual_timeframe;
+                }
+            }
+            chartPrefs.chart = {
+                symbol: sym,
+                timeframe: tf,
+                mode: activeChartContext.chart_mode || "following",
+                followed_deployment_id: (activeChartContext.chart_mode === "following" ? (activeChartContext.followed_deployment_id || "") : ""),
+                last_manual_symbol: activeChartContext.last_manual_symbol || "",
+                last_manual_timeframe: activeChartContext.last_manual_timeframe || "",
+                visible_bars: visibleBars
+            };
+        }
+        return chartPrefs;
+    }
+
+    function flushPending() {
+        autosaveTimer.stop();
         var studySets = {};
         if (activeFeed) {
             try {
@@ -130,10 +180,31 @@ Item {
                 studySets.chart = [];
             }
         }
+        var chartPrefs = captureChartPreferences();
+        workspaceController.flush_pending(
+            shellController.capture_windows(),
+            shellController.capture_selection(),
+            JSON.stringify(studySets),
+            JSON.stringify(chartPrefs)
+        );
+    }
+
+    function saveWorkspace(name) {
+        autosaveTimer.stop();
+        var studySets = {};
+        if (activeFeed) {
+            try {
+                studySets.chart = JSON.parse(activeFeed.study_list_json()).studies || [];
+            } catch (e) {
+                studySets.chart = [];
+            }
+        }
+        var chartPrefs = captureChartPreferences();
         workspaceController.save(
             shellController.capture_windows(),
             shellController.capture_selection(),
             JSON.stringify(studySets),
+            JSON.stringify(chartPrefs),
             name
         );
     }
@@ -154,12 +225,41 @@ Item {
         } catch (e) {
             console.warn("Workspace studies could not be restored:", e);
         }
+        try {
+            var prefs = JSON.parse(workspaceController.pending_chart_preferences_json || "{}");
+            if (prefs.chart) {
+                var cp = prefs.chart;
+                if (activeChartContext) {
+                    if (cp.last_manual_symbol && cp.last_manual_timeframe) {
+                        activeChartContext.set_last_manual(cp.last_manual_symbol, cp.last_manual_timeframe);
+                    }
+                    if (cp.followed_deployment_id) {
+                        activeChartContext.set_followed_deployment(cp.followed_deployment_id);
+                    }
+                    if (cp.mode === "manual") {
+                        activeChartContext.request_target(cp.symbol || "PETR4", cp.timeframe || "1m");
+                    } else {
+                        activeChartContext.follow_deployment();
+                    }
+                }
+                var chart = shell.panelItem("chart");
+                if (chart && chart.chartPane && chart.chartPane.viewport && cp.visible_bars > 0) {
+                    chart.chartPane.viewport.visibleBars = cp.visible_bars;
+                    chart.chartPane.viewport.updateViewport();
+                }
+            }
+        } catch (e) {
+            console.warn("Workspace chart preferences could not be restored:", e);
+        }
         shell.syncWindows();
         Qt.callLater(shell.applyWorkspacePlacement);
+        Qt.callLater(function() {
+            workspaceController.resume_autosave();
+        });
     }
 
     function switchWorkspace(name) {
-        shell.saveWorkspace(workspaceController.active_workspace);
+        shell.flushPending();
         workspaceController.switch_to(name);
         shell.restoreWorkspaceLayout();
     }
@@ -167,7 +267,14 @@ Item {
     // Called from a window's closing signal. The window object itself is destroyed a turn
     // later, never from inside its own signal.
     function windowClosing(id) {
+        var winObjs = shell.windowObjects();
+        if (winObjs.length <= 1) {
+            shell.flushPending();
+        }
         shellController.close_window(id);
+        if (winObjs.length > 1) {
+            shell.scheduleAutosave();
+        }
     }
 
     // A selection made in a window. Attached windows share the global selection, so the one
@@ -175,6 +282,7 @@ Item {
     function selectDeployment(windowId, deploymentId) {
         if (shellController.select_deployment(windowId, deploymentId)) {
             shell.activeExecutionModels.select_deployment(deploymentId);
+            shell.scheduleAutosave();
         }
     }
 
@@ -231,6 +339,7 @@ Item {
             var wasOps = shellController.is_operations_visible();
             shellController.toggle_operations(fromWindow ? fromWindow.windowId : "");
             shell.syncWindows();
+            shell.scheduleAutosave();
             if (wasOps && !shellController.is_operations_visible()) {
                 shell.focusChart();
             }
@@ -239,6 +348,7 @@ Item {
             var wasTape = shellController.is_tape_visible();
             shellController.toggle_tape(fromWindow ? fromWindow.windowId : "");
             shell.syncWindows();
+            shell.scheduleAutosave();
             if (wasTape && !shellController.is_tape_visible()) {
                 shell.focusChart();
             }
@@ -344,6 +454,27 @@ Item {
         target: shellController
         function onWindow_idsChanged() {
             Qt.callLater(shell.syncWindows);
+            shell.scheduleAutosave();
+        }
+    }
+
+    Connections {
+        target: shell.activeChartContext
+        function onActive_symbolChanged() {
+            shell.scheduleAutosave();
+        }
+        function onActive_timeframeChanged() {
+            shell.scheduleAutosave();
+        }
+        function onChart_modeChanged() {
+            shell.scheduleAutosave();
+        }
+    }
+
+    Connections {
+        target: shell.activeFeed
+        function onOverlay_revisionChanged() {
+            shell.scheduleAutosave();
         }
     }
 
