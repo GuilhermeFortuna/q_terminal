@@ -40,6 +40,7 @@ pub fn resolve_for_displays(
             name: file.name.clone(),
             windows,
             selection: file.selection.clone(),
+            study_sets: file.study_sets.clone(),
         },
         messages,
     )
@@ -92,6 +93,7 @@ fn merge_workspace_windows(file: &WorkspaceFile) -> WorkspaceFile {
             detached: false,
         }],
         selection: file.selection.clone(),
+        study_sets: file.study_sets.clone(),
     }
 }
 

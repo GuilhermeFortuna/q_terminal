@@ -122,9 +122,18 @@ Item {
     }
 
     function saveWorkspace(name) {
+        var studySets = {};
+        if (activeFeed) {
+            try {
+                studySets.chart = JSON.parse(activeFeed.study_list_json()).studies || [];
+            } catch (e) {
+                studySets.chart = [];
+            }
+        }
         workspaceController.save(
             shellController.capture_windows(),
             shellController.capture_selection(),
+            JSON.stringify(studySets),
             name
         );
     }
@@ -139,6 +148,12 @@ Item {
     function restoreWorkspaceLayout() {
         shellController.restore_workspace(workspaceController.pending_restore_json);
         shellController.restore_selection(workspaceController.pending_selection_json);
+        try {
+            var studies = JSON.parse(workspaceController.pending_study_sets_json || "{}");
+            if (activeFeed) activeFeed.restore_studies_json(JSON.stringify(studies.chart || []));
+        } catch (e) {
+            console.warn("Workspace studies could not be restored:", e);
+        }
         shell.syncWindows();
         Qt.callLater(shell.applyWorkspacePlacement);
     }

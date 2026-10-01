@@ -104,6 +104,7 @@ pub struct StudySpec {
     pub source: PriceSource,
     pub num_std: f64,
     pub palette_index: u8,
+    pub visible: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -171,8 +172,49 @@ impl StudySet {
         &self.specs
     }
 
+    pub fn restore_json(&mut self, json: &str) -> Result<(), String> {
+        let entries: Vec<serde_json::Value> =
+            serde_json::from_str(json).map_err(|e| e.to_string())?;
+        self.clear();
+        self.next_id = 1;
+        for entry in entries.into_iter().take(MAX_STUDIES) {
+            let Some(kind) = entry["kind"].as_str().and_then(StudyKind::parse) else {
+                eprintln!("workspace: dropped study with unknown kind");
+                continue;
+            };
+            let Some(period) = entry["period"].as_i64() else {
+                eprintln!("workspace: dropped study with invalid period");
+                continue;
+            };
+            let Some(source) = entry["source"].as_str().and_then(PriceSource::parse) else {
+                eprintln!("workspace: dropped study with unknown price source");
+                continue;
+            };
+            let Some(num_std) = entry["num_std"].as_f64() else {
+                eprintln!("workspace: dropped study with invalid deviation");
+                continue;
+            };
+            let palette = entry["palette_index"]
+                .as_u64()
+                .unwrap_or((self.specs.len() % 8) as u64) as u8;
+            if self.add_study(kind, period, source, num_std).is_err() {
+                eprintln!("workspace: dropped study with invalid parameters");
+                continue;
+            }
+            if let Some(spec) = self.specs.last_mut() {
+                spec.palette_index = palette.min(7);
+                spec.visible = entry["visible"].as_bool().unwrap_or(true);
+            }
+        }
+        Ok(())
+    }
+
     pub fn clear(&mut self) {
         self.specs.clear();
+        self.reset_values();
+    }
+
+    pub fn reset_values(&mut self) {
         self.overlays.clear();
         self.volume_kind = None;
         self.volume_mixed = false;
@@ -200,6 +242,7 @@ impl StudySet {
             source,
             num_std,
             palette_index,
+            visible: true,
         });
         Ok(id)
     }
@@ -207,6 +250,15 @@ impl StudySet {
     pub fn remove_study(&mut self, id: u64) -> bool {
         if let Some(i) = self.specs.iter().position(|s| s.id == id) {
             self.specs.remove(i);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn set_visible(&mut self, id: u64, visible: bool) -> bool {
+        if let Some(spec) = self.specs.iter_mut().find(|spec| spec.id == id) {
+            spec.visible = visible;
             true
         } else {
             false
@@ -265,6 +317,7 @@ impl StudySet {
                 "source": source,
                 "num_std": s.num_std,
                 "palette_index": s.palette_index,
+                "visible": s.visible,
             }));
         }
         serde_json::json!({
@@ -272,6 +325,34 @@ impl StudySet {
             "vwap_unavailable": self.vwap_unavailable_reason,
         })
         .to_string()
+    }
+
+    /// Values are looked up in the cached plotted series so the legend and chart cannot
+    /// diverge through a second indicator calculation. Composite studies expose centre.
+    pub fn values_json(&self, time_ms: i64) -> String {
+        let values = self
+            .specs
+            .iter()
+            .map(|spec| {
+                let suffix = match spec.kind {
+                    StudyKind::Sma => "sma",
+                    StudyKind::Ema => "ema",
+                    StudyKind::Bollinger => "bb-mid",
+                    StudyKind::SessionVwap => "vwap",
+                    StudyKind::Rsi => "rsi",
+                    StudyKind::Atr => "atr",
+                };
+                let key = format!("study-{}-{suffix}", spec.id);
+                let value = self
+                    .overlays
+                    .iter()
+                    .find(|line| line.key == key)
+                    .and_then(|line| line.points.iter().find(|(time, _)| *time == time_ms))
+                    .and_then(|(_, value)| *value);
+                serde_json::json!({"id": spec.id, "value": value})
+            })
+            .collect::<Vec<_>>();
+        serde_json::Value::Array(values).to_string()
     }
 
     fn observe_volume(&mut self, bars: &BarColumns) {
@@ -408,6 +489,9 @@ impl StudySet {
         let vwap_ok = self.vwap_unavailable_reason.is_none();
 
         for (spec, state) in self.specs.iter().zip(states.iter_mut()) {
+            if !spec.visible {
+                continue;
+            }
             let color = self.study_palette[spec.palette_index as usize % 8];
             let ms_at = |i: usize| markers::normalize_ms(times[i]);
 
@@ -740,6 +824,9 @@ mod tests {
                 assert!(got.is_none(), "index {i}: expected no point for NaN warmup");
             }
         }
+        let values: serde_json::Value =
+            serde_json::from_str(&set.values_json(180_000_000_000)).unwrap();
+        assert_eq!(values[0]["value"].as_f64(), Some(batch[2]));
     }
 
     #[test]
@@ -846,5 +933,32 @@ mod tests {
         let json = set.study_list_json();
         assert!(json.contains("\"name\":\"EMA (50)\""));
         assert!(json.contains("\"period\":50"));
+    }
+
+    #[test]
+    fn restore_drops_invalid_studies_and_keeps_valid_entries() {
+        let mut set = StudySet::new();
+        set.restore_json(r#"[
+            {"kind":"ema","period":21,"source":"close","num_std":2.0,"visible":false,"palette_index":3},
+            {"kind":"ema","period":0,"source":"close","num_std":2.0,"visible":true,"palette_index":0}
+        ]"#).unwrap();
+        assert_eq!(set.specs().len(), 1);
+        assert_eq!(set.specs()[0].palette_index, 3);
+        assert!(!set.specs()[0].visible);
+    }
+
+    #[test]
+    fn target_reset_keeps_study_configuration_but_drops_old_values() {
+        let mut set = StudySet::new();
+        set.add_study(StudyKind::Ema, 2, PriceSource::Close, 2.0)
+            .unwrap();
+        let bars = bars_from_close(&[10.0, 20.0], None);
+        set.rebuild(TimeLabel::Utc, std::slice::from_ref(&bars), None);
+        let before: serde_json::Value =
+            serde_json::from_str(&set.values_json(120_000_000_000)).unwrap();
+        assert!(before[0]["value"].as_f64().is_some());
+        set.reset_values();
+        assert_eq!(set.specs().len(), 1);
+        assert!(set.values_json(120_000_000_000).contains("null"));
     }
 }

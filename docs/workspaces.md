@@ -20,10 +20,10 @@ intent in every workspace file, sets a stable per-window application identity
 XWayland (`QT_QPA_PLATFORM=xcb`) restores geometry directly at the cost of Wayland scaling
 and input handling. Use it when you want the terminal to place windows without compositor rules.
 
-## Schema (version 1)
+## Schema (version 2)
 
 ```toml
-schema_version = 1
+schema_version = 2
 name = "Trading"
 
 [[windows]]
@@ -36,7 +36,14 @@ detached = false
 [selection]
 global = ""
 detached = {}
+
+# Version 2 also stores chart-panel studies, for example:
+# [study_sets]
+# chart = [{ kind = "ema", period = 21, source = "close", num_std = 2.0, visible = true, palette_index = 0 }]
 ```
+
+Version 1 files migrate to version 2 with an empty study set. Invalid or unknown study
+entries are logged and dropped individually, leaving the rest of the workspace loadable.
 
 Unreadable, truncated or future-version files are reported; the terminal starts on a default
 workspace. Corrupt files are renamed aside (`.bad-<timestamp>`), never deleted.

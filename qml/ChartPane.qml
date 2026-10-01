@@ -96,6 +96,26 @@ Item {
         }
     }
 
+    readonly property string studyValueReadout: {
+        var revision = root.feed ? root.feed.overlay_revision : 0;
+        if (!root.feed || isTargetSwitching || activeBarIndex < 0) return "[]";
+        try {
+            var specs = JSON.parse(root.feed.study_list_json()).studies || [];
+            var values = JSON.parse(root.feed.study_values_json(activeBarIndex));
+            var vwapUnavailable = JSON.parse(root.feed.study_list_json()).vwap_unavailable || "";
+            for (var i = 0; i < specs.length; ++i) {
+                specs[i].name = specs[i].kind === "vwap" ? "VWAP"
+                    : specs[i].kind[0].toUpperCase() + specs[i].kind.slice(1) + " " + specs[i].period;
+                var entry = values.find(function (value) { return value.id === specs[i].id; });
+                var oscillator = specs[i].kind === "rsi" || specs[i].kind === "atr";
+                specs[i].text = specs[i].kind === "vwap" && vwapUnavailable ? vwapUnavailable
+                    : (!entry || entry.value === null ? "—"
+                    : (oscillator ? Number(entry.value).toFixed(2) : root.feed.format_price(entry.value)));
+            }
+            return JSON.stringify(specs);
+        } catch (e) { return "[]"; }
+    }
+
     readonly property bool crosshairVisible: !viewport.empty && !isTargetSwitching && activeBarIndex >= 0 && activeBarIndex >= viewport.firstBar && activeBarIndex < viewport.lastBar && barSnapshot.valid
 
     readonly property real crosshairX: {
@@ -784,6 +804,7 @@ Item {
         z: 2
         previewState: ""
         snapshot: root.barSnapshot
+        studyValues: root.studyValueReadout
         pointerPrice: root.pointerPriceText
         visible: root.crosshairVisible && !!root.barSnapshot.valid
     }
@@ -797,14 +818,28 @@ Item {
         width: Math.min(chartArea.width - 2 * Spacing.size8, Spacing.size480)
         spacing: Spacing.size4
         z: 2
-        visible: root.feed && studyLegendRepeater.count > 0
+        visible: root.feed && studyLegendRepeater.count > 0 && !root.isTargetSwitching
 
         Repeater {
             id: studyLegendRepeater
             model: {
-                if (!root.feed) return [];
+                if (!root.feed || root.isTargetSwitching) return [];
+                var revision = root.feed.overlay_revision;
                 try {
-                    return JSON.parse(root.feed.study_list_json()).studies || [];
+                    var specs = JSON.parse(root.feed.study_list_json()).studies || [];
+                    var list = JSON.parse(root.feed.study_list_json());
+                    var latestIndex = root.feed.has_forming ? root.feed.bar_count : root.feed.bar_count - 1;
+                    var values = JSON.parse(root.feed.study_values_json(latestIndex));
+                    for (var i = 0; i < specs.length; ++i) {
+                        specs[i].name = specs[i].kind === "vwap" ? "VWAP"
+                            : specs[i].kind[0].toUpperCase() + specs[i].kind.slice(1) + " " + specs[i].period;
+                        var entry = values.find(function (value) { return value.id === specs[i].id; });
+                        var oscillator = specs[i].kind === "rsi" || specs[i].kind === "atr";
+                        specs[i].text = specs[i].kind === "vwap" && list.vwap_unavailable ? list.vwap_unavailable
+                            : (!entry || entry.value === null ? "—"
+                            : (oscillator ? Number(entry.value).toFixed(2) : root.feed.format_price(entry.value)));
+                    }
+                    return specs;
                 } catch (e) {
                     return [];
                 }
@@ -815,9 +850,11 @@ Item {
                 implicitHeight: Spacing.size18
                 implicitWidth: chipRow.implicitWidth + Spacing.size12
                 radius: Spacing.radiusSmall
-                color: chipMouse.containsMouse ? Theme.surfaceSelected : Theme.surfaceHover
+                color: chipHover.hovered ? Theme.surfaceSelected : Theme.surfaceHover
                 border.color: Theme.borderSubtle
                 border.width: Theme.borderWidth
+
+                HoverHandler { id: chipHover }
 
                 Row {
                     id: chipRow
@@ -833,7 +870,8 @@ Item {
                     }
 
                     Text {
-                        text: chip.modelData.name || (chip.modelData.kind.toUpperCase() + " " + chip.modelData.period)
+                        id: studyChipLabel
+                        text: (chip.modelData.name || (chip.modelData.kind.toUpperCase() + " " + chip.modelData.period)) + " · " + (chip.modelData.text || "—")
                         color: Theme.textSecondary
                         font.family: Theme.uiFont
                         font.pixelSize: Theme.typeLabelSmall
@@ -841,24 +879,55 @@ Item {
                     }
 
                     Text {
-                        visible: chipMouse.containsMouse
+                        visible: chipHover.hovered
+                        text: chip.modelData.visible ? "◉" : "○"
+                        color: Theme.textSecondary
+                        font.family: Theme.uiFont
+                        font.pixelSize: Theme.typeLabelSmall
+                        Accessible.name: chip.modelData.visible ? "Hide study" : "Show study"
+                        HoverHandler { cursorShape: Qt.PointingHandCursor }
+                        TapHandler {
+                            onTapped: {
+                                root.feed.set_study_visible(chip.modelData.id, !chip.modelData.visible);
+                            }
+                        }
+                    }
+
+                    Text {
+                        visible: chipHover.hovered && chip.modelData.kind !== "vwap"
+                        text: "−"
+                        color: Theme.textSecondary
+                        font.family: Theme.uiFont
+                        font.pixelSize: Theme.typeLabelSmall
+                        Accessible.name: "Decrease study period"
+                        HoverHandler { cursorShape: Qt.PointingHandCursor }
+                        TapHandler {
+                            onTapped: root.feed.update_study(chip.modelData.id, Math.max(1, chip.modelData.period - 1), chip.modelData.source, chip.modelData.num_std);
+                        }
+                    }
+
+                    Text {
+                        visible: chipHover.hovered && chip.modelData.kind !== "vwap"
+                        text: "+"
+                        color: Theme.textSecondary
+                        font.family: Theme.uiFont
+                        font.pixelSize: Theme.typeLabelSmall
+                        Accessible.name: "Increase study period"
+                        HoverHandler { cursorShape: Qt.PointingHandCursor }
+                        TapHandler {
+                            onTapped: root.feed.update_study(chip.modelData.id, chip.modelData.period + 1, chip.modelData.source, chip.modelData.num_std);
+                        }
+                    }
+
+                    Text {
+                        visible: chipHover.hovered
                         text: "×"
                         color: Theme.textSecondary
                         font.family: Theme.uiFont
                         font.pixelSize: Theme.typeLabelSmall
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-
-                MouseArea {
-                    id: chipMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (root.feed) {
-                            root.feed.remove_study(chip.modelData.id);
-                        }
+                        Accessible.name: "Remove study"
+                        HoverHandler { cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: root.feed.remove_study(chip.modelData.id); }
                     }
                 }
             }
