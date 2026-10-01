@@ -175,6 +175,8 @@ pub struct ChartTargeter {
     retargeter: Retargeter,
     recent_symbols: Mutex<Vec<String>>,
     on_restore_rows: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
+    last_manual: Mutex<Option<(String, String)>>,
+    session_override: std::sync::atomic::AtomicBool,
 }
 
 impl ChartTargeter {
@@ -193,6 +195,8 @@ impl ChartTargeter {
             following_target: Mutex::new(None),
             requested: Mutex::new(fallback.clone()),
             committed: Mutex::new(fallback.clone()),
+            last_manual: Mutex::new(Some(fallback.clone())),
+            session_override: std::sync::atomic::AtomicBool::new(false),
             fallback,
             generation: AtomicU64::new(0),
             retargeter,
@@ -215,6 +219,28 @@ impl ChartTargeter {
 
     pub fn is_following(&self) -> bool {
         self.mode() == ChartMode::Following
+    }
+
+    pub fn is_session_override(&self) -> bool {
+        self.session_override.load(Ordering::SeqCst)
+    }
+
+    pub fn set_session_override(&self, val: bool) {
+        self.session_override.store(val, Ordering::SeqCst);
+    }
+
+    pub fn last_manual(&self) -> (String, String) {
+        self.last_manual
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(|| self.fallback.clone())
+    }
+
+    pub fn set_last_manual(&self, symbol: &str, timeframe: &str) {
+        if let Ok((sym, tf)) = validate_target(symbol, timeframe) {
+            *self.last_manual.lock().unwrap() = Some((sym, tf));
+        }
     }
 
     pub fn selection(&self) -> ChartSelection {
@@ -263,8 +289,10 @@ impl ChartTargeter {
         timeframe: &str,
     ) -> Result<Option<ChartTarget>, String> {
         let (sym, tf) = validate_target(symbol, timeframe)?;
+        self.set_session_override(false);
         *self.mode.lock().unwrap() = ChartMode::Manual;
         *self.requested.lock().unwrap() = (sym.clone(), tf.clone());
+        *self.last_manual.lock().unwrap() = Some((sym.clone(), tf.clone()));
 
         // Manual mode clears deployment overlays and markers
         self.fetcher.set_deployment(None);
@@ -295,6 +323,9 @@ impl ChartTargeter {
     /// Switches back to Following mode, targeting the current global deployment selection
     /// or falling back to the configured pair.
     pub fn follow_deployment(&self) -> Option<ChartTarget> {
+        if self.is_session_override() {
+            return None;
+        }
         *self.mode.lock().unwrap() = ChartMode::Following;
         let dep = self.following_target.lock().unwrap().clone();
         let (id, _name, symbol, timeframe) = match dep {
@@ -358,6 +389,9 @@ impl ChartTargeter {
         deployment: Option<(String, String, String, String)>,
     ) -> Option<ChartTarget> {
         *self.following_target.lock().unwrap() = deployment.clone();
+        if self.is_session_override() {
+            return None;
+        }
         let mode = *self.mode.lock().unwrap();
         if mode == ChartMode::Manual {
             return None;

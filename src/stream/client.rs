@@ -73,6 +73,15 @@ pub struct Retargeter {
 }
 
 impl Retargeter {
+    pub fn new_test() -> Self {
+        let (tx, _) = watch::channel(BarTarget {
+            symbol: String::new(),
+            timeframe: String::new(),
+            generation: 0,
+        });
+        Self { tx: Arc::new(tx) }
+    }
+
     pub fn retarget(&self, symbol: &str, timeframe: &str, generation: u64) {
         self.tx.send_replace(BarTarget {
             symbol: symbol.to_string(),

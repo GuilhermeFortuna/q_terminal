@@ -8,8 +8,8 @@ use std::time::{Duration, Instant};
 use q_terminal::shell::layout::Layout;
 use q_terminal::workspace::autosave::Autosaver;
 use q_terminal::workspace::schema::{
-    default_chart, default_single, default_trading, parse_workspace, WorkspaceChartPreferences,
-    WorkspaceFile, WorkspaceSelection, WorkspaceWindow,
+    default_chart, default_single, default_trading, parse_workspace, serialize_workspace,
+    WorkspaceChartPreferences, WorkspaceFile, WorkspaceSelection, WorkspaceWindow,
 };
 use q_terminal::workspace::store::{InjectedWriteFailure, WorkspaceStore};
 
@@ -316,4 +316,261 @@ fn restore_does_not_trigger_autosave() {
     assert!(!autosaver.is_suppressed());
     assert!(!autosaver.is_dirty());
     assert_eq!(autosaver.save_count(), 0);
+}
+
+#[test]
+fn precedence_explicit_env_over_saved_over_toml_over_defaults() {
+    use q_terminal::startup::resolve_initial_target;
+
+    // 1. Defaults only: toml empty, env none, saved none -> PETR4 / 1m
+    let r1 = resolve_initial_target("", "", None, None, None);
+    assert_eq!(r1.symbol, "PETR4");
+    assert_eq!(r1.timeframe, "1m");
+    assert!(!r1.is_session_override);
+
+    // 2. Config TOML: toml has VALE3 / 5m, env none, saved none -> VALE3 / 5m
+    let r2 = resolve_initial_target("VALE3", "5m", None, None, None);
+    assert_eq!(r2.symbol, "VALE3");
+    assert_eq!(r2.timeframe, "5m");
+    assert!(!r2.is_session_override);
+
+    // 3. Saved preferences override TOML
+    let saved_manual = WorkspaceChartPreferences {
+        symbol: "ITUB4".into(),
+        timeframe: "15m".into(),
+        mode: "manual".into(),
+        followed_deployment_id: None,
+        last_manual_symbol: Some("ITUB4".into()),
+        last_manual_timeframe: Some("15m".into()),
+        visible_bars: Some(150),
+    };
+    let r3 = resolve_initial_target("VALE3", "5m", None, None, Some(&saved_manual));
+    assert_eq!(r3.symbol, "ITUB4");
+    assert_eq!(r3.timeframe, "15m");
+    assert_eq!(r3.mode.as_str(), "manual");
+    assert!(!r3.is_session_override);
+
+    // 4. Explicit non-empty env overrides saved symbol, keeps saved timeframe if env timeframe is empty
+    let r4 = resolve_initial_target("VALE3", "5m", Some("BBDC4"), Some(""), Some(&saved_manual));
+    assert_eq!(r4.symbol, "BBDC4");
+    assert_eq!(r4.timeframe, "15m");
+    assert!(r4.is_session_override);
+
+    // 5. Saved preferences in following mode
+    let saved_following = WorkspaceChartPreferences {
+        symbol: "PETR4".into(),
+        timeframe: "1m".into(),
+        mode: "following".into(),
+        followed_deployment_id: Some("dep-xyz".into()),
+        last_manual_symbol: Some("ITUB4".into()),
+        last_manual_timeframe: Some("15m".into()),
+        visible_bars: Some(120),
+    };
+    let r5 = resolve_initial_target("VALE3", "5m", None, None, Some(&saved_following));
+    assert_eq!(r5.mode.as_str(), "following");
+    assert_eq!(r5.followed_deployment_id, Some("dep-xyz".into()));
+    assert_eq!(r5.last_manual, ("ITUB4".into(), "15m".into()));
+    assert!(!r5.is_session_override);
+
+    // 6. Explicit env overrides following mode into manual session override
+    let r6 = resolve_initial_target(
+        "VALE3",
+        "5m",
+        Some("USIM5"),
+        Some("1h"),
+        Some(&saved_following),
+    );
+    assert_eq!(r6.symbol, "USIM5");
+    assert_eq!(r6.timeframe, "1h");
+    assert_eq!(r6.mode.as_str(), "manual");
+    assert_eq!(r6.followed_deployment_id, None);
+    assert_eq!(r6.last_manual, ("ITUB4".into(), "15m".into()));
+    assert!(r6.is_session_override);
+}
+
+#[test]
+fn session_override_preserves_committed_workspace_and_protects_target() {
+    let dir = temp_dir("session_override_preserves");
+    let mut store = WorkspaceStore::open_dir(dir.clone());
+
+    // Save committed workspace with VALE3 / 5m
+    let mut file = default_chart();
+    file.chart_preferences.insert(
+        "chart".into(),
+        WorkspaceChartPreferences {
+            symbol: "VALE3".into(),
+            timeframe: "5m".into(),
+            mode: "manual".into(),
+            followed_deployment_id: None,
+            last_manual_symbol: Some("VALE3".into()),
+            last_manual_timeframe: Some("5m".into()),
+            visible_bars: Some(100),
+        },
+    );
+    store.save(&file).unwrap();
+
+    // Session starts with explicit env override (e.g. PETR4 / 1m)
+    let env_target = ("PETR4", "1m");
+    let fetcher =
+        q_terminal::chart_target::OverlayFetcher::new("http://localhost", std::ptr::null_mut());
+    let targeter = q_terminal::chart_target::ChartTargeter::new(
+        std::ptr::null_mut(),
+        (env_target.0.into(), env_target.1.into()),
+        q_terminal::stream::client::Retargeter::new_test(),
+        fetcher,
+    );
+    // Mark targeter as session override
+    targeter.set_session_override(true);
+    assert!(targeter.is_session_override());
+
+    // External target selection (e.g. from execution feed) is ignored during session override
+    let switched = targeter.select(Some((
+        "dep-1".into(),
+        "Dep".into(),
+        "B3SA3".into(),
+        "15m".into(),
+    )));
+    assert!(switched.is_none());
+    assert_eq!(
+        (
+            targeter.selection().committed_symbol.as_str(),
+            targeter.selection().committed_timeframe.as_str()
+        ),
+        (env_target.0, env_target.1)
+    );
+
+    // Following deployment is also ignored during session override
+    let followed = targeter.follow_deployment();
+    assert!(followed.is_none());
+    assert!(targeter.is_session_override());
+
+    // Committed file on disk remains VALE3 / 5m
+    let loaded = store.load("Chart").unwrap();
+    assert_eq!(loaded.chart_preferences["chart"].symbol, "VALE3");
+    assert_eq!(loaded.chart_preferences["chart"].timeframe, "5m");
+
+    // Operator explicit manual request clears session override
+    let _ = targeter.request_manual("MGLU3", "1m").unwrap();
+    assert!(!targeter.is_session_override());
+    assert_eq!(
+        (
+            targeter.selection().committed_symbol.as_str(),
+            targeter.selection().committed_timeframe.as_str()
+        ),
+        ("MGLU3", "1m")
+    );
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn zoom_visible_bars_round_trip_and_clamping() {
+    let dir = temp_dir("zoom_visible_bars");
+    let mut store = WorkspaceStore::open_dir(dir.clone());
+
+    let mut file = default_single();
+    file.chart_preferences.insert(
+        "chart".into(),
+        WorkspaceChartPreferences {
+            symbol: "PETR4".into(),
+            timeframe: "1m".into(),
+            mode: "manual".into(),
+            followed_deployment_id: None,
+            last_manual_symbol: Some("PETR4".into()),
+            last_manual_timeframe: Some("1m".into()),
+            visible_bars: Some(350),
+        },
+    );
+    store.save(&file).unwrap();
+
+    let loaded = store.load("Single monitor").unwrap();
+    assert_eq!(loaded.chart_preferences["chart"].visible_bars, Some(350));
+
+    // Deserializing with invalid negative visible_bars drops it
+    let mut invalid_file = default_single();
+    invalid_file.name = "InvalidZoom".into();
+    let mut text = serialize_workspace(&invalid_file);
+    text.push_str("\n[chart_preferences.chart]\nsymbol = \"PETR4\"\ntimeframe = \"1m\"\nmode = \"manual\"\nvisible_bars = -5\n");
+    let parsed = parse_workspace(&text).unwrap();
+    assert_eq!(parsed.chart_preferences["chart"].visible_bars, None);
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn delayed_followed_deployment_fallback_on_archived_or_missing() {
+    let dir = temp_dir("delayed_fallback");
+    let mut store = WorkspaceStore::open_dir(dir.clone());
+
+    // Saved workspace: following dep-missing, last manual ITUB4 / 15m
+    let mut file = default_chart();
+    file.chart_preferences.insert(
+        "chart".into(),
+        WorkspaceChartPreferences {
+            symbol: "PETR4".into(),
+            timeframe: "1m".into(),
+            mode: "following".into(),
+            followed_deployment_id: Some("dep-missing".into()),
+            last_manual_symbol: Some("ITUB4".into()),
+            last_manual_timeframe: Some("15m".into()),
+            visible_bars: Some(150),
+        },
+    );
+    store.save(&file).unwrap();
+
+    let initial = q_terminal::startup::resolve_initial_target(
+        "VALE3",
+        "5m",
+        None,
+        None,
+        file.chart_preferences.get("chart"),
+    );
+    assert_eq!(initial.mode.as_str(), "following");
+    assert_eq!(initial.followed_deployment_id, Some("dep-missing".into()));
+    assert_eq!(initial.last_manual, ("ITUB4".into(), "15m".into()));
+
+    // Targeter starts following dep-missing with initial target
+    let fetcher =
+        q_terminal::chart_target::OverlayFetcher::new("http://localhost", std::ptr::null_mut());
+    let targeter = q_terminal::chart_target::ChartTargeter::new(
+        std::ptr::null_mut(),
+        ("PETR4".into(), "1m".into()),
+        q_terminal::stream::client::Retargeter::new_test(),
+        fetcher,
+    );
+    targeter.select(Some((
+        "dep-missing".into(),
+        "Missing".into(),
+        "PETR4".into(),
+        "1m".into(),
+    )));
+    assert!(targeter.following_target().is_some());
+
+    // In wire_execution, when confirmed snapshot arrives and dep is missing:
+    // Fallback selects initial.last_manual ("ITUB4", "15m")
+    let is_active = false;
+    if !is_active {
+        let (sym, tf) = &initial.last_manual;
+        let _ = targeter.request_manual(sym, tf);
+    }
+
+    // Targeter is now on manual ITUB4 / 15m, not following
+    assert_eq!(
+        (
+            targeter.selection().committed_symbol.as_str(),
+            targeter.selection().committed_timeframe.as_str()
+        ),
+        ("ITUB4", "15m")
+    );
+    assert!(targeter.is_manual());
+
+    // Saved workspace configuration on disk is NOT overwritten until operator explicitly saves or edits
+    let reloaded = store.load("Chart").unwrap();
+    assert_eq!(reloaded.chart_preferences["chart"].mode, "following");
+    assert_eq!(
+        reloaded.chart_preferences["chart"].followed_deployment_id,
+        Some("dep-missing".into())
+    );
+
+    let _ = fs::remove_dir_all(dir);
 }

@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 //! QML face of workspace persistence and display placement (Q-053).
 
 use cxx_qt::CxxQtType;
@@ -9,8 +11,11 @@ use crate::display::compositor::{
 use crate::display::identity::DisplayDescription;
 use crate::display::placement::{PlacementMode, PlacementStrategy};
 use crate::shell::layout::Node;
+use crate::workspace::autosave::Autosaver;
 use crate::workspace::resolve::resolve_for_displays;
-use crate::workspace::schema::{WorkspaceFile, WorkspaceSelection, WorkspaceWindow};
+use crate::workspace::schema::{
+    WorkspaceChartPreferences, WorkspaceFile, WorkspaceSelection, WorkspaceWindow,
+};
 use crate::workspace::store::WorkspaceStore;
 
 #[cxx_qt::bridge]
@@ -44,6 +49,10 @@ pub mod ffi {
         #[qproperty(QString, pending_placement_json)]
         #[qproperty(QString, pending_selection_json)]
         #[qproperty(QString, pending_study_sets_json)]
+        #[qproperty(QString, pending_chart_preferences_json)]
+        #[qproperty(bool, is_dirty)]
+        #[qproperty(bool, is_restoring)]
+        #[qproperty(QString, save_error)]
         #[qproperty(i32, revision)]
         type WorkspaceController = super::WorkspaceControllerRust;
 
@@ -53,8 +62,37 @@ pub mod ffi {
             shell_windows_json: QString,
             selection_json: QString,
             study_sets_json: QString,
+            chart_preferences_json: QString,
             name: QString,
         );
+        #[qinvokable]
+        fn flush_pending(
+            self: Pin<&mut WorkspaceController>,
+            shell_windows_json: QString,
+            selection_json: QString,
+            study_sets_json: QString,
+            chart_preferences_json: QString,
+        ) -> bool;
+        #[qinvokable]
+        fn mark_dirty(self: Pin<&mut WorkspaceController>);
+        #[qinvokable]
+        fn suppress_autosave(self: Pin<&mut WorkspaceController>);
+        #[qinvokable]
+        fn resume_autosave(self: Pin<&mut WorkspaceController>);
+        #[qinvokable]
+        fn capture_chart_preferences(
+            self: &WorkspaceController,
+            panel_id: QString,
+            symbol: QString,
+            timeframe: QString,
+            mode: QString,
+            followed_deployment_id: QString,
+            last_manual_symbol: QString,
+            last_manual_timeframe: QString,
+            visible_bars: i32,
+        ) -> QString;
+        #[qinvokable]
+        fn restore_chart_preferences(self: &WorkspaceController, panel_id: QString) -> QString;
         #[qinvokable]
         fn switch_to(self: Pin<&mut WorkspaceController>, name: QString);
         #[qinvokable]
@@ -74,6 +112,7 @@ pub mod ffi {
             shell_windows_json: QString,
             selection_json: QString,
             study_sets_json: QString,
+            chart_preferences_json: QString,
         ) -> QString;
         #[qinvokable]
         fn apply_placement(
@@ -110,10 +149,15 @@ pub struct WorkspaceControllerRust {
     pub pending_placement_json: QString,
     pub pending_selection_json: QString,
     pub pending_study_sets_json: QString,
+    pub pending_chart_preferences_json: QString,
+    pub is_dirty: bool,
+    pub is_restoring: bool,
+    pub save_error: QString,
     pub revision: i32,
     store: WorkspaceStore,
     strategy: PlacementStrategy,
     pending_windows: Vec<WorkspaceWindow>,
+    autosaver: Autosaver,
 }
 
 impl Default for WorkspaceControllerRust {
@@ -130,10 +174,15 @@ impl Default for WorkspaceControllerRust {
             pending_placement_json: QString::from("[]"),
             pending_selection_json: QString::from("{}"),
             pending_study_sets_json: QString::from("{}"),
+            pending_chart_preferences_json: QString::from("{}"),
+            is_dirty: false,
+            is_restoring: false,
+            save_error: QString::default(),
             revision: 0,
             store,
             strategy,
             pending_windows: Vec::new(),
+            autosaver: Autosaver::default(),
         }
     }
 }
@@ -198,6 +247,7 @@ impl ffi::WorkspaceController {
         for msg in messages {
             eprintln!("workspace: {msg}");
         }
+        self.as_mut().suppress_autosave();
         self.as_mut()
             .set_active_workspace(QString::from(resolved.name.clone()));
         self.as_mut()
@@ -215,7 +265,100 @@ impl ffi::WorkspaceController {
         self.as_mut().set_pending_study_sets_json(QString::from(
             serde_json::to_string(&resolved.study_sets).unwrap_or_else(|_| "{}".into()),
         ));
+        self.as_mut()
+            .set_pending_chart_preferences_json(QString::from(
+                serde_json::to_string(&resolved.chart_preferences).unwrap_or_else(|_| "{}".into()),
+            ));
         let _ = self.rust().store.set_last_used(&resolved.name);
+    }
+
+    pub fn suppress_autosave(mut self: std::pin::Pin<&mut Self>) {
+        self.as_mut().rust_mut().autosaver.suppress();
+        self.as_mut().set_is_restoring(true);
+    }
+
+    pub fn resume_autosave(mut self: std::pin::Pin<&mut Self>) {
+        self.as_mut().rust_mut().autosaver.resume();
+        self.as_mut().set_is_restoring(false);
+    }
+
+    pub fn mark_dirty(mut self: std::pin::Pin<&mut Self>) {
+        if self.rust().autosaver.is_suppressed() {
+            return;
+        }
+        self.as_mut()
+            .rust_mut()
+            .autosaver
+            .mark_dirty(std::time::Instant::now());
+        self.as_mut().set_is_dirty(true);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn capture_chart_preferences(
+        &self,
+        panel_id: QString,
+        symbol: QString,
+        timeframe: QString,
+        mode: QString,
+        followed_deployment_id: QString,
+        last_manual_symbol: QString,
+        last_manual_timeframe: QString,
+        visible_bars: i32,
+    ) -> QString {
+        let key = if panel_id.to_string().is_empty() {
+            "chart".to_string()
+        } else {
+            panel_id.to_string()
+        };
+        let dep_id = followed_deployment_id.to_string();
+        let man_sym = last_manual_symbol.to_string();
+        let man_tf = last_manual_timeframe.to_string();
+        let prefs = WorkspaceChartPreferences {
+            symbol: symbol.to_string(),
+            timeframe: timeframe.to_string(),
+            mode: mode.to_string(),
+            followed_deployment_id: if dep_id.is_empty() {
+                None
+            } else {
+                Some(dep_id)
+            },
+            last_manual_symbol: if man_sym.is_empty() {
+                None
+            } else {
+                Some(man_sym)
+            },
+            last_manual_timeframe: if man_tf.is_empty() {
+                None
+            } else {
+                Some(man_tf)
+            },
+            visible_bars: if visible_bars > 0 {
+                Some(visible_bars)
+            } else {
+                Some(120)
+            },
+        };
+        let mut map = std::collections::HashMap::new();
+        map.insert(key, prefs);
+        QString::from(serde_json::to_string(&map).unwrap_or_else(|_| "{}".into()))
+    }
+
+    pub fn restore_chart_preferences(&self, panel_id: QString) -> QString {
+        let key = if panel_id.to_string().is_empty() {
+            "chart"
+        } else {
+            &panel_id.to_string()
+        };
+        let json = self.rust().pending_chart_preferences_json.to_string();
+        if let Ok(map) = serde_json::from_str::<
+            std::collections::HashMap<String, WorkspaceChartPreferences>,
+        >(&json)
+        {
+            if let Some(prefs) = map.get(key) {
+                return QString::from(serde_json::to_string(prefs).unwrap_or_else(|_| "{}".into()));
+            }
+        }
+        QString::from("{}")
     }
 
     fn restore_specs_json(&self) -> QString {
@@ -271,6 +414,7 @@ impl ffi::WorkspaceController {
         shell_windows_json: QString,
         selection_json: QString,
         study_sets_json: QString,
+        chart_preferences_json: QString,
     ) -> QString {
         let name = self.rust().active_workspace.to_string();
         let windows: Vec<crate::shell::layout::Window> =
@@ -281,6 +425,15 @@ impl ffi::WorkspaceController {
             String,
             Vec<crate::workspace::schema::WorkspaceStudy>,
         > = serde_json::from_str(&study_sets_json.to_string()).unwrap_or_default();
+        let mut chart_preferences: std::collections::HashMap<
+            String,
+            crate::workspace::schema::WorkspaceChartPreferences,
+        > = serde_json::from_str(&chart_preferences_json.to_string()).unwrap_or_default();
+        if chart_preferences.is_empty() {
+            chart_preferences =
+                serde_json::from_str(&self.rust().pending_chart_preferences_json.to_string())
+                    .unwrap_or_default();
+        }
         let displays = Self::displays();
         let captured: Vec<CapturedWindow> = windows
             .iter()
@@ -307,22 +460,28 @@ impl ffi::WorkspaceController {
                 }
             })
             .collect();
+        let final_windows: Vec<WorkspaceWindow> =
+            if captured.is_empty() && !self.rust().pending_windows.is_empty() {
+                self.rust().pending_windows.clone()
+            } else {
+                captured
+                    .into_iter()
+                    .map(|c| WorkspaceWindow {
+                        composition: c.composition,
+                        root: c.root,
+                        display: c.display,
+                        geometry: c.geometry,
+                        detached: c.detached,
+                    })
+                    .collect()
+            };
         let file = WorkspaceFile {
             schema_version: crate::workspace::schema::CURRENT_SCHEMA_VERSION,
             name,
-            windows: captured
-                .into_iter()
-                .map(|c| WorkspaceWindow {
-                    composition: c.composition,
-                    root: c.root,
-                    display: c.display,
-                    geometry: c.geometry,
-                    detached: c.detached,
-                })
-                .collect(),
+            windows: final_windows,
             selection,
             study_sets,
-            chart_preferences: std::collections::HashMap::new(),
+            chart_preferences,
         };
         QString::from(serde_json::to_string(&file).unwrap_or_else(|_| "{}".into()))
     }
@@ -332,18 +491,100 @@ impl ffi::WorkspaceController {
         shell_windows_json: QString,
         selection_json: QString,
         study_sets_json: QString,
+        chart_preferences_json: QString,
         name: QString,
     ) {
-        let payload = self.capture_current(shell_windows_json, selection_json, study_sets_json);
+        let payload = self.capture_current(
+            shell_windows_json,
+            selection_json,
+            study_sets_json,
+            chart_preferences_json,
+        );
         if let Ok(mut file) = serde_json::from_str::<WorkspaceFile>(&payload.to_string()) {
             file.name = name.to_string();
+            if file.windows.is_empty() {
+                eprintln!("workspace save: refusing to overwrite with empty window layout");
+                return;
+            }
             if let Err(e) = self.rust().store.save(&file) {
-                eprintln!("workspace save: {e}");
+                let err_msg = e.to_string();
+                eprintln!("workspace save: {err_msg}");
+                self.as_mut().set_save_error(QString::from(err_msg));
             } else {
+                let rev = self.rust().autosaver.dirty_revision();
+                self.as_mut().rust_mut().autosaver.on_save_success(rev);
+                self.as_mut().set_is_dirty(false);
+                self.as_mut().set_save_error(QString::default());
                 self.as_mut().set_active_workspace(name);
+                self.as_mut()
+                    .rust_mut()
+                    .pending_windows
+                    .clone_from(&file.windows);
             }
         }
         self.as_mut().publish_lists();
+    }
+
+    pub fn flush_pending(
+        mut self: std::pin::Pin<&mut Self>,
+        shell_windows_json: QString,
+        selection_json: QString,
+        study_sets_json: QString,
+        chart_preferences_json: QString,
+    ) -> bool {
+        let name = self.rust().active_workspace.to_string();
+        if name.is_empty() {
+            return false;
+        }
+        if !self.rust().autosaver.is_dirty() {
+            return true;
+        }
+        let rev = match self.as_mut().rust_mut().autosaver.prepare_flush() {
+            Some(r) => r,
+            None => return true,
+        };
+        let payload = self.capture_current(
+            shell_windows_json,
+            selection_json,
+            study_sets_json,
+            chart_preferences_json,
+        );
+        if let Ok(mut file) = serde_json::from_str::<WorkspaceFile>(&payload.to_string()) {
+            file.name = name;
+            if file.windows.is_empty() {
+                eprintln!(
+                    "workspace flush_pending: refusing to overwrite with empty window layout"
+                );
+                return false;
+            }
+            match self.rust().store.save(&file) {
+                Ok(()) => {
+                    self.as_mut().rust_mut().autosaver.on_save_success(rev);
+                    let still_dirty = self.rust().autosaver.is_dirty();
+                    self.as_mut().set_is_dirty(still_dirty);
+                    self.as_mut().set_save_error(QString::default());
+                    self.as_mut()
+                        .rust_mut()
+                        .pending_windows
+                        .clone_from(&file.windows);
+                    self.as_mut().publish_lists();
+                    true
+                }
+                Err(e) => {
+                    let err_msg = e.to_string();
+                    eprintln!("workspace flush_pending failed: {err_msg}");
+                    self.as_mut()
+                        .rust_mut()
+                        .autosaver
+                        .on_save_failure(err_msg.clone());
+                    self.as_mut().set_is_dirty(true);
+                    self.as_mut().set_save_error(QString::from(err_msg));
+                    false
+                }
+            }
+        } else {
+            false
+        }
     }
 
     pub fn switch_to(mut self: std::pin::Pin<&mut Self>, name: QString) {

@@ -33,6 +33,110 @@ impl Drop for SliceContext {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InitialTargetResolution {
+    pub symbol: String,
+    pub timeframe: String,
+    pub mode: crate::chart_target::ChartMode,
+    pub is_session_override: bool,
+    pub followed_deployment_id: Option<String>,
+    pub last_manual: (String, String),
+    pub visible_bars: i32,
+}
+
+pub fn resolve_initial_target(
+    cfg_symbol: &str,
+    cfg_timeframe: &str,
+    env_symbol: Option<&str>,
+    env_timeframe: Option<&str>,
+    saved_prefs: Option<&crate::workspace::schema::WorkspaceChartPreferences>,
+) -> InitialTargetResolution {
+    let clean_env_sym = env_symbol.map(|s| s.trim()).filter(|s| !s.is_empty());
+    let clean_env_tf = env_timeframe.map(|s| s.trim()).filter(|s| !s.is_empty());
+    let is_session_override = clean_env_sym.is_some() || clean_env_tf.is_some();
+
+    let (saved_sym, saved_tf, saved_mode, saved_dep_id, saved_man_sym, saved_man_tf, saved_vb) =
+        if let Some(p) = saved_prefs {
+            (
+                Some(p.symbol.trim()).filter(|s| !s.is_empty()),
+                Some(p.timeframe.trim()).filter(|s| !s.is_empty()),
+                Some(p.mode.as_str()),
+                p.followed_deployment_id
+                    .clone()
+                    .filter(|s| !s.trim().is_empty()),
+                p.last_manual_symbol
+                    .clone()
+                    .filter(|s| !s.trim().is_empty()),
+                p.last_manual_timeframe
+                    .clone()
+                    .filter(|s| !s.trim().is_empty()),
+                p.visible_bars.unwrap_or(120),
+            )
+        } else {
+            (None, None, None, None, None, None, 120)
+        };
+
+    let clean_cfg_sym = Some(cfg_symbol.trim()).filter(|s| !s.is_empty());
+    let clean_cfg_tf = Some(cfg_timeframe.trim()).filter(|s| !s.is_empty());
+
+    let symbol = clean_env_sym
+        .or(saved_sym)
+        .or(clean_cfg_sym)
+        .unwrap_or("PETR4")
+        .to_string();
+
+    let timeframe = clean_env_tf
+        .or(saved_tf)
+        .or(clean_cfg_tf)
+        .unwrap_or("1m")
+        .to_string();
+
+    let mode = if is_session_override {
+        crate::chart_target::ChartMode::Manual
+    } else if let Some(m) = saved_mode {
+        if m == "manual" {
+            crate::chart_target::ChartMode::Manual
+        } else {
+            crate::chart_target::ChartMode::Following
+        }
+    } else {
+        crate::chart_target::ChartMode::Following
+    };
+
+    let last_manual = (
+        saved_man_sym.unwrap_or_else(|| {
+            if !is_session_override {
+                symbol.clone()
+            } else {
+                saved_sym.or(clean_cfg_sym).unwrap_or("PETR4").to_string()
+            }
+        }),
+        saved_man_tf.unwrap_or_else(|| {
+            if !is_session_override {
+                timeframe.clone()
+            } else {
+                saved_tf.or(clean_cfg_tf).unwrap_or("1m").to_string()
+            }
+        }),
+    );
+
+    let followed_deployment_id = if is_session_override {
+        None
+    } else {
+        saved_dep_id
+    };
+
+    InitialTargetResolution {
+        symbol,
+        timeframe,
+        mode,
+        is_session_override,
+        followed_deployment_id,
+        last_manual,
+        visible_bars: if saved_vb > 0 { saved_vb } else { 120 },
+    }
+}
+
 /// Binds the execution store to the window's models and makes the chart follow the
 /// selected deployment.
 fn wire_execution(
@@ -42,6 +146,7 @@ fn wire_execution(
     feed_ptr: *mut chart_bridge::BarFeed,
     chart_ctx_addr: usize,
     configured: (String, String),
+    initial_target: InitialTargetResolution,
 ) {
     let feed_addr = feed_ptr as usize;
     let models = chart_bridge::find_window_execution_models(engine);
@@ -113,11 +218,50 @@ fn wire_execution(
         rust.dirty.clone()
     };
     let addr = models as usize;
+    let initial_resolved = initial_target.clone();
+    let initial_checked = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let targeter_for_listener = targeter.clone();
+    let handle_for_listener = handle.clone();
     handle.set_listener(std::sync::Arc::new(move || {
         dirty.store(true, std::sync::atomic::Ordering::Release);
         unsafe {
             chart_bridge::post_execution_models_sync(addr as *mut chart_bridge::ExecutionModels)
         };
+        if !initial_checked.load(std::sync::atomic::Ordering::SeqCst) {
+            let is_confirmed = handle_for_listener.read(|s| s.is_confirmed());
+            if is_confirmed {
+                initial_checked.store(true, std::sync::atomic::Ordering::SeqCst);
+                if initial_resolved.mode == crate::chart_target::ChartMode::Following
+                    && !initial_resolved.is_session_override
+                {
+                    if let Some(ref dep_id) = initial_resolved.followed_deployment_id {
+                        let (is_active, _dep_name) = handle_for_listener.read(|s| {
+                            if let Some(dep) = s.data().deployments.get(dep_id) {
+                                let is_archived = dep.archived == Some(true)
+                                    || dep.lifecycle.as_str() == "archived";
+                                (!is_archived, dep.name.clone())
+                            } else {
+                                (false, String::new())
+                            }
+                        });
+                        if !is_active {
+                            let (sym, tf) = &initial_resolved.last_manual;
+                            let _ = targeter_for_listener.request_manual(sym, tf);
+                            if chart_ctx_addr != 0 {
+                                unsafe {
+                                    chart_context::notify_target_error(
+                                        chart_ctx_addr as *mut chart_context::ffi::ChartContext,
+                                        &format!(
+                                            "Followed deployment '{dep_id}' is no longer active; selected manual target {sym} · {tf}."
+                                        ),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }));
 }
 
@@ -153,10 +297,24 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
                 chart_bridge::feed_set_last_error(feed_ptr, &err.to_string());
             },
             Ok(cfg) => {
-                let tf_ms = parse_timeframe_ms(&cfg.timeframe);
+                let env_symbol = std::env::var("Q_TERMINAL_SYMBOL").ok();
+                let env_timeframe = std::env::var("Q_TERMINAL_TIMEFRAME").ok();
+                let mut store = crate::workspace::store::WorkspaceStore::open_default();
+                let (last_ws, _) = store.load_last_or_default();
+                let saved_prefs = last_ws.chart_preferences.get("chart").cloned();
+
+                let initial = resolve_initial_target(
+                    &cfg.symbol,
+                    &cfg.timeframe,
+                    env_symbol.as_deref(),
+                    env_timeframe.as_deref(),
+                    saved_prefs.as_ref(),
+                );
+
+                let tf_ms = parse_timeframe_ms(&initial.timeframe);
                 unsafe {
-                    chart_bridge::feed_set_symbol(feed_ptr, &cfg.symbol);
-                    chart_bridge::feed_set_timeframe(feed_ptr, &cfg.timeframe, tf_ms);
+                    chart_bridge::feed_set_symbol(feed_ptr, &initial.symbol);
+                    chart_bridge::feed_set_timeframe(feed_ptr, &initial.timeframe, tf_ms);
                     chart_bridge::feed_set_connection_state(feed_ptr, "connecting");
                     chart_bridge::feed_set_last_error(feed_ptr, "");
                 }
@@ -170,10 +328,18 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
                 let fetcher = OverlayFetcher::new(&cfg.api_base, feed_ptr);
                 let targeter = ChartTargeter::new(
                     feed_ptr,
-                    (cfg.symbol.clone(), cfg.timeframe.clone()),
+                    initial.last_manual.clone(),
                     client.retargeter(),
                     fetcher.clone(),
                 );
+                targeter.set_session_override(initial.is_session_override);
+                targeter.set_last_manual(&initial.last_manual.0, &initial.last_manual.1);
+                if initial.mode == crate::chart_target::ChartMode::Manual {
+                    let _ = targeter.request_manual(&initial.symbol, &initial.timeframe);
+                    if initial.is_session_override {
+                        targeter.set_session_override(true);
+                    }
+                }
                 unsafe {
                     use cxx_qt::CxxQtType;
                     let ffi_feed = feed_ptr as *mut crate::bridge::bar_feed::ffi::BarFeed;
@@ -202,6 +368,17 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
                             chart_ctx as *mut chart_context::ffi::ChartContext,
                             targeter.clone(),
                         );
+                        chart_context::set_last_manual(
+                            chart_ctx as *mut chart_context::ffi::ChartContext,
+                            &initial.last_manual.0,
+                            &initial.last_manual.1,
+                        );
+                        if let Some(ref dep_id) = initial.followed_deployment_id {
+                            chart_context::set_followed_deployment(
+                                chart_ctx as *mut chart_context::ffi::ChartContext,
+                                dep_id,
+                            );
+                        }
                     }
                 }
                 wire_execution(
@@ -211,6 +388,7 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
                     feed_ptr,
                     chart_ctx_addr,
                     (cfg.symbol.clone(), cfg.timeframe.clone()),
+                    initial.clone(),
                 );
                 chart_targeter = Some(targeter);
 
@@ -265,8 +443,8 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
                     chart_bridge::feed_setup_and_load(
                         feed_ptr,
                         &cfg.api_base,
-                        &cfg.symbol,
-                        &cfg.timeframe,
+                        &initial.symbol,
+                        &initial.timeframe,
                     );
                 }
 

@@ -20,10 +20,10 @@ intent in every workspace file, sets a stable per-window application identity
 XWayland (`QT_QPA_PLATFORM=xcb`) restores geometry directly at the cost of Wayland scaling
 and input handling. Use it when you want the terminal to place windows without compositor rules.
 
-## Schema (version 2)
+## Schema (version 3)
 
 ```toml
-schema_version = 2
+schema_version = 3
 name = "Trading"
 
 [[windows]]
@@ -37,16 +37,64 @@ detached = false
 global = ""
 detached = {}
 
-# Version 2 also stores chart-panel studies, for example:
+# Panel study sets:
 # [study_sets]
 # chart = [{ kind = "ema", period = 21, source = "close", num_std = 2.0, visible = true, palette_index = 0 }]
+
+# Panel chart preferences (Q-077):
+[chart_preferences.chart]
+symbol = "PETR4"
+timeframe = "1m"
+mode = "manual" # "manual" or "following"
+last_manual_symbol = "PETR4"
+last_manual_timeframe = "1m"
+visible_bars = 200
 ```
 
-Version 1 files migrate to version 2 with an empty study set. Invalid or unknown study
-entries are logged and dropped individually, leaving the rest of the workspace loadable.
+Version 1 and 2 files migrate forward seamlessly to version 3. Invalid or unknown study or
+chart-preference entries fall back per-setting without rejecting the remainder of the workspace.
 
-Unreadable, truncated or future-version files are reported; the terminal starts on a default
-workspace. Corrupt files are renamed aside (`.bad-<timestamp>`), never deleted.
+## Automatic persistence and crash resilience (Q-077)
+
+Terminal setup changes are persisted automatically without requiring manual save actions:
+
+- **Debounced autosave:** Layout mutations, study configuration changes, panel toggles,
+  chart target changes, and viewport zoom level adjustments are coalesced and committed after
+  a 500ms debounce interval.
+- **Synchronous flush:** Closing the application, shutting down, or switching workspaces
+  synchronously flushes pending dirty state to disk.
+- **Non-destructive window close:** Closing windows in a multi-window session preserves the
+  remaining layout. Closing the final window flushes the active layout before teardown,
+  preventing empty layout files from being written.
+- **Atomic write & directory sync:** Saves write to a temporary file (`.<name>.toml.tmp-PID-UUID`),
+  flush and sync the file descriptor and parent directory, and atomically rename over the target.
+- **Preservation & Recovery workspace:** Unreadable or corrupt files are renamed aside to
+  `.bad-<timestamp>`. Future-version files (schema version > 3) are preserved completely
+  untouched on disk, and the terminal opens on a newly created `Recovery` workspace
+  (`Recovery 2`, etc.), preventing older versions from corrupting newer configs.
+
+## Startup precedence and session overrides
+
+On startup, initial target resolution follows a strict field-by-field precedence hierarchy:
+
+1. **Explicit environment variables (`Q_TERMINAL_SYMBOL`, `Q_TERMINAL_TIMEFRAME`):**
+   Non-empty environment variables override the active session target. Crucially, they apply
+   as a **session-only override**: the committed target on disk is not overwritten, and the
+   UI indicates the divergence note until the operator explicitly requests a manual target.
+2. **Saved committed target:** The target (`symbol`, `timeframe`, `mode`, `followed_deployment_id`)
+   saved in the active workspace's chart preferences.
+3. **Configuration file (`terminal.toml`):** Configured symbol and timeframe.
+4. **Hardcoded defaults:** `PETR4` · `1m`.
+
+### Delayed followed-deployment fallback
+
+When the saved workspace specifies Following mode targeting a deployment ID:
+- The terminal begins loading history immediately for the deployment's symbol and timeframe.
+- When the execution stream snapshot is confirmed, if the deployment is missing, archived,
+  or cannot be resolved, the terminal automatically falls back to the saved `last_manual`
+  target and displays an explanatory diagnostic note in the chart header.
+- The saved workspace configuration on disk retains the operator's preference until the
+  operator explicitly retargets.
 
 ## Display resolution order
 

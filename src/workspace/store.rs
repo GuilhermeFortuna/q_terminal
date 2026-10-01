@@ -107,6 +107,7 @@ impl WorkspaceStore {
     }
 
     pub fn load_last_or_default(&mut self) -> (WorkspaceFile, bool) {
+        self.last_used = self.read_last_used();
         let fallback = default_chart();
         let name = match self.last_used.as_ref() {
             Some(n) => n.clone(),

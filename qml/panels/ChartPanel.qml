@@ -5,6 +5,7 @@ PanelFrame {
     id: root
     kind: "chart"
     commandTarget: identity
+    readonly property alias chartPane: chart
 
     function trigger(command) {
         if (command === "chart.focus-symbol") {
@@ -42,6 +43,15 @@ PanelFrame {
             z: 1
             context: root.shell.activeChartContext
             feed: root.shell.activeFeed
+        }
+    }
+
+    Connections {
+        target: chart.viewport
+        function onVisibleBarsChanged() {
+            if (root.shell && typeof root.shell.scheduleAutosave === "function") {
+                root.shell.scheduleAutosave();
+            }
         }
     }
 }
