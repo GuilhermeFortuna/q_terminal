@@ -230,7 +230,13 @@ pub mod ffi {
         fn remove_study(self: Pin<&mut BarFeed>, study_id: i64) -> bool;
 
         #[qinvokable]
+        fn set_study_visible(self: Pin<&mut BarFeed>, study_id: i64, visible: bool) -> bool;
+
+        #[qinvokable]
         fn study_list_json(self: &BarFeed) -> QString;
+
+        #[qinvokable]
+        fn restore_studies_json(self: Pin<&mut BarFeed>, json: QString) -> bool;
 
         #[qinvokable]
         fn set_study_palette_json(self: Pin<&mut BarFeed>, json: QString);
@@ -270,6 +276,9 @@ pub mod ffi {
 
         #[qinvokable]
         fn bar_readout_json(self: &BarFeed, index: i32) -> QString;
+
+        #[qinvokable]
+        fn study_values_json(self: &BarFeed, index: i32) -> QString;
 
         #[qinvokable]
         fn format_price(self: &BarFeed, price: f64) -> QString;
@@ -696,7 +705,7 @@ impl BarFeedRust {
         self.forming = None;
         self.price_decimals = MIN_PRICE_DECIMALS;
         self.deployment_overlays.clear();
-        self.study_set.clear();
+        self.study_set.reset_values();
         self.bar_tick_volume.clear();
         self.bar_real_volume.clear();
         self.forming_tick_volume = None;
@@ -1557,9 +1566,45 @@ impl ffi::BarFeed {
         removed
     }
 
+    pub fn set_study_visible(
+        mut self: std::pin::Pin<&mut Self>,
+        study_id: i64,
+        visible: bool,
+    ) -> bool {
+        let changed = self
+            .as_mut()
+            .rust_mut()
+            .study_set
+            .set_visible(study_id as u64, visible);
+        if changed {
+            self.as_mut().rust_mut().refresh_studies();
+            let rev = self.rust().overlay_revision;
+            self.as_mut().rust_mut().overlay_revision = rev - 1;
+            self.as_mut().set_overlay_revision(rev);
+        }
+        changed
+    }
+
     #[allow(clippy::needless_arbitrary_self_type)]
     pub fn study_list_json(self: &Self) -> QString {
         QString::from(&self.rust().study_set.study_list_json())
+    }
+
+    pub fn restore_studies_json(mut self: std::pin::Pin<&mut Self>, json: QString) -> bool {
+        if self
+            .as_mut()
+            .rust_mut()
+            .study_set
+            .restore_json(&json.to_string())
+            .is_err()
+        {
+            return false;
+        }
+        self.as_mut().rust_mut().refresh_studies();
+        let rev = self.rust().overlay_revision;
+        self.as_mut().rust_mut().overlay_revision = rev - 1;
+        self.as_mut().set_overlay_revision(rev);
+        true
     }
 
     pub fn set_study_palette_json(mut self: std::pin::Pin<&mut Self>, json: QString) {
@@ -1863,6 +1908,21 @@ impl ffi::BarFeed {
 
     pub fn bar_readout_json(&self, index: i32) -> QString {
         self.bar_snapshot_json(index)
+    }
+
+    pub fn study_values_json(&self, index: i32) -> QString {
+        let feed = self.rust();
+        let time = if index >= 0 && (index as usize) < feed.bar_times.len() {
+            feed.bar_times[index as usize]
+        } else if index == feed.bar_times.len() as i32 {
+            feed.forming.map(|bar| bar.0).unwrap_or(0)
+        } else {
+            0
+        };
+        QString::from(
+            feed.study_set
+                .values_json(crate::execution::markers::normalize_ms(time)),
+        )
     }
 
     pub fn format_price(&self, price: f64) -> QString {
@@ -2548,7 +2608,7 @@ mod tests {
     }
 
     #[test]
-    fn target_reset_clears_study_set() {
+    fn target_reset_preserves_study_set_but_clears_values() {
         let mut feed = BarFeedRust::new("PETR4", "1m");
         feed.history.open_gate();
         feed.study_set
@@ -2560,7 +2620,7 @@ mod tests {
         assert!(!feed.study_set.overlays().is_empty());
 
         feed.reset_for_target("VALE3", "1m", 1);
-        assert!(feed.study_set.specs().is_empty());
+        assert_eq!(feed.study_set.specs().len(), 1);
         assert!(feed.study_set.overlays().is_empty());
     }
 

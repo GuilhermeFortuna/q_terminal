@@ -43,6 +43,7 @@ pub mod ffi {
         #[qproperty(QString, pending_restore_json)]
         #[qproperty(QString, pending_placement_json)]
         #[qproperty(QString, pending_selection_json)]
+        #[qproperty(QString, pending_study_sets_json)]
         #[qproperty(i32, revision)]
         type WorkspaceController = super::WorkspaceControllerRust;
 
@@ -51,6 +52,7 @@ pub mod ffi {
             self: Pin<&mut WorkspaceController>,
             shell_windows_json: QString,
             selection_json: QString,
+            study_sets_json: QString,
             name: QString,
         );
         #[qinvokable]
@@ -71,6 +73,7 @@ pub mod ffi {
             self: &WorkspaceController,
             shell_windows_json: QString,
             selection_json: QString,
+            study_sets_json: QString,
         ) -> QString;
         #[qinvokable]
         fn apply_placement(
@@ -106,6 +109,7 @@ pub struct WorkspaceControllerRust {
     pub pending_restore_json: QString,
     pub pending_placement_json: QString,
     pub pending_selection_json: QString,
+    pub pending_study_sets_json: QString,
     pub revision: i32,
     store: WorkspaceStore,
     strategy: PlacementStrategy,
@@ -125,6 +129,7 @@ impl Default for WorkspaceControllerRust {
             pending_restore_json: QString::from("[]"),
             pending_placement_json: QString::from("[]"),
             pending_selection_json: QString::from("{}"),
+            pending_study_sets_json: QString::from("{}"),
             revision: 0,
             store,
             strategy,
@@ -207,6 +212,9 @@ impl ffi::WorkspaceController {
         self.as_mut().set_pending_selection_json(QString::from(
             serde_json::to_string(&resolved.selection).unwrap_or_else(|_| "{}".into()),
         ));
+        self.as_mut().set_pending_study_sets_json(QString::from(
+            serde_json::to_string(&resolved.study_sets).unwrap_or_else(|_| "{}".into()),
+        ));
         let _ = self.rust().store.set_last_used(&resolved.name);
     }
 
@@ -258,12 +266,21 @@ impl ffi::WorkspaceController {
         }
     }
 
-    pub fn capture_current(&self, shell_windows_json: QString, selection_json: QString) -> QString {
+    pub fn capture_current(
+        &self,
+        shell_windows_json: QString,
+        selection_json: QString,
+        study_sets_json: QString,
+    ) -> QString {
         let name = self.rust().active_workspace.to_string();
         let windows: Vec<crate::shell::layout::Window> =
             serde_json::from_str(&shell_windows_json.to_string()).unwrap_or_default();
         let selection: WorkspaceSelection =
             serde_json::from_str(&selection_json.to_string()).unwrap_or_default();
+        let study_sets: std::collections::HashMap<
+            String,
+            Vec<crate::workspace::schema::WorkspaceStudy>,
+        > = serde_json::from_str(&study_sets_json.to_string()).unwrap_or_default();
         let displays = Self::displays();
         let captured: Vec<CapturedWindow> = windows
             .iter()
@@ -304,6 +321,7 @@ impl ffi::WorkspaceController {
                 })
                 .collect(),
             selection,
+            study_sets,
         };
         QString::from(serde_json::to_string(&file).unwrap_or_else(|_| "{}".into()))
     }
@@ -312,9 +330,10 @@ impl ffi::WorkspaceController {
         mut self: std::pin::Pin<&mut Self>,
         shell_windows_json: QString,
         selection_json: QString,
+        study_sets_json: QString,
         name: QString,
     ) {
-        let payload = self.capture_current(shell_windows_json, selection_json);
+        let payload = self.capture_current(shell_windows_json, selection_json, study_sets_json);
         if let Ok(mut file) = serde_json::from_str::<WorkspaceFile>(&payload.to_string()) {
             file.name = name.to_string();
             if let Err(e) = self.rust().store.save(&file) {

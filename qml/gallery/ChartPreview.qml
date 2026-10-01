@@ -50,6 +50,11 @@ Rectangle {
 
     Component.onCompleted: {
         previewFeed.load_preview_bars(240);
+        previewFeed.set_study_palette_json(StudyPalette.paletteJson());
+        previewFeed.add_study("ema", 21, "close", 2.0);
+        previewFeed.add_study("rsi", 14, "close", 2.0);
+        previewFeed.add_study("sma", 500, "close", 2.0);
+        previewFeed.add_study("vwap", 1, "close", 2.0);
         applyPreviewState();
     }
 }

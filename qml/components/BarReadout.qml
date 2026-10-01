@@ -7,6 +7,7 @@ Rectangle {
 
     property var snapshot: null
     property string pointerPrice: ""
+    property string studyValues: "[]"
     property string previewState: "rest"
 
     QtObject {
@@ -80,6 +81,12 @@ Rectangle {
         if (root.effectivePointerPrice.length > 0) {
             res += " pointer " + root.effectivePointerPrice;
         }
+        try {
+            var values = JSON.parse(root.studyValues);
+            for (var i = 0; i < values.length; ++i) {
+                res += " study " + values[i].name + " " + (values[i].text || "—");
+            }
+        } catch (e) {}
         return res;
     }
 
@@ -87,7 +94,7 @@ Rectangle {
     // one line they wrap instead of being clipped.
     property real maximumWidth: 0
     readonly property real naturalRowWidth: {
-        var groups = [timeTextItem, openGroup, highGroup, lowGroup, closeGroup, pointerPriceRow, formingBadge];
+        var groups = [timeTextItem, openGroup, highGroup, lowGroup, closeGroup, pointerPriceRow, formingBadge, studyValuesText];
         var total = 0;
         var visibleCount = 0;
         for (var i = 0; i < groups.length; ++i) {
@@ -124,6 +131,22 @@ Rectangle {
             id: timeTextItem
             objectName: "readoutTime"
             text: root.effectiveSnapshot ? (root.effectiveSnapshot.time_text || "") : ""
+            color: Theme.textSecondary
+            font.pixelSize: Theme.typeLabelSmall
+            font.family: Theme.numericFontFamily
+            font.features: { "tnum": 1 }
+        }
+
+        Text {
+            id: studyValuesText
+            objectName: "readoutStudies"
+            visible: root.studyValues !== "[]" && root.studyValues !== ""
+            text: {
+                try {
+                    var values = JSON.parse(root.studyValues);
+                    return values.map(function (item) { return item.name + " " + (item.text || "—"); }).join(" · ");
+                } catch (e) { return ""; }
+            }
             color: Theme.textSecondary
             font.pixelSize: Theme.typeLabelSmall
             font.family: Theme.numericFontFamily
