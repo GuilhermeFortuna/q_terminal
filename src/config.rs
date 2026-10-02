@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// Read once at startup from $XDG_CONFIG_HOME/q_terminal/config.toml, with
-/// every field overridable by an environment variable. No default address is
-/// compiled into a binary that talks to a machine.
+/// Read once at startup from $XDG_CONFIG_HOME/q/terminal.toml, with
+/// every field overridable by an environment variable. The API address stays
+/// explicit; chart target fields use their documented defaults.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     pub api_base: String,
@@ -32,28 +32,39 @@ impl std::fmt::Display for ConfigError {
 impl std::error::Error for ConfigError {}
 
 pub fn default_config_path(get_env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
-    if let Some(xdg) = get_env("XDG_CONFIG_HOME") {
+    let config_root = if let Some(xdg) = get_env("XDG_CONFIG_HOME") {
         let trimmed = xdg.trim();
         if !trimmed.is_empty() {
-            return Some(
-                PathBuf::from(trimmed)
-                    .join("q_terminal")
-                    .join("config.toml"),
-            );
+            Some(PathBuf::from(trimmed))
+        } else {
+            None
         }
+    } else {
+        None
     }
-    if let Some(home) = get_env("HOME") {
-        let trimmed = home.trim();
-        if !trimmed.is_empty() {
-            return Some(
-                PathBuf::from(trimmed)
-                    .join(".config")
-                    .join("q_terminal")
-                    .join("config.toml"),
-            );
-        }
+    .or_else(|| {
+        get_env("HOME").and_then(|home| {
+            let trimmed = home.trim();
+            if !trimmed.is_empty() {
+                Some(PathBuf::from(trimmed).join(".config"))
+            } else {
+                None
+            }
+        })
+    })?;
+
+    let documented = config_root.join("q").join("terminal.toml");
+    if documented.exists() {
+        return Some(documented);
     }
-    None
+
+    // Keep installations created by earlier terminal versions working while
+    // moving to the path documented for operators.
+    let legacy = config_root.join("q_terminal").join("config.toml");
+    if legacy.exists() {
+        return Some(legacy);
+    }
+    Some(documented)
 }
 
 fn parse_toml_str(content: &str) -> Result<HashMap<String, String>, ConfigError> {
@@ -144,7 +155,7 @@ impl Config {
             .or_else(|| file_values.get("symbol").cloned())
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
-            .ok_or_else(|| ConfigError::MissingField("symbol".to_string()))?;
+            .unwrap_or_else(|| "PETR4".to_string());
 
         // Resolving timeframe
         let timeframe = get_env("Q_TERMINAL_TIMEFRAME")
@@ -152,7 +163,7 @@ impl Config {
             .or_else(|| file_values.get("timeframe").cloned())
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
-            .ok_or_else(|| ConfigError::MissingField("timeframe".to_string()))?;
+            .unwrap_or_else(|| "1m".to_string());
 
         let operator = get_env("Q_TERMINAL_OPERATOR")
             .or_else(|| file_values.get("operator").cloned())
