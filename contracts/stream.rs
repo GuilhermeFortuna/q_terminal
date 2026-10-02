@@ -1,4 +1,4 @@
-// GENERATED FILE - DO NOT EDIT. Source schemas: schema/stream/control/cursor-expired.schema.json, schema/stream/control/epoch-changed.schema.json, schema/stream/control/lagging.schema.json, schema/stream/control/rejected.schema.json, schema/stream/control/subscribe.schema.json, schema/stream/control/subscribed.schema.json, schema/stream/envelope.schema.json, schema/stream/payloads/execution-common.schema.json, schema/stream/payloads/execution-decision.schema.json, schema/stream/payloads/execution-deployment.schema.json, schema/stream/payloads/execution-fill.schema.json, schema/stream/payloads/execution-ledger.schema.json, schema/stream/payloads/execution-order.schema.json, schema/stream/payloads/execution-risk.schema.json, schema/stream/payloads/job-progress.schema.json, schema/stream/payloads/job-terminal.schema.json, schema/stream/replay/execution-snapshot.schema.json, schema/stream/replay/history-expired.schema.json, schema/stream/replay/history-page.schema.json, schema/stream/replay/latest.schema.json, schema/stream/replay/watermark.schema.json
+// GENERATED FILE - DO NOT EDIT. Source schemas: schema/stream/control/cursor-expired.schema.json, schema/stream/control/epoch-changed.schema.json, schema/stream/control/lagging.schema.json, schema/stream/control/rejected.schema.json, schema/stream/control/subscribe.schema.json, schema/stream/control/subscribed.schema.json, schema/stream/envelope.schema.json, schema/stream/payloads/execution-common.schema.json, schema/stream/payloads/execution-decision.schema.json, schema/stream/payloads/execution-deployment.schema.json, schema/stream/payloads/execution-fill.schema.json, schema/stream/payloads/execution-ledger.schema.json, schema/stream/payloads/execution-order.schema.json, schema/stream/payloads/execution-risk.schema.json, schema/stream/payloads/job-progress.schema.json, schema/stream/payloads/job-terminal.schema.json, schema/stream/payloads/trade-delivery-context.schema.json, schema/stream/payloads/trade-source-status.schema.json, schema/stream/replay/execution-snapshot.schema.json, schema/stream/replay/history-expired.schema.json, schema/stream/replay/history-page.schema.json, schema/stream/replay/latest.schema.json, schema/stream/replay/trade-history-headers.schema.json, schema/stream/replay/trade-history-page.schema.json, schema/stream/replay/trade-history-pending.schema.json, schema/stream/replay/trade-snapshot.schema.json, schema/stream/replay/trade-watermark.schema.json, schema/stream/replay/watermark.schema.json
 use serde::{Deserialize, Serialize};
 
 pub type BrokerMode = String;
@@ -316,6 +316,86 @@ pub struct SubscribedFrame {
     pub topics: serde_json::Value,
     #[serde(rename = "type")]
     pub r#type: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TradeDeliveryContext {
+    pub exchange_timezone: String,
+    pub provider_id: String,
+    pub session_key: String,
+    pub source_generation: String,
+    pub symbol: String,
+    pub volume_field: String,
+    pub volume_unit: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TradeHistoryPage {
+    pub cursor: serde_json::Value,
+    pub limit: i64,
+    pub response_content_type: Option<String>,
+    pub response_headers_schema: Option<String>,
+    pub snapshot_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TradeHistoryPageHeaders {
+    pub frozen_epoch: String,
+    pub frozen_seq: i64,
+    pub next_cursor: serde_json::Value,
+    pub page_count: i64,
+    pub snapshot_id: String,
+    pub source_generation: String,
+    pub symbol: String,
+    pub volume_field: String,
+    pub volume_unit: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TradeHistoryPending {
+    pub status: String,
+    pub status_token: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TradeSnapshotResponse {
+    pub coverage: TradeSourceStatus,
+    pub exchange_timezone: String,
+    pub expires_at: String,
+    pub first_page_url: String,
+    pub frozen_watermark: TradeWatermark,
+    pub invalid_trade_count: i64,
+    pub provider_id: String,
+    pub session_from: serde_json::Value,
+    pub session_key: String,
+    pub session_to: serde_json::Value,
+    pub snapshot_id: String,
+    pub source_generation: String,
+    pub symbol: String,
+    pub trade_count: i64,
+    pub volume_field: String,
+    pub volume_unit: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TradeSourceStatus {
+    pub classification_coverage: String,
+    pub coverage_reason: serde_json::Value,
+    pub coverage_state: String,
+    pub covered_from: serde_json::Value,
+    pub covered_to: serde_json::Value,
+    pub last_trade_watermark: TradeWatermark,
+    pub provider_id: String,
+    pub source_generation: String,
+    pub symbol: String,
+    pub volume_field: String,
+    pub volume_unit: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TradeWatermark {
+    pub epoch: String,
+    pub seq: i64,
 }
 
 pub type UUID = String;
