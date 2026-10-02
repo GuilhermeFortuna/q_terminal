@@ -46,6 +46,7 @@ an implementing agent works with each one.
 | Entry | What it is referenced for |
 | --- | --- |
 | Quantower | Workspace composition: how panels, tabs and linked instrument context are arranged across windows and monitors. |
+| Quantower Time & Sales | <https://help.quantower.com/quantower/analytics-panels/time-and-sales> — the trade tape panel (Q-082): compact newest-first columns (time, price, volume, side), a bounded row count, and a neutral presentation for prints whose aggressor side is unknown. |
 | Bookmap | Market-microstructure visualisation: heatmap axis treatment, colour ramps for liquidity, how time and price axes stay readable at density. |
 | Sierra Chart, ATAS, Jigsaw | DOM/ladder and footprint conventions: column ordering, centring behaviour, how working orders and position are drawn on the ladder. |
 | Wireshark | Dense professional tables: row height, zebra treatment, column alignment, selection and detail-pane pairing at thousands of rows. |

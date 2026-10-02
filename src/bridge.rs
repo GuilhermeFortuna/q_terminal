@@ -9,6 +9,9 @@ pub mod execution_models;
 pub mod ops_status;
 #[path = "shell_controller.rs"]
 pub mod shell_controller;
+#[path = "tape_model.rs"]
+#[allow(clippy::float_cmp)]
+pub mod tape_model;
 #[path = "workspace_controller.rs"]
 pub mod workspace_controller;
 

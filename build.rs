@@ -100,6 +100,7 @@ fn main() {
         .qml_file("qml/panels/DetailPanel.qml")
         .qml_file("qml/panels/ChartPanel.qml")
         .qml_file("qml/panels/InstrumentPanel.qml")
+        .qml_file("qml/panels/TapePanel.qml")
         .qml_file("qml/panels/PlaceholderPanel.qml")
         .qml_file("qml/ConfirmDialog.qml")
         .qml_file("qml/AccountDialog.qml")
@@ -137,6 +138,7 @@ fn main() {
         .qml_file("qml/components/StudyPicker.qml")
         .qml_file("qml/components/ChartTargetPrompt.qml")
         .qml_file("qml/components/BarReadout.qml")
+        .qml_file("qml/components/TapeView.qml")
         .qml_file("qml/style/Button.qml")
         .qml_file("qml/style/TextField.qml")
         .qml_file("qml/style/ComboBox.qml")
@@ -160,6 +162,10 @@ fn main() {
                         .file(
                             qt_build_utils::QResourceFile::new("qml/ChartAxis.js")
                                 .alias("ChartAxis.js"),
+                        )
+                        .file(
+                            qt_build_utils::QResourceFile::new("qml/StudyParams.js")
+                                .alias("StudyParams.js"),
                         ),
                 )
                 .resource(
@@ -181,6 +187,10 @@ fn main() {
                         .file(
                             qt_build_utils::QResourceFile::new("qml/ChartAxis.js")
                                 .alias("ChartAxis.js"),
+                        )
+                        .file(
+                            qt_build_utils::QResourceFile::new("qml/StudyParams.js")
+                                .alias("StudyParams.js"),
                         ),
                 )
                 .resource(
@@ -288,6 +298,7 @@ fn main() {
         .file("src/execution_controls.rs")
         .file("src/ops_status.rs")
         .file("src/shell_controller.rs")
+        .file("src/tape_model.rs")
         .file("src/workspace_controller.rs")
         .cpp_file("cpp/placement_cxx.cpp")
         .cpp_file("src/render_backend.cpp")

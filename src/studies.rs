@@ -395,6 +395,14 @@ impl StudySet {
             .collect()
     }
 
+    /// The threshold of the first large-print study, which decides what the tape flags.
+    pub fn large_print_threshold(&self) -> Option<f64> {
+        self.specs
+            .iter()
+            .find(|s| s.kind == StudyKind::LargePrints)
+            .map(|s| s.volume.large_print_threshold)
+    }
+
     pub fn has_volume_studies(&self) -> bool {
         self.specs.iter().any(|s| s.kind.is_volume())
     }

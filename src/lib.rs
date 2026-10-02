@@ -27,6 +27,7 @@ pub use bridge::execution_controls;
 pub use bridge::execution_models;
 pub use bridge::ops_status;
 pub use bridge::shell_controller;
+pub use bridge::tape_model;
 pub use bridge::workspace_controller;
 
 /// Prints app version, core version, contracts rev and render backend, then exits 0.

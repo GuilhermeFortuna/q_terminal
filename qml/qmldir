@@ -23,6 +23,7 @@ DeploymentsPanel 1.0 panels/DeploymentsPanel.qml
 DetailPanel 1.0 panels/DetailPanel.qml
 ChartPanel 1.0 panels/ChartPanel.qml
 InstrumentPanel 1.0 panels/InstrumentPanel.qml
+TapePanel 1.0 panels/TapePanel.qml
 PlaceholderPanel 1.0 panels/PlaceholderPanel.qml
 ConfirmDialog 1.0 ConfirmDialog.qml
 AccountDialog 1.0 AccountDialog.qml

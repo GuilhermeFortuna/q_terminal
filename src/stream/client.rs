@@ -650,6 +650,7 @@ async fn run_client_loop(
                 is_shutdown.clone(),
             )
         });
+        let mut trade_restarts = sinks.trades.as_ref().map(|h| h.restart_receiver());
         let mut topics: Vec<&str> = BAR_TOPICS.to_vec();
         if exec.is_some() {
             topics.extend(EXECUTION_TOPICS);
@@ -683,6 +684,16 @@ async fn run_client_loop(
                 } => {
                     if let Some(e) = exec.as_mut() {
                         e.retry(&Net { http: &http, api_base: &config.api_base, shared: &shared, is_shutdown: &is_shutdown }).await;
+                    }
+                }
+                reason = async {
+                    match trade_restarts.as_mut() {
+                        Some(rx) => rx.recv().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    if let (Some(t), Some(reason)) = (trades.as_mut(), reason) {
+                        t.restart(reason);
                     }
                 }
                 changed = target_rx.changed() => {

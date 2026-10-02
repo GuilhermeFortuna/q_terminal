@@ -23,3 +23,4 @@ ChartTargetPicker 1.0 ChartTargetPicker.qml
 StudyPicker 1.0 StudyPicker.qml
 ChartTargetPrompt 1.0 ChartTargetPrompt.qml
 BarReadout 1.0 BarReadout.qml
+TapeView 1.0 TapeView.qml

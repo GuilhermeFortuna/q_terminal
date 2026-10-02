@@ -220,6 +220,9 @@ pub struct TradeFeed {
     capacity_exhausted: bool,
     stale_since_ms: Option<i64>,
     mixed_generations: bool,
+    /// Prints at or above this are flagged on the tape: the first large-print study's
+    /// threshold, or the kernel default.
+    display_threshold: f64,
     revision: u64,
     pub counters: Counters,
 }
@@ -262,6 +265,7 @@ impl TradeFeed {
             capacity_exhausted: false,
             stale_since_ms: None,
             mixed_generations: false,
+            display_threshold: VolumeParams::default().large_print_threshold,
             revision: 0,
             counters: Counters::default(),
         }
@@ -299,6 +303,23 @@ impl TradeFeed {
 
     pub fn interval_ms(&self) -> i64 {
         self.interval_ms
+    }
+
+    pub fn display_threshold(&self) -> f64 {
+        self.display_threshold
+    }
+
+    /// Which prints the tape flags as large. `None` returns to the kernel default.
+    pub fn set_display_threshold(&mut self, threshold: Option<f64>) -> bool {
+        let next = threshold
+            .filter(|t| t.is_finite() && *t > 0.0)
+            .unwrap_or(VolumeParams::default().large_print_threshold);
+        if next.to_bits() == self.display_threshold.to_bits() {
+            return false;
+        }
+        self.display_threshold = next;
+        self.touch();
+        true
     }
 
     pub fn clock(&self) -> Option<ExchangeClock> {
@@ -1016,6 +1037,8 @@ type Listener = Box<dyn Fn() -> bool + Send + Sync>;
 struct Shared {
     feed: Mutex<TradeFeed>,
     listeners: Mutex<Vec<Listener>>,
+    /// Where panels ask the stream client to start a load over (a capacity retry).
+    restarts: Mutex<Option<tokio::sync::mpsc::UnboundedSender<ResyncReason>>>,
 }
 
 /// The process-level feed: the stream client writes it, panels and the chart read it.
@@ -1046,6 +1069,7 @@ impl TradeHandle {
             shared: Arc::new(Shared {
                 feed: Mutex::new(feed),
                 listeners: Mutex::new(Vec::new()),
+                restarts: Mutex::new(None),
             }),
         }
     }
@@ -1072,6 +1096,27 @@ impl TradeHandle {
         result
     }
 
+    /// The stream client's end of the restart channel; a new connection replaces the last.
+    pub fn restart_receiver(&self) -> tokio::sync::mpsc::UnboundedReceiver<ResyncReason> {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        *self
+            .shared
+            .restarts
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(tx);
+        rx
+    }
+
+    /// Asks the stream client to reload the session. False if no client is listening.
+    pub fn request_restart(&self, reason: ResyncReason) -> bool {
+        self.shared
+            .restarts
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .is_some_and(|tx| tx.send(reason).is_ok())
+    }
+
     /// Registers a listener; it is dropped when it returns false.
     pub fn subscribe(&self, listener: impl Fn() -> bool + Send + Sync + 'static) {
         self.shared
@@ -1088,6 +1133,16 @@ impl TradeHandle {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         listeners.retain(|l| l());
+    }
+
+    /// Replays the cached history on this thread. For fixtures and tests that need the
+    /// result before they look; live code uses [`rebuild_in_background`](Self::rebuild_in_background).
+    pub fn rebuild_blocking(&self) {
+        let Some(job) = self.read(|f| f.needs_rebuild().then(|| f.plan_rebuild()).flatten()) else {
+            return;
+        };
+        let result = job.run();
+        self.mutate(|f| f.install_rebuild(result));
     }
 
     /// Replays the cached history for the current interval and parameters off-thread.

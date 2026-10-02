@@ -6,6 +6,7 @@
 
 pub mod analysis;
 pub mod feed;
+pub mod fixture;
 pub mod history;
 pub mod model;
 pub mod notify;

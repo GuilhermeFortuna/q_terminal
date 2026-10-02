@@ -388,7 +388,7 @@ Item {
             "detail": detailPanel,
             "chart": chartPanel,
             "instrument": instrumentPanel,
-            "tape": placeholderPanel,
+            "tape": tapePanel,
             "dom": placeholderPanel,
             "footprint": placeholderPanel
         })
@@ -412,6 +412,10 @@ Item {
     Component {
         id: instrumentPanel
         InstrumentPanel {}
+    }
+    Component {
+        id: tapePanel
+        TapePanel {}
     }
     Component {
         id: placeholderPanel

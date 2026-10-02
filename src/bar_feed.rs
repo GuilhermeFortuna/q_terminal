@@ -247,6 +247,11 @@ pub mod ffi {
             large_print_threshold: f64,
         ) -> bool;
 
+        /// Follows a deterministic fixture session instead of the process feed. For gallery
+        /// captures and tests; `state` is one of the states `trades::fixture` knows.
+        #[qinvokable]
+        fn bind_fixture_trades(self: Pin<&mut BarFeed>, state: QString, minutes: i32);
+
         #[qinvokable]
         fn remove_study(self: Pin<&mut BarFeed>, study_id: i64) -> bool;
 
@@ -532,6 +537,8 @@ pub struct BarFeedRust {
     study_set: StudySet,
     /// The shared tape feed the volume studies are drawn from.
     trades: Option<TradeHandle>,
+    /// Replay synchronously: the fixture session is captured the moment it is built.
+    trades_blocking: bool,
     /// Large-print markers of the tape studies, kept apart from the execution markers.
     trade_markers: Vec<Marker>,
     bar_tick_volume: Vec<i64>,
@@ -672,6 +679,7 @@ impl BarFeedRust {
             deployment_overlays: Vec::new(),
             study_set: StudySet::new(),
             trades: None,
+            trades_blocking: false,
             trade_markers: Vec::new(),
             bar_tick_volume: Vec::new(),
             bar_real_volume: Vec::new(),
@@ -1019,8 +1027,14 @@ impl BarFeedRust {
             return;
         };
         let params: Vec<VolumeParams> = self.study_set.volume_params();
+        let threshold = self.study_set.large_print_threshold();
+        handle.mutate(|feed| feed.set_display_threshold(threshold));
         if handle.mutate(|feed| feed.set_params(&params)) {
-            handle.rebuild_in_background();
+            if self.trades_blocking {
+                handle.rebuild_blocking();
+            } else {
+                handle.rebuild_in_background();
+            }
         }
     }
 
@@ -1715,6 +1729,16 @@ impl ffi::BarFeed {
         }
         self.as_mut().rust_mut().refresh_studies();
         self.bump_overlays();
+    }
+
+    pub fn bind_fixture_trades(mut self: std::pin::Pin<&mut Self>, state: QString, minutes: i32) {
+        let feed =
+            crate::trades::fixture::preview_feed(&state.to_string(), minutes.max(1) as usize);
+        let mut rust = self.as_mut().rust_mut();
+        rust.trades = Some(TradeHandle::from_feed(feed));
+        rust.trades_blocking = true;
+        rust.sync_trade_params();
+        rust.refresh_studies();
     }
 
     /// Follows the process-level trade feed.

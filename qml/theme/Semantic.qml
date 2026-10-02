@@ -69,6 +69,15 @@ QtObject {
         }
     }
 
+    // The aggressor of a tape print. An unknown side stays neutral: it is no sell.
+    function aggressor(value) {
+        switch (String(value).toLowerCase()) {
+        case "buy": return positive;
+        case "sell": return negative;
+        default: return neutral;
+        }
+    }
+
     function side(value) {
         return String(value).toLowerCase() === "buy" ? positive : negative;
     }
