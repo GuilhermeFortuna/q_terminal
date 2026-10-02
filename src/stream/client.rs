@@ -7,6 +7,8 @@ use crate::stream::frame::{classify_text, split_binary, ControlFrame, ServerFram
 use crate::stream::policy::EXECUTION_TOPICS;
 use crate::stream::sink::BarSink;
 use crate::stream::topic_state::{on_event, Action, Event, TopicFilter, TopicState};
+use crate::stream::trade_session::{self, TradeSession, TRADE_TOPICS};
+use crate::trades::feed::{ResyncReason, TradeHandle};
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::json;
@@ -101,7 +103,7 @@ fn bar_topic_state(topic: &str, target: &BarTarget) -> TopicState {
 }
 
 /// Percent-encodes a routing key for the `key` query parameter of `/latest`.
-fn encode_query(value: &str) -> String {
+pub(crate) fn encode_query(value: &str) -> String {
     value
         .bytes()
         .map(|b| match b {
@@ -238,6 +240,8 @@ pub struct StreamClient {
 pub struct Sinks {
     pub bars: BarSink,
     pub execution: Option<ExecutionHandle>,
+    /// The shared trade feed. Without one the client does not subscribe to the trade topics.
+    pub trades: Option<TradeHandle>,
 }
 
 impl StreamClient {
@@ -247,6 +251,7 @@ impl StreamClient {
             Sinks {
                 bars: sink,
                 execution: None,
+                trades: None,
             },
         )
     }
@@ -636,9 +641,21 @@ async fn run_client_loop(
         let mut bar_epochs: HashMap<String, String> = HashMap::new();
 
         let mut exec = sinks.execution.clone().map(ExecSession::new);
+        let mut trades = sinks.trades.clone().map(|handle| {
+            TradeSession::new(
+                handle,
+                http.clone(),
+                &config.api_base,
+                shared.clone(),
+                is_shutdown.clone(),
+            )
+        });
         let mut topics: Vec<&str> = BAR_TOPICS.to_vec();
         if exec.is_some() {
             topics.extend(EXECUTION_TOPICS);
+        }
+        if trades.is_some() {
+            topics.extend(TRADE_TOPICS);
         }
 
         let (mut ws_sink, mut ws_source) = ws_stream.split();
@@ -674,6 +691,9 @@ async fn run_client_loop(
                     }
                     let target = target_rx.borrow_and_update().clone();
                     sink.reset(target.generation);
+                    if let Some(t) = trades.as_mut() {
+                        t.on_target(&target.symbol, &target.timeframe);
+                    }
                     for topic in BAR_TOPICS {
                         let mut state = bar_topic_state(topic, &target);
                         if let Some(ep) = bar_epochs.get(topic) {
@@ -710,14 +730,27 @@ async fn run_client_loop(
                                                 if let Some(e) = exec.as_mut() {
                                                     e.on_subscribed(&Net { http: &http, api_base: &config.api_base, shared: &shared, is_shutdown: &is_shutdown }, obj).await;
                                                 }
+                                                if let Some(t) = trades.as_mut() {
+                                                    if TRADE_TOPICS.iter().all(|topic| obj.contains_key(*topic)) {
+                                                        let target = target_rx.borrow().clone();
+                                                        t.on_subscribed(&target.symbol, &target.timeframe);
+                                                    }
+                                                }
                                                 shared.set_state(ConnectionState::Live);
                                             }
                                         }
                                         ControlFrame::Rejected(rej) => {
                                             shared.set_last_error(&rej.reason);
+                                            if let (Some(t), Some(topic)) = (trades.as_mut(), rej.topic.as_deref()) {
+                                                if trade_session::handles(topic) {
+                                                    t.on_rejected(&rej.reason);
+                                                }
+                                            }
                                         }
                                         ControlFrame::CursorExpired(ce) => {
-                                            if let Some(e) = exec.as_mut().filter(|_| ExecSession::handles(&ce.topic)) {
+                                            if let Some(t) = trades.as_mut().filter(|_| trade_session::handles(&ce.topic)) {
+                                                t.on_gap(ResyncReason::Expired);
+                                            } else if let Some(e) = exec.as_mut().filter(|_| ExecSession::handles(&ce.topic)) {
                                                 e.on_cursor_expired(&Net { http: &http, api_base: &config.api_base, shared: &shared, is_shutdown: &is_shutdown }, &ce.topic).await;
                                             } else if let Some(state) = states.get_mut(&ce.topic) {
                                                 let acts = on_event(state, Event::CursorExpired);
@@ -725,7 +758,9 @@ async fn run_client_loop(
                                             }
                                         }
                                         ControlFrame::Lagging(lag) => {
-                                            if let Some(e) = exec.as_mut().filter(|_| ExecSession::handles(&lag.topic)) {
+                                            if let Some(t) = trades.as_mut().filter(|_| lag.topic == "trades") {
+                                                t.on_gap(ResyncReason::Lagging);
+                                            } else if let Some(e) = exec.as_mut().filter(|_| ExecSession::handles(&lag.topic)) {
                                                 e.on_lagging(&Net { http: &http, api_base: &config.api_base, shared: &shared, is_shutdown: &is_shutdown }, &lag.topic, lag.from_seq).await;
                                             } else if let Some(state) = states.get_mut(&lag.topic) {
                                                 let acts = on_event(state, Event::Lagging { from_seq: lag.from_seq });
@@ -733,13 +768,24 @@ async fn run_client_loop(
                                             }
                                         }
                                         ControlFrame::EpochChanged(ec) => {
-                                            if let Some(e) = exec.as_mut().filter(|_| ExecSession::handles(&ec.topic)) {
+                                            if let Some(t) = trades.as_mut().filter(|_| trade_session::handles(&ec.topic)) {
+                                                t.on_gap(ResyncReason::EpochChanged);
+                                            } else if let Some(e) = exec.as_mut().filter(|_| ExecSession::handles(&ec.topic)) {
                                                 e.on_epoch_changed(&Net { http: &http, api_base: &config.api_base, shared: &shared, is_shutdown: &is_shutdown }, &ec.topic, &ec.new_epoch).await;
                                             } else if let Some(state) = states.get_mut(&ec.topic) {
                                                 let acts = on_event(state, Event::EpochChanged { new_epoch: ec.new_epoch });
                                                 handle_actions(state, acts, &ec.topic, &sink, &shared, &http, &config.api_base, &is_shutdown).await;
                                             }
                                         }
+                                    }
+                                }
+                                Ok(ServerFrame::Envelope(header)) if trades.is_some() && header.topic == "trades.status" => {
+                                    let payload = serde_json::from_str::<serde_json::Value>(&text)
+                                        .ok()
+                                        .and_then(|v| v.get("payload").cloned())
+                                        .unwrap_or(serde_json::Value::Null);
+                                    if let Some(t) = trades.as_mut() {
+                                        t.on_status(&header.epoch, header.seq, &payload);
                                     }
                                 }
                                 Ok(ServerFrame::Envelope(header)) if exec.is_some() && ExecSession::handles(&header.topic) => {
@@ -758,6 +804,12 @@ async fn run_client_loop(
                         }
                         Message::Binary(bytes) => {
                             match split_binary(&bytes) {
+                                Ok(bin_frame) if bin_frame.header.topic == "trades" => {
+                                    match trades.as_mut() {
+                                        Some(t) => t.on_binary(&bin_frame.header, bin_frame.arrow),
+                                        None => shared.inc_dropped(),
+                                    }
+                                }
                                 Ok(bin_frame) => {
                                     let header = bin_frame.header;
                                     let (sym, tf) = match &header.key {
@@ -815,6 +867,9 @@ async fn run_client_loop(
 
         if let Some(e) = &exec {
             e.lost();
+        }
+        if let Some(t) = trades.as_mut() {
+            t.lost();
         }
         attempt += 1;
     }

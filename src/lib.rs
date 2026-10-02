@@ -56,6 +56,7 @@ pub fn headless_execution_report() -> i32 {
         stream::client::Sinks {
             bars: stream::sink::BarSink::new(),
             execution: Some(handle.clone()),
+            trades: None,
         },
     );
     let timeout_ms: u64 = std::env::var("Q_TERMINAL_REPORT_TIMEOUT_MS")

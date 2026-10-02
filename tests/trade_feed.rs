@@ -407,3 +407,290 @@ fn the_shared_handle_notifies_listeners_once_per_change() {
     handle.mutate(|f| f.retarget(SYMBOL)); // no change
     assert_eq!(hits.load(Ordering::SeqCst), 1);
 }
+
+// -- end to end through the stream client and the fake backend -------------------------------
+
+mod stream_e2e {
+    use super::*;
+    use std::time::Duration;
+
+    use q_terminal::config::Config;
+    use q_terminal::stream::client::{Sinks, StreamClient};
+    use q_terminal::stream::fake_server::FakeServer;
+    use q_terminal::stream::sink::BarSink;
+
+    struct Rig {
+        server: FakeServer,
+        handle: TradeHandle,
+        client: StreamClient,
+    }
+
+    async fn start(server: FakeServer, symbol: &str) -> Rig {
+        let handle = TradeHandle::new();
+        let config = Config {
+            api_base: server.api_base(),
+            symbol: symbol.to_string(),
+            timeframe: "1m".to_string(),
+            operator: "operator".to_string(),
+        };
+        let client = StreamClient::start_with(
+            config,
+            Sinks {
+                bars: BarSink::new(),
+                execution: None,
+                trades: Some(handle.clone()),
+            },
+        );
+        Rig {
+            server,
+            handle,
+            client,
+        }
+    }
+
+    impl Rig {
+        async fn until(&self, what: &str, f: impl Fn(&TradeFeed) -> bool) {
+            for _ in 0..400 {
+                if self.handle.read(&f) {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+            let report = self.handle.read(|feed| format!("{:?}", feed.report()));
+            panic!("timed out waiting for {what}: {report}");
+        }
+
+        async fn live_with(&self, rows: u64) {
+            self.until("live feed", |f| f.is_live() && f.history().rows() == rows)
+                .await;
+        }
+
+        fn bars(&self) -> Vec<q_terminal::trades::analysis::BarAggregate> {
+            self.handle.read(|f| {
+                f.base_analysis()
+                    .map(|a| a.bars().to_vec())
+                    .unwrap_or_default()
+            })
+        }
+
+        async fn stop(self) {
+            self.client.shutdown();
+            self.server.shutdown().await;
+        }
+    }
+
+    fn rows() -> Vec<Row> {
+        session_rows()
+    }
+
+    #[tokio::test]
+    async fn pages_then_live_join_at_the_watermark_and_equal_the_kernel() {
+        let server = FakeServer::start().await;
+        let snap = fake_snapshot(SYMBOL, GENERATION, "snap-1", &rows(), 3, 100);
+        server.trades().set_snapshot(snap);
+        server.trades().set_page_delay_ms(150);
+        let rig = start(server, SYMBOL).await;
+        // Deliveries sent while the pages are still loading are buffered, not lost.
+        rig.until("subscription", |_| true).await;
+        for _ in 0..100 {
+            if rig.server.ws_subscribes() > 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let fresh: Vec<Row> = vec![(2 * MIN + 2, 128_446.0, 7.0, BUY, 0)];
+        let ctx = context();
+        rig.server
+            .send_trades(EPOCH, 100, &ctx, &columns(&rows()[5..]))
+            .await;
+        rig.server
+            .send_trades(EPOCH, 101, &ctx, &columns(&fresh))
+            .await;
+        let total = rows().len() as u64 + 1;
+        rig.live_with(total).await;
+        let mut all = rows();
+        all.extend(fresh);
+        assert_matches_kernel(&rig.bars(), &oracle(&all, MIN, VolumeConfig::default()));
+        assert_eq!(rig.server.trades().snapshot_requests_for(SYMBOL), 1);
+        assert_eq!(
+            rig.server.trades().history_requests().len(),
+            3,
+            "three pages"
+        );
+        rig.stop().await;
+    }
+
+    #[tokio::test]
+    async fn backfill_in_progress_is_shown_as_partial_until_the_snapshot_is_served() {
+        let server = FakeServer::start().await;
+        server.trades().set_pending(
+            1,
+            fake_snapshot(SYMBOL, GENERATION, "snap-1", &rows(), 4, 100),
+        );
+        let rig = start(server, SYMBOL).await;
+        rig.until("pending", |f| f.report().backfill_pending).await;
+        let report = rig.handle.read(|f| f.report());
+        assert!(report.loading && !report.complete && report.history_rows == 0);
+        rig.live_with(rows().len() as u64).await;
+        assert!(!rig.handle.read(|f| f.report().backfill_pending));
+        rig.stop().await;
+    }
+
+    #[tokio::test]
+    async fn an_expired_snapshot_clears_output_and_loads_a_fresh_one() {
+        let server = FakeServer::start().await;
+        let first = fake_snapshot(SYMBOL, GENERATION, "snap-1", &rows()[..4], 2, 100);
+        let second = fake_snapshot(SYMBOL, GENERATION, "snap-2", &rows(), 2, 120);
+        server.trades().set_snapshots(vec![first, second]);
+        server.trades().expire("snap-1");
+        let rig = start(server, SYMBOL).await;
+        rig.live_with(rows().len() as u64).await;
+        assert_eq!(rig.server.trades().snapshot_requests_for(SYMBOL), 2);
+        assert_matches_kernel(&rig.bars(), &oracle(&rows(), MIN, VolumeConfig::default()));
+        rig.stop().await;
+    }
+
+    #[tokio::test]
+    async fn a_sequence_gap_loads_a_fresh_snapshot() {
+        let server = FakeServer::start().await;
+        let first = fake_snapshot(SYMBOL, GENERATION, "snap-1", &rows()[..5], 5, 100);
+        let second = fake_snapshot(SYMBOL, GENERATION, "snap-2", &rows(), 5, 110);
+        server.trades().set_snapshots(vec![first, second]);
+        let rig = start(server, SYMBOL).await;
+        rig.live_with(5).await;
+        let ctx = context();
+        // Sequences 101..104 never arrive.
+        rig.server
+            .send_trades(EPOCH, 105, &ctx, &columns(&rows()[5..]))
+            .await;
+        rig.live_with(rows().len() as u64).await;
+        assert_eq!(rig.server.trades().snapshot_requests_for(SYMBOL), 2);
+        rig.stop().await;
+    }
+
+    #[tokio::test]
+    async fn a_source_generation_change_in_status_restarts_from_a_new_snapshot() {
+        let server = FakeServer::start().await;
+        let first = fake_snapshot(SYMBOL, "gen-1", "snap-1", &rows()[..5], 5, 100);
+        let second = fake_snapshot(SYMBOL, "gen-2", "snap-2", &rows(), 5, 10);
+        server.trades().set_snapshots(vec![first, second]);
+        let rig = start(server, SYMBOL).await;
+        rig.live_with(5).await;
+        let status = serde_json::to_value(status_for(SYMBOL, "gen-2", "partial", 11)).unwrap();
+        rig.server.send_trade_status(EPOCH, 7, status).await;
+        rig.until("new generation", |f| {
+            f.is_live()
+                && f.context().is_some_and(|c| c.source_generation == "gen-2")
+                && f.history().rows() == rows().len() as u64
+        })
+        .await;
+        rig.stop().await;
+    }
+
+    #[tokio::test]
+    async fn reconnecting_freezes_then_replaces_the_session_view() {
+        let server = FakeServer::start().await;
+        server
+            .trades()
+            .set_snapshot(fake_snapshot(SYMBOL, GENERATION, "snap-1", &rows(), 4, 100));
+        let rig = start(server, SYMBOL).await;
+        rig.live_with(rows().len() as u64).await;
+        rig.server.close_client().await;
+        rig.until("stale after disconnect", |f| f.report().stale)
+            .await;
+        // The client reconnects and the snapshot is loaded again.
+        for _ in 0..200 {
+            if rig.server.trades().snapshot_requests_for(SYMBOL) >= 2
+                && rig.handle.read(|f| f.is_live() && !f.report().stale)
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        assert!(rig.server.trades().snapshot_requests_for(SYMBOL) >= 2);
+        assert!(rig.handle.read(|f| f.report().complete));
+        assert_eq!(rig.handle.read(|f| f.history().rows()), rows().len() as u64);
+        rig.stop().await;
+    }
+
+    #[tokio::test]
+    async fn retargeting_drops_the_old_symbol_even_with_its_pages_in_flight() {
+        let server = FakeServer::start().await;
+        server.trades().set_snapshot(fake_snapshot(
+            SYMBOL,
+            GENERATION,
+            "snap-wi",
+            &rows(),
+            1,
+            100,
+        ));
+        let other: Vec<Row> = vec![(0, 5_100.0, 3.0, SELL, 0), (1, 5_101.0, 2.0, BUY, 0)];
+        server.trades().set_snapshot(fake_snapshot(
+            "WDOZ26", GENERATION, "snap-wd", &other, 2, 50,
+        ));
+        server.trades().set_page_delay_ms(120);
+        let rig = start(server, SYMBOL).await;
+        rig.until("first page requested", |_| true).await;
+        for _ in 0..100 {
+            if !rig.server.trades().history_requests().is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        rig.client.retarget("WDOZ26", "1m", 1);
+        rig.until("new symbol live", |f| {
+            f.symbol() == Some("WDOZ26") && f.is_live() && f.history().rows() == 2
+        })
+        .await;
+        // Nothing of the old symbol is in the history or the output.
+        let prices: Vec<f64> = rig
+            .handle
+            .read(|f| f.history().iter_from(0).map(|t| t.price).collect());
+        assert!(prices.iter().all(|p| *p < 10_000.0), "{prices:?}");
+        assert_eq!(rig.server.trades().snapshot_requests_for("WDOZ26"), 1);
+        rig.stop().await;
+    }
+
+    #[tokio::test]
+    async fn a_timeframe_only_change_sends_no_request() {
+        let server = FakeServer::start().await;
+        server
+            .trades()
+            .set_snapshot(fake_snapshot(SYMBOL, GENERATION, "snap-1", &rows(), 4, 100));
+        let rig = start(server, SYMBOL).await;
+        rig.live_with(rows().len() as u64).await;
+        let snapshots = rig.server.trades().snapshot_requests().len();
+        let pages = rig.server.trades().history_requests().len();
+        let subscribes = rig.server.ws_subscribes();
+        rig.client.retarget(SYMBOL, "5m", 1);
+        rig.until("regrouped", |f| {
+            f.base_analysis()
+                .is_some_and(|a| a.grid().interval_ms() == 5 * MIN)
+        })
+        .await;
+        assert_eq!(rig.server.trades().snapshot_requests().len(), snapshots);
+        assert_eq!(rig.server.trades().history_requests().len(), pages);
+        assert_eq!(rig.server.ws_subscribes(), subscribes);
+        assert_matches_kernel(
+            &rig.bars(),
+            &oracle(&rows(), 5 * MIN, VolumeConfig::default()),
+        );
+        rig.stop().await;
+    }
+
+    #[tokio::test]
+    async fn an_unavailable_source_is_reported_not_hidden() {
+        let server = FakeServer::start().await;
+        server.trades().set_unavailable(SYMBOL);
+        let rig = start(server, SYMBOL).await;
+        rig.until("unavailable", |f| {
+            matches!(f.phase(), Phase::Unavailable(_))
+        })
+        .await;
+        let report = rig.handle.read(|f| f.report());
+        assert_eq!(report.phase, "unavailable");
+        assert!(report.notes.iter().any(|n| n.code == "unavailable"));
+        assert!(!report.complete);
+        rig.stop().await;
+    }
+}

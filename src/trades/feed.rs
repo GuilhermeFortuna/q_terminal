@@ -1031,6 +1031,12 @@ impl Default for TradeHandle {
 }
 
 impl TradeHandle {
+    /// The process-level feed every panel and the chart share.
+    pub fn process() -> Self {
+        static PROCESS: std::sync::OnceLock<TradeHandle> = std::sync::OnceLock::new();
+        PROCESS.get_or_init(Self::new).clone()
+    }
+
     pub fn new() -> Self {
         Self::from_feed(TradeFeed::new())
     }

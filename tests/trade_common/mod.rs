@@ -190,3 +190,21 @@ pub fn assert_matches_kernel(
         assert_eq!(bar.large_prints, out.large_prints.len());
     }
 }
+
+use q_terminal::stream::fake_trades::FakeSnapshot;
+
+/// A fake snapshot of `rows` in pages of `page_rows`, frozen at `frozen_seq`.
+pub fn fake_snapshot(
+    symbol: &str,
+    generation: &str,
+    id: &str,
+    rows: &[Row],
+    page_rows: usize,
+    frozen_seq: i64,
+) -> FakeSnapshot {
+    FakeSnapshot {
+        descriptor: snapshot(symbol, generation, id, rows.len() as i64, frozen_seq),
+        context: context_for(symbol, generation),
+        pages: rows.chunks(page_rows.max(1)).map(columns).collect(),
+    }
+}
