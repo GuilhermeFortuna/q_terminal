@@ -170,6 +170,39 @@ Item {
         return chartPrefs;
     }
 
+    // Display filters of every tape panel that exists, by panel id.
+    function captureTapePreferences() {
+        var prefs = {};
+        for (var id in shell.panelItems) {
+            var item = shell.panelItems[id];
+            if (id.split("#")[0] === "tape" && item && item.filterJson) {
+                try {
+                    prefs[id] = JSON.parse(item.filterJson());
+                } catch (e) {
+                    console.warn("Tape filter could not be captured for", id, e);
+                }
+            }
+        }
+        return prefs;
+    }
+
+    function restoreTapePreferences() {
+        try {
+            var prefs = JSON.parse(workspaceController.pending_tape_preferences_json || "{}");
+            for (var id in prefs) {
+                if (shellController.panel_window(id) === "") {
+                    continue;
+                }
+                var item = shell.panelItem(id);
+                if (item && item.restoreFilter) {
+                    item.restoreFilter(JSON.stringify(prefs[id]));
+                }
+            }
+        } catch (e) {
+            console.warn("Workspace tape filters could not be restored:", e);
+        }
+    }
+
     function flushPending() {
         autosaveTimer.stop();
         var studySets = {};
@@ -185,7 +218,8 @@ Item {
             shellController.capture_windows(),
             shellController.capture_selection(),
             JSON.stringify(studySets),
-            JSON.stringify(chartPrefs)
+            JSON.stringify(chartPrefs),
+            JSON.stringify(shell.captureTapePreferences())
         );
     }
 
@@ -205,6 +239,7 @@ Item {
             shellController.capture_selection(),
             JSON.stringify(studySets),
             JSON.stringify(chartPrefs),
+            JSON.stringify(shell.captureTapePreferences()),
             name
         );
     }
@@ -252,6 +287,7 @@ Item {
             console.warn("Workspace chart preferences could not be restored:", e);
         }
         shell.syncWindows();
+        Qt.callLater(shell.restoreTapePreferences);
         Qt.callLater(shell.applyWorkspacePlacement);
         Qt.callLater(function() {
             workspaceController.resume_autosave();

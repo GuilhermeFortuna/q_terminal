@@ -50,6 +50,7 @@ pub mod ffi {
         #[qproperty(QString, pending_selection_json)]
         #[qproperty(QString, pending_study_sets_json)]
         #[qproperty(QString, pending_chart_preferences_json)]
+        #[qproperty(QString, pending_tape_preferences_json)]
         #[qproperty(bool, is_dirty)]
         #[qproperty(bool, is_restoring)]
         #[qproperty(QString, save_error)]
@@ -63,6 +64,7 @@ pub mod ffi {
             selection_json: QString,
             study_sets_json: QString,
             chart_preferences_json: QString,
+            tape_preferences_json: QString,
             name: QString,
         );
         #[qinvokable]
@@ -72,6 +74,7 @@ pub mod ffi {
             selection_json: QString,
             study_sets_json: QString,
             chart_preferences_json: QString,
+            tape_preferences_json: QString,
         ) -> bool;
         #[qinvokable]
         fn mark_dirty(self: Pin<&mut WorkspaceController>);
@@ -113,6 +116,7 @@ pub mod ffi {
             selection_json: QString,
             study_sets_json: QString,
             chart_preferences_json: QString,
+            tape_preferences_json: QString,
         ) -> QString;
         #[qinvokable]
         fn apply_placement(
@@ -150,6 +154,7 @@ pub struct WorkspaceControllerRust {
     pub pending_selection_json: QString,
     pub pending_study_sets_json: QString,
     pub pending_chart_preferences_json: QString,
+    pub pending_tape_preferences_json: QString,
     pub is_dirty: bool,
     pub is_restoring: bool,
     pub save_error: QString,
@@ -175,6 +180,7 @@ impl Default for WorkspaceControllerRust {
             pending_selection_json: QString::from("{}"),
             pending_study_sets_json: QString::from("{}"),
             pending_chart_preferences_json: QString::from("{}"),
+            pending_tape_preferences_json: QString::from("{}"),
             is_dirty: false,
             is_restoring: false,
             save_error: QString::default(),
@@ -268,6 +274,10 @@ impl ffi::WorkspaceController {
         self.as_mut()
             .set_pending_chart_preferences_json(QString::from(
                 serde_json::to_string(&resolved.chart_preferences).unwrap_or_else(|_| "{}".into()),
+            ));
+        self.as_mut()
+            .set_pending_tape_preferences_json(QString::from(
+                serde_json::to_string(&resolved.tape_preferences).unwrap_or_else(|_| "{}".into()),
             ));
         let _ = self.rust().store.set_last_used(&resolved.name);
     }
@@ -415,6 +425,7 @@ impl ffi::WorkspaceController {
         selection_json: QString,
         study_sets_json: QString,
         chart_preferences_json: QString,
+        tape_preferences_json: QString,
     ) -> QString {
         let name = self.rust().active_workspace.to_string();
         let windows: Vec<crate::shell::layout::Window> =
@@ -432,6 +443,15 @@ impl ffi::WorkspaceController {
         if chart_preferences.is_empty() {
             chart_preferences =
                 serde_json::from_str(&self.rust().pending_chart_preferences_json.to_string())
+                    .unwrap_or_default();
+        }
+        let mut tape_preferences: std::collections::HashMap<
+            String,
+            crate::trades::model::TapeFilter,
+        > = serde_json::from_str(&tape_preferences_json.to_string()).unwrap_or_default();
+        if tape_preferences.is_empty() {
+            tape_preferences =
+                serde_json::from_str(&self.rust().pending_tape_preferences_json.to_string())
                     .unwrap_or_default();
         }
         let displays = Self::displays();
@@ -482,6 +502,7 @@ impl ffi::WorkspaceController {
             selection,
             study_sets,
             chart_preferences,
+            tape_preferences,
         };
         QString::from(serde_json::to_string(&file).unwrap_or_else(|_| "{}".into()))
     }
@@ -492,6 +513,7 @@ impl ffi::WorkspaceController {
         selection_json: QString,
         study_sets_json: QString,
         chart_preferences_json: QString,
+        tape_preferences_json: QString,
         name: QString,
     ) {
         let payload = self.capture_current(
@@ -499,6 +521,7 @@ impl ffi::WorkspaceController {
             selection_json,
             study_sets_json,
             chart_preferences_json,
+            tape_preferences_json,
         );
         if let Ok(mut file) = serde_json::from_str::<WorkspaceFile>(&payload.to_string()) {
             file.name = name.to_string();
@@ -531,6 +554,7 @@ impl ffi::WorkspaceController {
         selection_json: QString,
         study_sets_json: QString,
         chart_preferences_json: QString,
+        tape_preferences_json: QString,
     ) -> bool {
         let name = self.rust().active_workspace.to_string();
         if name.is_empty() {
@@ -548,6 +572,7 @@ impl ffi::WorkspaceController {
             selection_json,
             study_sets_json,
             chart_preferences_json,
+            tape_preferences_json,
         );
         if let Ok(mut file) = serde_json::from_str::<WorkspaceFile>(&payload.to_string()) {
             file.name = name;

@@ -95,6 +95,7 @@ fn final_window_capture_retains_nonempty_layout() {
         selection: WorkspaceSelection::default(),
         study_sets: Default::default(),
         chart_preferences: Default::default(),
+        tape_preferences: Default::default(),
     };
     store.save(&saved_file).unwrap();
 
@@ -145,6 +146,7 @@ fn multiple_window_close_saves_remaining_layout() {
         selection: WorkspaceSelection::default(),
         study_sets: Default::default(),
         chart_preferences: Default::default(),
+        tape_preferences: Default::default(),
     };
     store.save(&remaining_file).unwrap();
 
@@ -572,5 +574,62 @@ fn delayed_followed_deployment_fallback_on_archived_or_missing() {
         Some("dep-missing".into())
     );
 
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn volume_settings_and_tape_filters_survive_close_and_reopen() {
+    use q_terminal::trades::model::{SideFilter, TapeFilter};
+    use q_terminal::workspace::schema::WorkspaceStudy;
+
+    let dir = temp_dir("volume_settings_reopen");
+    let mut file = default_chart();
+    file.study_sets.insert(
+        "chart".into(),
+        vec![
+            WorkspaceStudy {
+                kind: "large_prints".into(),
+                period: 1,
+                source: "close".into(),
+                num_std: 2.0,
+                window_ms: None,
+                large_print_threshold: Some(75.0),
+                visible: true,
+                palette_index: 1,
+            },
+            WorkspaceStudy {
+                kind: "ema".into(),
+                period: 21,
+                source: "close".into(),
+                num_std: 2.0,
+                window_ms: None,
+                large_print_threshold: None,
+                visible: true,
+                palette_index: 0,
+            },
+        ],
+    );
+    file.tape_preferences.insert(
+        "tape".into(),
+        TapeFilter {
+            min_volume: 10.0,
+            side: SideFilter::Buy,
+        },
+    );
+    let windows = file.windows.clone();
+    WorkspaceStore::open_dir(dir.clone()).save(&file).unwrap();
+
+    // A new store is the next launch.
+    let reopened = WorkspaceStore::open_dir(dir.clone()).load("Chart").unwrap();
+    assert_eq!(reopened.windows, windows, "layout restored");
+    assert_eq!(
+        reopened.study_sets, file.study_sets,
+        "price and volume studies restored"
+    );
+    assert_eq!(
+        reopened.tape_preferences, file.tape_preferences,
+        "tape filters restored"
+    );
+    assert_eq!(reopened.schema_version, 4);
     let _ = fs::remove_dir_all(dir);
 }
