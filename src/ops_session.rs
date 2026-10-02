@@ -27,6 +27,7 @@ pub fn wire_ops_session(
         Sinks {
             bars: bar_sink,
             execution: Some(handle.clone()),
+            trades: Some(crate::trades::feed::TradeHandle::process()),
         },
     );
 

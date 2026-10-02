@@ -20,7 +20,7 @@ fn test_headless_report() {
 
     assert_eq!(lines.len(), 4, "Expected 4 lines of output, got: {stdout}");
     assert_eq!(lines[0], env!("CARGO_PKG_VERSION"));
-    assert_eq!(lines[1], "2026.9.29");
+    assert_eq!(lines[1], "2026.10.2");
     // q_core v2026.09.24 bakes in the q_contracts rev it was built against, which is
     // older than this repo's CONTRACTS_REV (Q-046 moved it to pick up the Q-039
     // execution payloads; nothing under schema/api/arrow or schema/lake changed).

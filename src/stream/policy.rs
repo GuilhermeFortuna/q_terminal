@@ -55,6 +55,16 @@ pub const KNOWN_TOPICS: &[TopicPolicy] = &[
         topic_class: "durable",
         coalesce_key: &[],
     },
+    TopicPolicy {
+        name: "trades",
+        topic_class: "ephemeral",
+        coalesce_key: &[],
+    },
+    TopicPolicy {
+        name: "trades.status",
+        topic_class: "ephemeral",
+        coalesce_key: &["symbol"],
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]

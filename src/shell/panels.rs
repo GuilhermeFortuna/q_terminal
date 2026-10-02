@@ -59,7 +59,7 @@ pub const PANELS: [PanelSpec; 8] = [
         title: "Tape",
         icon: "list",
         multiple: true,
-        placeholder: true,
+        placeholder: false,
     },
     PanelSpec {
         kind: "dom",

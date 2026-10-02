@@ -10,7 +10,11 @@ use crate::contracts_stream::{ExecutionDecisionState, ExecutionFillEvent};
 use crate::execution::markers::{self, Marker};
 use crate::execution::overlays::{self, Hit, Layer, OverlaySeries, View};
 use crate::history::{HistoryController, Loaded, DEFAULT_HISTORY_BARS};
-use crate::studies::{PriceSource, StudyKind, StudySet};
+use crate::studies::{PriceSource, StudyKind, StudySet, TradeInputs, TradeLegend};
+use crate::trades::analysis::VolumeParams;
+use crate::trades::feed::{TradeFeed, TradeHandle};
+use crate::trades::notify::Coalescer;
+use crate::trades::time::ExchangeClock;
 
 #[derive(Debug, Clone)]
 pub enum BarDelivery {
@@ -203,6 +207,14 @@ pub mod ffi {
         #[qinvokable]
         fn bench_populate(self: Pin<&mut BarFeed>, bars: i64, markers: i64, overlays: i64);
 
+        /// Benchmark only: a fixture session behind the four tape studies.
+        #[qinvokable]
+        fn bench_trades(self: Pin<&mut BarFeed>);
+
+        /// Benchmark only: `count` more live prints, then the studies redraw.
+        #[qinvokable]
+        fn bench_trade_burst(self: Pin<&mut BarFeed>, count: i64);
+
         /// Fills the feed with deterministic bars for gallery captures: `count` completed
         /// bars and one forming bar, in whole cents.
         #[qinvokable]
@@ -225,6 +237,28 @@ pub mod ffi {
             source: QString,
             num_std: f64,
         ) -> bool;
+
+        /// Adds a tape study (`delta`, `cumulative_delta`, `trade_rate` or `large_prints`).
+        #[qinvokable]
+        fn add_volume_study(
+            self: Pin<&mut BarFeed>,
+            kind: QString,
+            window_ms: i64,
+            large_print_threshold: f64,
+        ) -> i64;
+
+        #[qinvokable]
+        fn update_volume_study(
+            self: Pin<&mut BarFeed>,
+            study_id: i64,
+            window_ms: i64,
+            large_print_threshold: f64,
+        ) -> bool;
+
+        /// Follows a deterministic fixture session instead of the process feed. For gallery
+        /// captures and tests; `state` is one of the states `trades::fixture` knows.
+        #[qinvokable]
+        fn bind_fixture_trades(self: Pin<&mut BarFeed>, state: QString, minutes: i32);
 
         #[qinvokable]
         fn remove_study(self: Pin<&mut BarFeed>, study_id: i64) -> bool;
@@ -509,6 +543,14 @@ pub struct BarFeedRust {
     fills: Vec<ExecutionFillEvent>,
     deployment_overlays: Vec<OverlaySeries>,
     study_set: StudySet,
+    /// The shared tape feed the volume studies are drawn from.
+    trades: Option<TradeHandle>,
+    /// Replay synchronously: the fixture session is captured the moment it is built.
+    trades_blocking: bool,
+    /// Benchmark transport sequence of the next synthetic burst.
+    bench_seq: i64,
+    /// Large-print markers of the tape studies, kept apart from the execution markers.
+    trade_markers: Vec<Marker>,
     bar_tick_volume: Vec<i64>,
     bar_real_volume: Vec<i64>,
     forming_tick_volume: Option<i64>,
@@ -554,6 +596,34 @@ struct PropSnapshot {
     history_error: QString,
     history_bars: i64,
     history_shortfall: i64,
+}
+
+/// What the volume studies and their legend draw from the shared feed right now.
+fn trade_inputs(feed: &TradeFeed) -> TradeInputs<'_> {
+    let report = feed.report();
+    let coverage = match report.phase {
+        "unavailable" => "unavailable",
+        "idle" => "idle",
+        "loading" if report.stale => "stale",
+        "loading" => "loading",
+        _ if report.stale => "stale",
+        _ if report.complete => "complete",
+        _ => "partial",
+    };
+    TradeInputs {
+        analyses: feed.analyses(),
+        clock: feed
+            .clock()
+            .or_else(|| ExchangeClock::for_zone("America/Sao_Paulo").ok())
+            .unwrap_or_else(|| ExchangeClock::for_zone("UTC").expect("UTC is supported")),
+        legend: TradeLegend {
+            unit: report.volume_unit,
+            field: report.volume_field,
+            coverage: coverage.to_string(),
+            source_coverage: report.coverage.state,
+            classified_share: report.classified_share,
+        },
+    }
 }
 
 impl BarFeedRust {
@@ -618,6 +688,10 @@ impl BarFeedRust {
             fills: Vec::new(),
             deployment_overlays: Vec::new(),
             study_set: StudySet::new(),
+            trades: None,
+            trades_blocking: false,
+            bench_seq: 0,
+            trade_markers: Vec::new(),
             bar_tick_volume: Vec::new(),
             bar_real_volume: Vec::new(),
             forming_tick_volume: None,
@@ -761,8 +835,12 @@ impl BarFeedRust {
         let mut merged: Vec<OverlaySeries> = self.deployment_overlays.clone();
         merged.extend(self.study_set.overlays().iter().cloned());
         let mut layers = overlays::line_layers(&merged, &opens, view);
-        let (marker_layers, hits) = overlays::marker_layers(&self.markers, &self.bar_hlc, view);
+        let (marker_layers, mut hits) = overlays::marker_layers(&self.markers, &self.bar_hlc, view);
         layers.extend(marker_layers);
+        let (print_layers, print_hits) =
+            overlays::marker_layers(&self.trade_markers, &self.bar_hlc, view);
+        layers.extend(print_layers);
+        hits.extend(print_hits);
         self.layers = layers;
         self.hits = hits;
     }
@@ -918,13 +996,57 @@ impl BarFeedRust {
 
     pub fn refresh_studies(&mut self) {
         if self.study_set.specs().is_empty() {
+            // Nothing to draw; only clear what a removed study left behind.
+            if !self.study_set.overlays().is_empty() || !self.trade_markers.is_empty() {
+                let label = self.series_label;
+                self.study_set.rebuild_with(label, &[], None, None);
+                self.trade_markers.clear();
+                self.overlay_revision += 1;
+            }
             return;
         }
         let completed = self.study_bar_columns();
         let forming = self.forming_bar_columns();
-        self.study_set
-            .rebuild(self.series_label, &[completed], forming.as_ref());
+        let label = self.series_label;
+        let volume = self
+            .trades
+            .clone()
+            .filter(|_| self.study_set.has_volume_studies());
+        let Some(handle) = volume else {
+            self.study_set
+                .rebuild_with(label, &[completed], forming.as_ref(), None);
+            self.trade_markers.clear();
+            self.overlay_revision += 1;
+            return;
+        };
+        let mut opens = self.bar_opens_ms();
+        if let Some((time, ..)) = self.forming {
+            opens.push(markers::normalize_ms(time));
+        }
+        let (study_set, trade_markers) = (&mut self.study_set, &mut self.trade_markers);
+        handle.read(|feed| {
+            let inputs = trade_inputs(feed);
+            study_set.rebuild_with(label, &[completed], forming.as_ref(), Some(&inputs));
+            *trade_markers = study_set.large_print_markers(&opens, &inputs);
+        });
         self.overlay_revision += 1;
+    }
+
+    /// Tells the shared feed which parameter sets the studies need analysed.
+    fn sync_trade_params(&self) {
+        let Some(handle) = &self.trades else {
+            return;
+        };
+        let params: Vec<VolumeParams> = self.study_set.volume_params();
+        let threshold = self.study_set.large_print_threshold();
+        handle.mutate(|feed| feed.set_display_threshold(threshold));
+        if handle.mutate(|feed| feed.set_params(&params)) {
+            if self.trades_blocking {
+                handle.rebuild_blocking();
+            } else {
+                handle.rebuild_in_background();
+            }
+        }
     }
 
     fn observe_price(&mut self, price: f64) {
@@ -1551,6 +1673,98 @@ impl ffi::BarFeed {
         updated
     }
 
+    pub fn add_volume_study(
+        mut self: std::pin::Pin<&mut Self>,
+        kind: QString,
+        window_ms: i64,
+        large_print_threshold: f64,
+    ) -> i64 {
+        let Some(kind) = StudyKind::parse(&kind.to_string()).filter(|k| k.is_volume()) else {
+            return -1;
+        };
+        let params = VolumeParams {
+            window_ms,
+            large_print_threshold,
+        };
+        match self
+            .as_mut()
+            .rust_mut()
+            .study_set
+            .add_volume_study(kind, params)
+        {
+            Ok(id) => {
+                self.as_mut().rust_mut().sync_trade_params();
+                self.as_mut().rust_mut().refresh_studies();
+                self.bump_overlays();
+                id as i64
+            }
+            Err(_) => -1,
+        }
+    }
+
+    pub fn update_volume_study(
+        mut self: std::pin::Pin<&mut Self>,
+        study_id: i64,
+        window_ms: i64,
+        large_print_threshold: f64,
+    ) -> bool {
+        let params = VolumeParams {
+            window_ms,
+            large_print_threshold,
+        };
+        let updated = self
+            .as_mut()
+            .rust_mut()
+            .study_set
+            .update_volume_study(study_id as u64, params)
+            .is_ok();
+        if updated {
+            self.as_mut().rust_mut().sync_trade_params();
+            self.as_mut().rust_mut().refresh_studies();
+            self.bump_overlays();
+        }
+        updated
+    }
+
+    /// Forces QML to notice an overlay change even when the revision would repeat.
+    fn bump_overlays(mut self: std::pin::Pin<&mut Self>) {
+        let rev = self.rust().overlay_revision;
+        self.as_mut().rust_mut().overlay_revision = rev - 1;
+        self.as_mut().set_overlay_revision(rev);
+    }
+
+    /// Redraws the tape studies after the shared feed changed.
+    fn refresh_trade_studies(mut self: std::pin::Pin<&mut Self>) {
+        if !self.rust().study_set.has_volume_studies() {
+            return;
+        }
+        self.as_mut().rust_mut().refresh_studies();
+        self.bump_overlays();
+    }
+
+    pub fn bind_fixture_trades(mut self: std::pin::Pin<&mut Self>, state: QString, minutes: i32) {
+        let feed =
+            crate::trades::fixture::preview_feed(&state.to_string(), minutes.max(1) as usize);
+        let mut rust = self.as_mut().rust_mut();
+        rust.trades = Some(TradeHandle::from_feed(feed));
+        rust.trades_blocking = true;
+        rust.sync_trade_params();
+        rust.refresh_studies();
+    }
+
+    /// Follows the process-level trade feed.
+    fn bind_trades(mut self: std::pin::Pin<&mut Self>) {
+        let handle = TradeHandle::process();
+        self.as_mut().rust_mut().trades = Some(handle.clone());
+        let qt = self.qt_thread();
+        let coalescer = Coalescer::spawn(std::time::Duration::from_millis(50), move || {
+            qt.queue(|mut feed| feed.as_mut().refresh_trade_studies())
+                .is_ok()
+        });
+        handle.subscribe(move || coalescer.trigger());
+        self.as_ref().rust().sync_trade_params();
+    }
+
     pub fn remove_study(mut self: std::pin::Pin<&mut Self>, study_id: i64) -> bool {
         let removed = self
             .as_mut()
@@ -1558,6 +1772,7 @@ impl ffi::BarFeed {
             .study_set
             .remove_study(study_id as u64);
         if removed {
+            self.as_mut().rust_mut().sync_trade_params();
             self.as_mut().rust_mut().refresh_studies();
             let rev = self.rust().overlay_revision;
             self.as_mut().rust_mut().overlay_revision = rev - 1;
@@ -1600,6 +1815,7 @@ impl ffi::BarFeed {
         {
             return false;
         }
+        self.as_mut().rust_mut().sync_trade_params();
         self.as_mut().rust_mut().refresh_studies();
         let rev = self.rust().overlay_revision;
         self.as_mut().rust_mut().overlay_revision = rev - 1;
@@ -1727,6 +1943,41 @@ impl ffi::BarFeed {
         self.as_mut().notify_props(before);
     }
 
+    pub fn bench_trades(mut self: std::pin::Pin<&mut Self>) {
+        self.as_mut()
+            .bind_fixture_trades(QString::from("live"), 480);
+        for kind in ["delta", "cumulative_delta", "trade_rate", "large_prints"] {
+            let params = VolumeParams::default();
+            let kind = StudyKind::parse(kind).expect("known kind");
+            let _ = self
+                .as_mut()
+                .rust_mut()
+                .study_set
+                .add_volume_study(kind, params);
+        }
+        self.as_mut().rust_mut().sync_trade_params();
+        self.as_mut().rust_mut().refresh_studies();
+    }
+
+    pub fn bench_trade_burst(mut self: std::pin::Pin<&mut Self>, count: i64) {
+        let Some(handle) = self.as_ref().rust().trades.clone() else {
+            return;
+        };
+        let seq = self.as_ref().rust().bench_seq;
+        let next = handle.mutate(|feed| {
+            let start = feed
+                .history()
+                .iter_rev()
+                .next()
+                .map_or(0, |t| t.time_msc + 1);
+            let rows =
+                crate::trades::fixture::burst_rows(start, count.max(0) as usize, 16, seq as u64);
+            crate::trades::fixture::publish_burst(feed, 101 + seq, rows)
+        });
+        self.as_mut().rust_mut().bench_seq = next - 101;
+        self.as_mut().rust_mut().refresh_studies();
+    }
+
     pub fn bench_populate(
         mut self: std::pin::Pin<&mut Self>,
         bars: i64,
@@ -1819,11 +2070,14 @@ impl ffi::BarFeed {
             timeframe: tf_str,
             operator: "operator".to_string(),
         };
-        let mut rust = self.as_mut().rust_mut();
-        rust.config = Some(cfg);
-        rust.symbol = symbol;
-        rust.timeframe = timeframe;
-        rust.timeframe_ms = tf_ms;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.config = Some(cfg);
+            rust.symbol = symbol;
+            rust.timeframe = timeframe;
+            rust.timeframe_ms = tf_ms;
+        }
+        self.bind_trades();
     }
 
     pub fn ingest_completed_bar(

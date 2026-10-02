@@ -50,7 +50,7 @@ document already permits:
   terminal process is never the way to serve a second monitor.
 - **Panels are the unit of composition**, and every panel is one of the surfaces above
   (status, deployments, detail tables, chart, instrument strip) or an empty placeholder
-  reserved for a later live-trading panel (tape, DOM, footprint). The shell adds no data,
+  reserved for a later live-trading panel (DOM, footprint), or the trade tape (Q-082). The shell adds no data,
   route or topic.
 - **Window count does not widen scope.** More windows, floated panels and merged
   compositions are not permission for a strategy editor, an optimizer, a result browser or
@@ -77,6 +77,16 @@ The live chart may display operator-selected `q_core` studies (moving averages, 
 bands, session VWAP, RSI, ATR) computed locally over the chart's own bar series. Studies are
 not custom formulas, scripting, alerts on indicator values, strategy signals, or parameter
 optimisation.
+
+### Trade tape and volume studies (Q-082)
+
+The terminal may show the current session's trade tape and four built-in volume studies
+(delta, cumulative delta, trade rate, large prints) computed by the `q_core` volume kernels
+over the trades the backend publishes (`trades`, `trades.status` and the session snapshot
+routes). They are fixed, parameterised studies like the price studies above: not
+user-authored formulas, scripting, alerts, or execution signals. Nothing derived from the
+tape feeds an order, a risk check or a strategy. The tape is a read-only view; the backend
+owns ingestion, and the terminal keeps only a bounded temporary copy of the session.
 
 ---
 

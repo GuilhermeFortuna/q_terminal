@@ -51,10 +51,20 @@ Rectangle {
     Component.onCompleted: {
         previewFeed.load_preview_bars(240);
         previewFeed.set_study_palette_json(StudyPalette.paletteJson());
-        previewFeed.add_study("ema", 21, "close", 2.0);
-        previewFeed.add_study("rsi", 14, "close", 2.0);
-        previewFeed.add_study("sma", 500, "close", 2.0);
-        previewFeed.add_study("vwap", 1, "close", 2.0);
+        if (root.previewState.indexOf("volume") === 0) {
+            // Tape studies over a fixture session: delta, cumulative delta, rate and prints.
+            previewFeed.bind_fixture_trades(root.previewState === "volume-stale" ? "stale" : "live", 241);
+            previewFeed.add_study("ema", 21, "close", 2.0);
+            previewFeed.add_volume_study("delta", 10000, 100.0);
+            previewFeed.add_volume_study("cumulative_delta", 10000, 100.0);
+            previewFeed.add_volume_study("trade_rate", 10000, 100.0);
+            previewFeed.add_volume_study("large_prints", 10000, 100.0);
+        } else {
+            previewFeed.add_study("ema", 21, "close", 2.0);
+            previewFeed.add_study("rsi", 14, "close", 2.0);
+            previewFeed.add_study("sma", 500, "close", 2.0);
+            previewFeed.add_study("vwap", 1, "close", 2.0);
+        }
         applyPreviewState();
     }
 }

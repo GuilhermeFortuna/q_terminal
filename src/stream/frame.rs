@@ -101,6 +101,8 @@ pub fn topic_expected_payload_schema(topic: &str) -> Option<&'static str> {
         "risk" => Some("schema/stream/payloads/execution-risk.schema.json"),
         "ledger" => Some("schema/stream/payloads/execution-ledger.schema.json"),
         "deployments" => Some("schema/stream/payloads/execution-deployment.schema.json"),
+        "trades" => Some("schema/api/arrow/trades.schema.json"),
+        "trades.status" => Some("schema/stream/payloads/trade-source-status.schema.json"),
         _ => None,
     }
 }

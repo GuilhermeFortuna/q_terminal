@@ -6,8 +6,12 @@ use q_indicators::{
     SmaState,
 };
 
-use crate::execution::markers;
+use q_indicators::volume::AggressorSide;
+
+use crate::execution::markers::{self, Marker, MarkerKind};
 use crate::execution::overlays::{OverlaySeries, Pane};
+use crate::trades::analysis::{Analysis, BarAggregate, VolumeParams};
+use crate::trades::time::ExchangeClock;
 
 pub const MAX_STUDIES: usize = 8;
 
@@ -80,6 +84,11 @@ pub enum StudyKind {
     SessionVwap,
     Rsi,
     Atr,
+    /// Tape-derived studies (Q-082); their numbers come from the Q-081 volume kernel.
+    Delta,
+    CumulativeDelta,
+    TradeRate,
+    LargePrints,
 }
 
 impl StudyKind {
@@ -91,8 +100,64 @@ impl StudyKind {
             "vwap" => Some(Self::SessionVwap),
             "rsi" => Some(Self::Rsi),
             "atr" => Some(Self::Atr),
+            "delta" => Some(Self::Delta),
+            "cumulative_delta" => Some(Self::CumulativeDelta),
+            "trade_rate" => Some(Self::TradeRate),
+            "large_prints" => Some(Self::LargePrints),
             _ => None,
         }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sma => "sma",
+            Self::Ema => "ema",
+            Self::Bollinger => "bollinger",
+            Self::SessionVwap => "vwap",
+            Self::Rsi => "rsi",
+            Self::Atr => "atr",
+            Self::Delta => "delta",
+            Self::CumulativeDelta => "cumulative_delta",
+            Self::TradeRate => "trade_rate",
+            Self::LargePrints => "large_prints",
+        }
+    }
+
+    /// Studies computed from the trade tape rather than from bars.
+    pub fn is_volume(self) -> bool {
+        matches!(
+            self,
+            Self::Delta | Self::CumulativeDelta | Self::TradeRate | Self::LargePrints
+        )
+    }
+}
+
+/// The kernel output of every chart bar for one parameter set, by bar label time.
+type VolumeRows = ((i64, u64), Vec<(i64, BarAggregate)>);
+
+/// What the legend, picker and readout say about the tape behind a volume study.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct TradeLegend {
+    pub unit: String,
+    pub field: String,
+    /// `complete`, `partial`, `loading`, `stale`, `unavailable` or `idle`.
+    pub coverage: String,
+    pub source_coverage: String,
+    pub classified_share: Option<f64>,
+}
+
+/// The tape analyses a rebuild draws volume studies from.
+pub struct TradeInputs<'a> {
+    pub analyses: &'a [Analysis],
+    pub clock: ExchangeClock,
+    pub legend: TradeLegend,
+}
+
+impl TradeInputs<'_> {
+    fn analysis(&self, params: VolumeParams) -> Option<&Analysis> {
+        self.analyses
+            .iter()
+            .find(|a| a.params().key() == params.key())
     }
 }
 
@@ -105,6 +170,8 @@ pub struct StudySpec {
     pub num_std: f64,
     pub palette_index: u8,
     pub visible: bool,
+    /// Typed parameters of the tape studies; the price studies leave them at their defaults.
+    pub volume: VolumeParams,
 }
 
 #[derive(Debug, Clone)]
@@ -134,6 +201,9 @@ pub struct StudySet {
     /// Cached overlay lines, rebuilt from bars.
     overlays: Vec<OverlaySeries>,
     study_palette: [u32; 8],
+    legend: TradeLegend,
+    /// Kernel output of each chart bar for each distinct parameter set, by bar label time.
+    volume_rows: Vec<VolumeRows>,
 }
 
 impl Default for StudySet {
@@ -153,6 +223,8 @@ impl StudySet {
             vwap_unavailable_reason: None,
             overlays: Vec::new(),
             study_palette: [0; 8],
+            legend: TradeLegend::default(),
+            volume_rows: Vec::new(),
         }
     }
 
@@ -182,6 +254,26 @@ impl StudySet {
                 eprintln!("workspace: dropped study with unknown kind");
                 continue;
             };
+            if kind.is_volume() {
+                let defaults = VolumeParams::default();
+                let params = VolumeParams {
+                    window_ms: entry["window_ms"].as_i64().unwrap_or(defaults.window_ms),
+                    large_print_threshold: entry["large_print_threshold"]
+                        .as_f64()
+                        .unwrap_or(defaults.large_print_threshold),
+                };
+                if self.add_volume_study(kind, params).is_err() {
+                    eprintln!("workspace: dropped study with invalid parameters");
+                    continue;
+                }
+                if let Some(spec) = self.specs.last_mut() {
+                    spec.palette_index = entry["palette_index"]
+                        .as_u64()
+                        .map_or(spec.palette_index, |p| p.min(7) as u8);
+                    spec.visible = entry["visible"].as_bool().unwrap_or(true);
+                }
+                continue;
+            }
             let Some(period) = entry["period"].as_i64() else {
                 eprintln!("workspace: dropped study with invalid period");
                 continue;
@@ -216,6 +308,7 @@ impl StudySet {
 
     pub fn reset_values(&mut self) {
         self.overlays.clear();
+        self.volume_rows.clear();
         self.volume_kind = None;
         self.volume_mixed = false;
         self.vwap_unavailable_reason = None;
@@ -243,8 +336,79 @@ impl StudySet {
             num_std,
             palette_index,
             visible: true,
+            volume: VolumeParams::default(),
         });
         Ok(id)
+    }
+
+    /// Adds a tape study. The window applies to the trade rate and the threshold to large
+    /// prints; the kernel validates both, so nothing here second-guesses its ranges.
+    pub fn add_volume_study(
+        &mut self,
+        kind: StudyKind,
+        params: VolumeParams,
+    ) -> Result<u64, String> {
+        if !kind.is_volume() {
+            return Err("not a volume study".into());
+        }
+        if self.specs.len() >= MAX_STUDIES {
+            return Err("at most eight studies per chart".into());
+        }
+        params.validate().map_err(|e| e.to_string())?;
+        let id = self.next_id;
+        self.next_id += 1;
+        let palette_index = (self.specs.len() % 8) as u8;
+        self.specs.push(StudySpec {
+            id,
+            kind,
+            period: 1,
+            source: PriceSource::Close,
+            num_std: 2.0,
+            palette_index,
+            visible: true,
+            volume: params,
+        });
+        Ok(id)
+    }
+
+    pub fn update_volume_study(&mut self, id: u64, params: VolumeParams) -> Result<(), String> {
+        params.validate().map_err(|e| e.to_string())?;
+        match self
+            .specs
+            .iter_mut()
+            .find(|s| s.id == id && s.kind.is_volume())
+        {
+            Some(spec) => {
+                spec.volume = params;
+                Ok(())
+            }
+            None => Err(format!("volume study id {id} not found")),
+        }
+    }
+
+    /// The kernel parameters of the tape studies, for the feed to analyse under.
+    pub fn volume_params(&self) -> Vec<VolumeParams> {
+        self.specs
+            .iter()
+            .filter(|s| s.kind.is_volume())
+            .map(|s| s.volume)
+            .collect()
+    }
+
+    /// The threshold of the first large-print study, which decides what the tape flags.
+    pub fn large_print_threshold(&self) -> Option<f64> {
+        self.specs
+            .iter()
+            .find(|s| s.kind == StudyKind::LargePrints)
+            .map(|s| s.volume.large_print_threshold)
+    }
+
+    pub fn has_volume_studies(&self) -> bool {
+        self.specs.iter().any(|s| s.kind.is_volume())
+    }
+
+    pub fn legend(&self) -> &TradeLegend {
+        &self.legend
     }
 
     pub fn remove_study(&mut self, id: u64) -> bool {
@@ -286,14 +450,6 @@ impl StudySet {
     pub fn study_list_json(&self) -> String {
         let mut items: Vec<serde_json::Value> = Vec::new();
         for s in &self.specs {
-            let kind = match s.kind {
-                StudyKind::Sma => "sma",
-                StudyKind::Ema => "ema",
-                StudyKind::Bollinger => "bollinger",
-                StudyKind::SessionVwap => "vwap",
-                StudyKind::Rsi => "rsi",
-                StudyKind::Atr => "atr",
-            };
             let source = match s.source {
                 PriceSource::Close => "close",
                 PriceSource::Open => "open",
@@ -308,23 +464,111 @@ impl StudySet {
                 StudyKind::SessionVwap => format!("Session VWAP ({}σ)", s.num_std),
                 StudyKind::Rsi => format!("RSI ({})", s.period),
                 StudyKind::Atr => format!("ATR ({})", s.period),
+                _ => self.volume_name(s),
             };
-            items.push(serde_json::json!({
+            let mut item = serde_json::json!({
                 "id": s.id,
-                "kind": kind,
+                "kind": s.kind.as_str(),
                 "name": name,
                 "period": s.period,
                 "source": source,
                 "num_std": s.num_std,
                 "palette_index": s.palette_index,
                 "visible": s.visible,
-            }));
+            });
+            if s.kind.is_volume() {
+                item["volume"] = true.into();
+                item["window_ms"] = s.volume.window_ms.into();
+                item["large_print_threshold"] = s.volume.large_print_threshold.into();
+                item["unit"] = self.legend.unit.clone().into();
+                item["coverage"] = self.legend.coverage.clone().into();
+            }
+            items.push(item);
         }
         serde_json::json!({
             "studies": items,
             "vwap_unavailable": self.vwap_unavailable_reason,
+            "tape": {
+                "unit": self.legend.unit,
+                "field": self.legend.field,
+                "coverage": self.legend.coverage,
+                "source_coverage": self.legend.source_coverage,
+                "classified_share": self.legend.classified_share,
+            },
         })
         .to_string()
+    }
+
+    fn unit(&self) -> &str {
+        if self.legend.unit.is_empty() {
+            "volume"
+        } else {
+            &self.legend.unit
+        }
+    }
+
+    fn volume_name(&self, s: &StudySpec) -> String {
+        let unit = self.unit();
+        match s.kind {
+            StudyKind::Delta => format!("Delta ({unit})"),
+            StudyKind::CumulativeDelta => format!("Cumulative delta ({unit})"),
+            StudyKind::TradeRate => {
+                format!("Trade rate (trades/s, {}s)", s.volume.window_ms / 1000)
+            }
+            _ => format!(
+                "Large prints (≥ {} {unit})",
+                quantity(s.volume.large_print_threshold)
+            ),
+        }
+    }
+
+    /// The aggregate of the chart bar labelled `time_ms`, for the study's parameters.
+    fn bar_for(&self, spec: &StudySpec, time_ms: i64) -> Option<&BarAggregate> {
+        let rows = &self
+            .volume_rows
+            .iter()
+            .find(|(key, _)| *key == spec.volume.key())?
+            .1;
+        rows.binary_search_by_key(&time_ms, |(t, _)| *t)
+            .ok()
+            .map(|i| &rows[i].1)
+    }
+
+    /// What the readout and legend say for one tape study at one bar, units and coverage
+    /// included. A bar the tape never reached says so instead of showing zero.
+    fn volume_text(&self, spec: &StudySpec, bar: Option<&BarAggregate>) -> String {
+        let unit = self.unit();
+        let Some(bar) = bar else {
+            return match self.legend.coverage.as_str() {
+                "complete" | "partial" | "stale" => "no tape for this bar".to_string(),
+                other => format!("tape {other}"),
+            };
+        };
+        let classified = bar
+            .classified_share
+            .filter(|share| *share > 0.0)
+            .map(|share| format!("{:.0}% classified", share * 100.0));
+        let mut text = match spec.kind {
+            StudyKind::Delta if bar.classified_share.is_some_and(|share| share <= 0.0) => {
+                "no aggressor side reported".to_string()
+            }
+            StudyKind::Delta => format!("{} {unit}", signed_quantity(bar.delta)),
+            StudyKind::CumulativeDelta => {
+                format!("{} {unit} session", signed_quantity(bar.cumulative_delta))
+            }
+            StudyKind::TradeRate => match bar.trade_rate {
+                Some(rate) => format!("{rate:.1} trades/s"),
+                None => "warming up".to_string(),
+            },
+            _ => format!("{} large", bar.large_prints),
+        };
+        if let (Some(c), StudyKind::Delta | StudyKind::CumulativeDelta) = (classified, spec.kind) {
+            text.push_str(&format!(" · {c}"));
+        }
+        if self.legend.coverage != "complete" {
+            text.push_str(&format!(" · {}", self.legend.coverage));
+        }
+        text
     }
 
     /// Values are looked up in the cached plotted series so the legend and chart cannot
@@ -334,25 +578,43 @@ impl StudySet {
             .specs
             .iter()
             .map(|spec| {
-                let suffix = match spec.kind {
-                    StudyKind::Sma => "sma",
-                    StudyKind::Ema => "ema",
-                    StudyKind::Bollinger => "bb-mid",
-                    StudyKind::SessionVwap => "vwap",
-                    StudyKind::Rsi => "rsi",
-                    StudyKind::Atr => "atr",
-                };
-                let key = format!("study-{}-{suffix}", spec.id);
-                let value = self
-                    .overlays
-                    .iter()
-                    .find(|line| line.key == key)
-                    .and_then(|line| line.points.iter().find(|(time, _)| *time == time_ms))
-                    .and_then(|(_, value)| *value);
-                serde_json::json!({"id": spec.id, "value": value})
+                if spec.kind.is_volume() {
+                    let bar = self.bar_for(spec, time_ms);
+                    let value = match spec.kind {
+                        StudyKind::LargePrints => bar.map(|b| b.large_prints as f64),
+                        _ => self.plotted(spec, time_ms),
+                    };
+                    return serde_json::json!({
+                        "id": spec.id,
+                        "value": value,
+                        "text": self.volume_text(spec, bar),
+                    });
+                }
+                serde_json::json!({"id": spec.id, "value": self.plotted(spec, time_ms)})
             })
             .collect::<Vec<_>>();
         serde_json::Value::Array(values).to_string()
+    }
+
+    fn plotted(&self, spec: &StudySpec, time_ms: i64) -> Option<f64> {
+        let suffix = match spec.kind {
+            StudyKind::Sma => "sma",
+            StudyKind::Ema => "ema",
+            StudyKind::Bollinger => "bb-mid",
+            StudyKind::SessionVwap => "vwap",
+            StudyKind::Rsi => "rsi",
+            StudyKind::Atr => "atr",
+            StudyKind::Delta => "delta",
+            StudyKind::CumulativeDelta => "cvd",
+            StudyKind::TradeRate => "rate",
+            StudyKind::LargePrints => return None,
+        };
+        let key = format!("study-{}-{suffix}", spec.id);
+        self.overlays
+            .iter()
+            .find(|line| line.key == key)
+            .and_then(|line| line.points.iter().find(|(time, _)| *time == time_ms))
+            .and_then(|(_, value)| *value)
     }
 
     fn observe_volume(&mut self, bars: &BarColumns) {
@@ -380,9 +642,22 @@ impl StudySet {
         completed: &[BarColumns],
         forming: Option<&BarColumns>,
     ) {
+        self.rebuild_with(label, completed, forming, None);
+    }
+
+    /// Like [`rebuild`](Self::rebuild), with the tape the volume studies are drawn from.
+    pub fn rebuild_with(
+        &mut self,
+        label: TimeLabel,
+        completed: &[BarColumns],
+        forming: Option<&BarColumns>,
+        trades: Option<&TradeInputs>,
+    ) {
         self.label = label;
+        self.legend = trades.map(|t| t.legend.clone()).unwrap_or_default();
         if self.specs.is_empty() {
             self.overlays.clear();
+            self.volume_rows.clear();
             return;
         }
         for bars in completed {
@@ -457,6 +732,7 @@ impl StudySet {
             )
         });
 
+        self.build_volume_rows(&all_times, forming_preview.map(|f| f.0), trades);
         self.overlays = self.pack_overlays(
             &mut states,
             &all_times,
@@ -468,6 +744,112 @@ impl StudySet {
             &real_vols,
             forming_preview,
         );
+    }
+
+    /// The UTC open of the chart bar labelled `label_ms`.
+    fn utc_of(&self, label_ms: i64, trades: Option<&TradeInputs>) -> i64 {
+        match (self.label, trades) {
+            (TimeLabel::BrasiliaWallclock, Some(t)) => t.clock.local_to_utc_ms(label_ms),
+            _ => label_ms,
+        }
+    }
+
+    /// Looks up the kernel's output for each chart bar once, per distinct parameter set.
+    fn build_volume_rows(
+        &mut self,
+        times: &[i64],
+        forming: Option<i64>,
+        trades: Option<&TradeInputs>,
+    ) {
+        self.volume_rows.clear();
+        let Some(inputs) = trades else {
+            return;
+        };
+        let labels: Vec<i64> = times
+            .iter()
+            .copied()
+            .chain(forming)
+            .map(markers::normalize_ms)
+            .collect();
+        let mut seen: Vec<(i64, u64)> = Vec::new();
+        for spec in self.specs.iter().filter(|s| s.kind.is_volume()) {
+            let key = spec.volume.key();
+            if seen.contains(&key) {
+                continue;
+            }
+            seen.push(key);
+            let Some(analysis) = inputs.analysis(spec.volume) else {
+                continue;
+            };
+            // Bars before the session's first one have no tape: skip them without a lookup.
+            let first_open = analysis.bars().first().map_or(i64::MAX, |b| b.open_ms);
+            let start = labels.partition_point(|&label| self.utc_of(label, trades) < first_open);
+            let rows = labels[start..]
+                .iter()
+                .filter_map(|&label| {
+                    analysis
+                        .bar(self.utc_of(label, trades))
+                        .map(|bar| (label, bar.clone()))
+                })
+                .collect();
+            self.volume_rows.push((key, rows));
+        }
+    }
+
+    /// Markers for the large prints of every large-print study: at most the latest 1000 per
+    /// study. `bar_opens` are the chart bars' label times in milliseconds (ascending) with the
+    /// forming bar last, and each marker's `bar_index` indexes it.
+    pub fn large_print_markers(&self, bar_opens: &[i64], trades: &TradeInputs) -> Vec<Marker> {
+        let unit = self.unit();
+        let mut out = Vec::new();
+        for spec in self
+            .specs
+            .iter()
+            .filter(|s| s.visible && s.kind == StudyKind::LargePrints)
+        {
+            let Some(analysis) = trades.analysis(spec.volume) else {
+                continue;
+            };
+            for print in analysis.prints() {
+                let label = match self.label {
+                    TimeLabel::BrasiliaWallclock => trades.clock.utc_to_local_ms(print.bar_open_ms),
+                    _ => print.bar_open_ms,
+                };
+                let Ok(index) = bar_opens.binary_search(&label) else {
+                    continue;
+                };
+                let (kind, side) = match print.side {
+                    AggressorSide::Buy => (MarkerKind::LargeBuy, "BUY"),
+                    AggressorSide::Sell => (MarkerKind::LargeSell, "SELL"),
+                    AggressorSide::Unknown => (MarkerKind::LargeUnknown, "UNKNOWN SIDE"),
+                };
+                let bar = analysis.bar(print.bar_open_ms);
+                let mut lines = vec![
+                    format!("{side} print"),
+                    format!("{} {unit} @ {}", quantity(print.volume), print.price),
+                    format!("at {}", clock_text(print.time_msc)),
+                ];
+                if let Some(bar) = bar {
+                    lines.push(format!(
+                        "bar delta {} {unit}{}",
+                        signed_quantity(bar.delta),
+                        bar.classified_share
+                            .map(|c| format!(" · {:.0}% classified", c * 100.0))
+                            .unwrap_or_default()
+                    ));
+                }
+                out.push(Marker {
+                    id: format!("print-{}-{}", spec.id, print.time_msc),
+                    bar_index: index,
+                    bar_open_ms: label,
+                    price: Some(print.price),
+                    kind,
+                    label: format!("LARGE {side}"),
+                    detail: lines.join("\n"),
+                });
+            }
+        }
+        out
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -689,11 +1071,76 @@ impl StudySet {
                         pts,
                     );
                 }
+                StudyKind::Delta | StudyKind::CumulativeDelta | StudyKind::TradeRate => {
+                    let rows = self
+                        .volume_rows
+                        .iter()
+                        .find(|(key, _)| *key == spec.volume.key())
+                        .map(|(_, rows)| rows.as_slice())
+                        .unwrap_or(&[]);
+                    let value = |bar: &BarAggregate| -> Option<f64> {
+                        match spec.kind {
+                            // A bar of unknown-side volume has no direction to report.
+                            StudyKind::Delta => bar
+                                .classified_share
+                                .filter(|share| *share > 0.0)
+                                .map(|_| bar.delta),
+                            StudyKind::CumulativeDelta => Some(bar.cumulative_delta),
+                            _ => bar.trade_rate,
+                        }
+                    };
+                    // Only the session's bars have points; earlier chart bars stay gaps.
+                    let pts: Vec<(i64, Option<f64>)> = rows
+                        .iter()
+                        .map(|(label, bar)| (*label, value(bar).and_then(finite_opt)))
+                        .collect();
+                    let (suffix, label) = match spec.kind {
+                        StudyKind::Delta => ("delta", "Delta"),
+                        StudyKind::CumulativeDelta => ("cvd", "CVD"),
+                        _ => ("rate", "Trades/s"),
+                    };
+                    push_line(
+                        &format!("study-{}-{suffix}", spec.id),
+                        label,
+                        Pane::Oscillator,
+                        Some(spec.id as u8),
+                        pts,
+                    );
+                }
                 _ => {}
             }
         }
         out
     }
+}
+
+/// A quantity without noise digits: whole numbers print whole.
+fn quantity(value: f64) -> String {
+    if (value - value.round()).abs() < 1e-9 {
+        format!("{value:.0}")
+    } else {
+        format!("{value:.2}")
+    }
+}
+
+fn signed_quantity(value: f64) -> String {
+    let text = quantity(value.abs());
+    if value < 0.0 {
+        format!("−{text}")
+    } else {
+        format!("+{text}")
+    }
+}
+
+fn clock_text(time_msc: i64) -> String {
+    let ms = time_msc.rem_euclid(86_400_000);
+    format!(
+        "{:02}:{:02}:{:02}.{:03} UTC",
+        ms / 3_600_000,
+        ms % 3_600_000 / 60_000,
+        ms % 60_000 / 1000,
+        ms % 1000
+    )
 }
 
 fn validate_study_params(kind: StudyKind, period: i64, num_std: f64) -> Result<(), String> {
@@ -714,6 +1161,10 @@ fn validate_study_params(kind: StudyKind, period: i64, num_std: f64) -> Result<(
         StudyKind::Atr => AtrState::new(period)
             .map(|_| ())
             .map_err(|e| e.to_string())?,
+        StudyKind::Delta
+        | StudyKind::CumulativeDelta
+        | StudyKind::TradeRate
+        | StudyKind::LargePrints => return Err("use add_volume_study for tape studies".into()),
     }
     Ok(())
 }
@@ -728,6 +1179,8 @@ fn new_state(spec: &StudySpec) -> StudyState {
         StudyKind::SessionVwap => StudyState::SessionVwap(SessionVwapState::new()),
         StudyKind::Rsi => StudyState::Rsi(RsiState::new(spec.period).expect("valid rsi")),
         StudyKind::Atr => StudyState::Atr(AtrState::new(spec.period).expect("valid atr")),
+        // Tape studies read the feed's analyses, not a streaming state of their own.
+        _ => StudyState::SessionVwap(SessionVwapState::new()),
     }
 }
 

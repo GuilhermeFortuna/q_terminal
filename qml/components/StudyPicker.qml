@@ -3,6 +3,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import qml
+import "../StudyParams.js" as StudyParams
 
 // Comprehensive live study picker and active indicator manager (Q-075).
 Rectangle {
@@ -18,6 +19,8 @@ Rectangle {
     // Cached study data
     property var _cachedStudies: []
     property string _vwapUnavailable: ""
+    // What the tape behind the volume studies is: unit, coverage and how much side is known.
+    property var _tape: ({})
 
     function syncPalette() {
         if (root.feed) {
@@ -40,6 +43,7 @@ Rectangle {
             var parsed = JSON.parse(raw);
             root._cachedStudies = parsed.studies || [];
             root._vwapUnavailable = parsed.vwap_unavailable || "";
+            root._tape = parsed.tape || ({});
         } catch (e) {
             root._cachedStudies = [];
             root._vwapUnavailable = "";
@@ -66,16 +70,37 @@ Rectangle {
         refreshStudies();
     }
 
-    function adjustPeriod(study, delta) {
-        if (!root.feed) {
+    function addVolumeStudy(kind, windowMs, threshold) {
+        if (!root.feed || root.activeCount >= 8) {
             return;
         }
-        var newPeriod = Math.max(1, study.period + delta);
-        if (newPeriod === study.period) {
-            return;
-        }
-        root.feed.update_study(study.id, newPeriod, study.source, study.num_std);
+        root.feed.add_volume_study(kind, windowMs, threshold);
         refreshStudies();
+    }
+
+    function adjustPeriod(study, delta) {
+        StudyParams.step(root.feed, study, delta);
+        refreshStudies();
+    }
+
+    readonly property bool hasVolumeStudies: {
+        for (var i = 0; i < root._cachedStudies.length; ++i) {
+            if (root._cachedStudies[i].volume) {
+                return true;
+            }
+        }
+        return false;
+    }
+    readonly property string tapeSummary: {
+        var tape = root._tape || ({});
+        if (!tape.unit) {
+            return qsTr("No trade tape for this symbol yet");
+        }
+        var text = tape.coverage + " · " + tape.unit + " (" + tape.field + ")";
+        if (tape.classified_share !== null && tape.classified_share !== undefined) {
+            text += " · " + Math.round(tape.classified_share * 100) + "% side known";
+        }
+        return text;
     }
 
     function applyPreviewState() {
@@ -321,9 +346,9 @@ Rectangle {
                                 Layout.alignment: Qt.AlignVCenter
                             }
 
-                            // Stepper controls for studies with variable period
+                            // Stepper controls for studies with a variable parameter
                             RowLayout {
-                                visible: activeRow.modelData.kind !== "vwap"
+                                visible: activeRow.modelData.kind !== "vwap" && StudyParams.editable(activeRow.modelData)
                                 spacing: Spacing.size2
                                 Layout.alignment: Qt.AlignVCenter
 
@@ -408,6 +433,18 @@ Rectangle {
                         }
                     }
                 }
+            }
+
+            // The tape behind the volume studies: unit, coverage and classified share.
+            Text {
+                visible: root.hasVolumeStudies
+                objectName: "studyTapeSummary"
+                Layout.fillWidth: true
+                text: root.tapeSummary
+                color: Theme.textTertiary
+                font.family: Theme.uiFont
+                font.pixelSize: Theme.typeLabelSmall
+                wrapMode: Text.WordWrap
             }
 
             // VWAP unavailable warning banner
@@ -499,6 +536,30 @@ Rectangle {
                     subtitle: qsTr("Average True Range (volatility oscillator)")
                     enabled: root.activeCount < 8
                     onActivated: root.addStudy("atr", 14, "close", 2.0)
+                }
+                StudyAddRow {
+                    label: qsTr("Delta")
+                    subtitle: qsTr("Buy minus sell volume per bar, from the trade tape")
+                    enabled: root.activeCount < 8
+                    onActivated: root.addVolumeStudy("delta", 10000, 100.0)
+                }
+                StudyAddRow {
+                    label: qsTr("Cumulative delta")
+                    subtitle: qsTr("Session running delta, from the trade tape")
+                    enabled: root.activeCount < 8
+                    onActivated: root.addVolumeStudy("cumulative_delta", 10000, 100.0)
+                }
+                StudyAddRow {
+                    label: qsTr("Trade rate (10s)")
+                    subtitle: qsTr("Trades per second over a rolling window")
+                    enabled: root.activeCount < 8
+                    onActivated: root.addVolumeStudy("trade_rate", 10000, 100.0)
+                }
+                StudyAddRow {
+                    label: qsTr("Large prints (≥ 100)")
+                    subtitle: qsTr("Markers for single prints at or above a size")
+                    enabled: root.activeCount < 8
+                    onActivated: root.addVolumeStudy("large_prints", 10000, 100.0)
                 }
             }
         }

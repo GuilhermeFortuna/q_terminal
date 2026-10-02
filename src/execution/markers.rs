@@ -14,6 +14,10 @@ pub enum MarkerKind {
     Sell,
     Close,
     Fill,
+    /// Large tape prints by aggressor side; an unknown side is neutral (Q-082).
+    LargeBuy,
+    LargeSell,
+    LargeUnknown,
 }
 
 impl MarkerKind {
@@ -23,6 +27,9 @@ impl MarkerKind {
             MarkerKind::Sell => "sell",
             MarkerKind::Close => "close",
             MarkerKind::Fill => "fill",
+            MarkerKind::LargeBuy => "large_buy",
+            MarkerKind::LargeSell => "large_sell",
+            MarkerKind::LargeUnknown => "large_unknown",
         }
     }
 }

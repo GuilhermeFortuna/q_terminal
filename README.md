@@ -54,6 +54,39 @@ frame-time line per window.
 
 ---
 
+## The Trade Tape and Volume Studies
+
+Q-082 activates the tape panel (`qml/panels/TapePanel.qml`) and four chart studies. One
+process-level `TradeFeed` (`src/trades/`) follows the chart's symbol over the existing stream
+connection: it subscribes to `trades` and `trades.status`, buffers deliveries while a loader
+reads the backend's frozen session snapshot (`/api/v1/market/trades/snapshot` and
+`/history`), then applies the buffered sequences above the snapshot's `(epoch, seq)`
+watermark exactly once. Transport batches are deduplicated by `(epoch, seq)` and records by
+their contracted identity `(time_msc, occurrence)`, so equal prints are never merged. A
+timeframe change regroups the cached session without a request; a sequence gap, lag,
+reconnect, expiry, epoch change or source-generation change loads a fresh snapshot.
+
+- **Studies** (`delta`, `cumulative_delta`, `trade_rate`, `large_prints`) call the
+  `q_indicators::volume` kernels only. Delta, cumulative delta and rate each get an
+  independent oscillator pane; large prints are chart markers (latest 1000). Eight studies
+  remain the total maximum. Bars the tape never reached are gaps, never zeros, and a bar of
+  unknown-side volume reports no direction.
+- **Tape** rows are newest first, at most 1000 per panel, through a virtualised model. The
+  minimum-volume and side filters are per panel and display-only.
+- **Honest state.** The panel and every legend separate load progress, source coverage,
+  volume field/unit and classified share, and word each degraded state: loading,
+  backfilling, partial coverage, stale after a disconnect (totals frozen with their time),
+  capacity exhausted (with a reload button), unavailable and all-unknown sides.
+- **Memory.** The session is held as bounded columnar chunks, capped at 1 GiB per feed; a
+  batch that does not fit is refused whole and the session is shown as incomplete.
+- Bar intervals are computed on the exchange-local clock and converted to UTC explicitly
+  (`src/trades/time.rs`); only `America/Sao_Paulo` and UTC are supported, anything else is
+  reported rather than guessed.
+
+See [`docs/workspaces.md`](docs/workspaces.md) for what is persisted (schema 4).
+
+---
+
 ## The Live Chart Slice
 
 The live chart slice provides a read-only, reactive candlestick chart window displaying live and historical market bars for a configured symbol and timeframe.
@@ -212,6 +245,8 @@ q_terminal/
 │   ├── chart_target.rs # Follows the selected deployment: retarget by generation, overlay fetcher
 │   ├── execution/      # Execution store, markers, overlays, health poller, and ops status bridge
 │   ├── history/        # Catalog-driven parquet load, seam stitching, and verification
+│   ├── trades/         # Q-082: shared TradeFeed, bounded session history, volume analysis, tape rows
+│   ├── tape_model.rs   # CXX-Qt TapeModel: one panel's bounded rows and display filters
 │   └── stream/         # WebSocket client, envelope framing, and sequence gap recovery
 └── tests/              # End-to-end and headless integration tests
     ├── slice_end_to_end.rs    # Full end-to-end lake history to live WebSocket stream test
@@ -220,6 +255,7 @@ q_terminal/
     ├── execution_store.rs     # Execution protocol against the fake stream server
     ├── execution_convergence.rs # Seeded fault interleavings converge to the snapshot
     ├── shell_windows.rs       # Q-052: window counts, shared state, move, merge, commands
+    ├── trade_feed.rs / volume_studies.rs # Q-082: snapshot/live join, kernel agreement, tape rows
     ├── markers.rs / chart_target.rs / overlays.rs / chart_alignment.rs # Q-049 chart tests
     ├── test_execution_report.rs # --headless-report --execution
     └── test_headless_report.rs# CLI headless report verification
@@ -364,3 +400,16 @@ make bench-frames BENCH_MARKERS=2000 BENCH_OVERLAYS=2   # or: cargo run --releas
 ```
 
 The marker and overlay buffers are rebuilt and uploaded every frame (worst case) on top of the bar chart. `QT_QPA_PLATFORM=offscreen` runs it without a display.
+
+With `BENCH_TRADES=N` the benchmark also runs the four tape studies (delta, cumulative delta,
+trade rate, large prints) over a fixture session of 480 minutes at 24 prints a minute, and
+publishes a live burst of `N` prints spread over 16 ms at the start of every frame, then
+redraws the studies and markers (worst case: production redraws at most every 50 ms). The
+reference run for Q-082 is:
+
+```bash
+make bench-frames BENCH_BARS=10000 BENCH_BUCKETS=120 BENCH_SCENARIO=live-edge BENCH_OVERLAYS=2 BENCH_TRADES=100 BENCH_DURATION_MS=12000
+```
+
+10 000 bars is the chart's history depth; 100 prints per frame is about 6 000 prints per
+second, a dense WIN/WDO burst.

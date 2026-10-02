@@ -20,12 +20,14 @@ pub mod shell;
 pub mod startup;
 pub mod stream;
 pub mod studies;
+pub mod trades;
 pub mod workspace;
 
 pub use bridge::execution_controls;
 pub use bridge::execution_models;
 pub use bridge::ops_status;
 pub use bridge::shell_controller;
+pub use bridge::tape_model;
 pub use bridge::workspace_controller;
 
 /// Prints app version, core version, contracts rev and render backend, then exits 0.
@@ -55,6 +57,7 @@ pub fn headless_execution_report() -> i32 {
         stream::client::Sinks {
             bars: stream::sink::BarSink::new(),
             execution: Some(handle.clone()),
+            trades: None,
         },
     );
     let timeout_ms: u64 = std::env::var("Q_TERMINAL_REPORT_TIMEOUT_MS")
@@ -84,6 +87,7 @@ pub fn run_windowed() -> i32 {
     startup::run_slice(config::Config::load())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn run_bench_frames(
     visible_buckets: i32,
     bar_count: i32,
@@ -91,6 +95,7 @@ pub fn run_bench_frames(
     execution_rows: i32,
     markers: i32,
     overlays: i32,
+    trades: i32,
     scenario: &str,
 ) -> i32 {
     startup::run_slice_opts(
@@ -102,6 +107,7 @@ pub fn run_bench_frames(
         execution_rows,
         markers,
         overlays,
+        trades,
         visible_buckets,
         bar_count,
         scenario,

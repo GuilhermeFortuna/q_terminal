@@ -37,6 +37,7 @@ pub async fn start_on(server: FakeServer) -> Harness {
         Sinks {
             bars: BarSink::new(),
             execution: Some(handle.clone()),
+            trades: None,
         },
     );
     Harness {

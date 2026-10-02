@@ -159,6 +159,10 @@ fn kind_color(kind: MarkerKind) -> u32 {
         MarkerKind::Sell => 0xef5350ff,
         MarkerKind::Close => 0xffd54fff,
         MarkerKind::Fill => 0xffffffff,
+        MarkerKind::LargeBuy => 0x26a69aff,
+        MarkerKind::LargeSell => 0xef5350ff,
+        // Neutral: the semantic role of a print whose aggressor is unknown.
+        MarkerKind::LargeUnknown => 0x9e9e9eff,
     }
 }
 
@@ -179,6 +183,9 @@ pub fn marker_layers(
         MarkerKind::Sell,
         MarkerKind::Close,
         MarkerKind::Fill,
+        MarkerKind::LargeBuy,
+        MarkerKind::LargeSell,
+        MarkerKind::LargeUnknown,
     ]
     .iter()
     .map(|k| Layer::new(MODE_TRIANGLES, kind_color(*k)))
@@ -192,11 +199,22 @@ pub fn marker_layers(
         if !view.visible(m.bar_index) {
             continue;
         }
-        let Some(&(high, low, close)) = hlc.get(m.bar_index) else {
+        let is_print = matches!(
+            m.kind,
+            MarkerKind::LargeBuy | MarkerKind::LargeSell | MarkerKind::LargeUnknown
+        );
+        // A print sits at its own price, so it needs no bar range: the forming bar has none yet.
+        let Some(&(high, low, close)) = hlc
+            .get(m.bar_index)
+            .or_else(|| is_print.then_some(&(0.0, 0.0, 0.0)))
+        else {
             continue;
         };
         let x = view.bar_x(m.bar_index);
         let (li, cy) = match m.kind {
+            MarkerKind::LargeBuy => (4, view.price_y(m.price.unwrap_or(close))),
+            MarkerKind::LargeSell => (5, view.price_y(m.price.unwrap_or(close))),
+            MarkerKind::LargeUnknown => (6, view.price_y(m.price.unwrap_or(close))),
             MarkerKind::Buy => (0, s.mul_add(1.5, view.price_y(low))),
             MarkerKind::Sell => (1, s.mul_add(-1.5, view.price_y(high))),
             MarkerKind::Close => (2, view.price_y(m.price.unwrap_or(close))),
@@ -214,6 +232,12 @@ pub fn marker_layers(
                 let h = s * 0.6;
                 tri(l, (x - h, cy - h), (x + h, cy - h), (x - h, cy + h));
                 tri(l, (x + h, cy - h), (x + h, cy + h), (x - h, cy + h));
+            }
+            // A diamond at the print's price.
+            MarkerKind::LargeBuy | MarkerKind::LargeSell | MarkerKind::LargeUnknown => {
+                let h = s * 0.8;
+                tri(l, (x, cy - h), (x - h, cy), (x, cy + h));
+                tri(l, (x, cy - h), (x, cy + h), (x + h, cy));
             }
         }
         hits.push(Hit {

@@ -465,7 +465,7 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
 /// Opens the window whatever the API's state: configuration failures are shown
 /// in the scene, not printed to a terminal the user is not reading.
 pub fn run_slice(config: Result<Config, ConfigError>) -> i32 {
-    run_slice_opts(config, false, 0, 0, 0, 0, 2000, 500_000, "historical")
+    run_slice_opts(config, false, 0, 0, 0, 0, 0, 2000, 500_000, "historical")
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -476,6 +476,7 @@ pub fn run_slice_opts(
     execution_rows: i32,
     markers: i32,
     overlays: i32,
+    trades: i32,
     visible_buckets: i32,
     bar_count: i32,
     scenario: &str,
@@ -490,6 +491,7 @@ pub fn run_slice_opts(
             execution_rows,
             markers,
             overlays,
+            trades,
             &cxx_qt_lib::QString::from(scenario),
         );
     } else if auto_close_ms > 0 {

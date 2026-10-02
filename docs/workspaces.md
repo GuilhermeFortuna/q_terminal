@@ -20,10 +20,10 @@ intent in every workspace file, sets a stable per-window application identity
 XWayland (`QT_QPA_PLATFORM=xcb`) restores geometry directly at the cost of Wayland scaling
 and input handling. Use it when you want the terminal to place windows without compositor rules.
 
-## Schema (version 3)
+## Schema (version 4)
 
 ```toml
-schema_version = 3
+schema_version = 4
 name = "Trading"
 
 [[windows]]
@@ -40,6 +40,11 @@ detached = {}
 # Panel study sets:
 # [study_sets]
 # chart = [{ kind = "ema", period = 21, source = "close", num_std = 2.0, visible = true, palette_index = 0 }]
+# Volume studies (Q-082) keep their parameters as typed fields; period, source and
+# num_std are unused for them:
+#   { kind = "trade_rate", window_ms = 10000, visible = true, palette_index = 2 }
+#   { kind = "large_prints", large_print_threshold = 100.0, visible = true, palette_index = 3 }
+# `delta` and `cumulative_delta` take no parameter.
 
 # Panel chart preferences (Q-077):
 [chart_preferences.chart]
@@ -49,10 +54,18 @@ mode = "manual" # "manual" or "following"
 last_manual_symbol = "PETR4"
 last_manual_timeframe = "1m"
 visible_bars = 200
+
+# Display filters of each tape panel, by panel id (Q-082). They choose which prints the
+# tape lists and never affect the volume studies; defaults are min_volume = 0, side = "all".
+[tape_preferences.tape]
+min_volume = 5.0
+side = "sell" # "all", "buy", "sell" or "unknown"
 ```
 
-Version 1 and 2 files migrate forward seamlessly to version 3. Invalid or unknown study or
-chart-preference entries fall back per-setting without rejecting the remainder of the workspace.
+Version 1, 2 and 3 files migrate forward seamlessly to version 4, keeping their layout and
+studies. Invalid or unknown study, chart-preference or tape-filter entries fall back per-setting
+without rejecting the remainder of the workspace. Market-derived state is never saved: a
+restart recomputes it from the session history.
 
 ## Automatic persistence and crash resilience (Q-077)
 
@@ -69,7 +82,7 @@ Terminal setup changes are persisted automatically without requiring manual save
 - **Atomic write & directory sync:** Saves write to a temporary file (`.<name>.toml.tmp-PID-UUID`),
   flush and sync the file descriptor and parent directory, and atomically rename over the target.
 - **Preservation & Recovery workspace:** Unreadable or corrupt files are renamed aside to
-  `.bad-<timestamp>`. Future-version files (schema version > 3) are preserved completely
+  `.bad-<timestamp>`. Future-version files (schema version > 4) are preserved completely
   untouched on disk, and the terminal opens on a newly created `Recovery` workspace
   (`Recovery 2`, etc.), preventing older versions from corrupting newer configs.
 

@@ -4,6 +4,7 @@ use crate::stream::fake_commands::{
     parse_body_from_request, parse_idempotency_key, CommandFakeState, CommandLogEntry,
 };
 use crate::stream::fake_exec::ExecFake;
+use crate::stream::fake_trades::TradeFake;
 use crate::stream::frame::{make_binary_frame, EnvelopeHeader};
 use crate::stream::topic_state::BarColumns;
 use futures_util::{SinkExt, StreamExt};
@@ -39,6 +40,7 @@ pub struct FakeServer {
     snapshot_503: Arc<AtomicBool>,
     snapshot_delay_ms: Arc<std::sync::atomic::AtomicU64>,
     exec: Arc<RwLock<ExecFake>>,
+    trades: Arc<TradeFake>,
     reject_forming: Arc<AtomicBool>,
     epoch: Arc<RwLock<String>>,
     snapshots: Arc<RwLock<HashMap<String, SnapshotEntry>>>,
@@ -71,6 +73,7 @@ impl FakeServer {
         let snapshot_503 = Arc::new(AtomicBool::new(false));
         let snapshot_delay_ms = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let exec = Arc::new(RwLock::new(ExecFake::new()));
+        let trades = Arc::new(TradeFake::default());
         let reject_forming = Arc::new(AtomicBool::new(false));
         let epoch = Arc::new(RwLock::new("epoch-1".to_string()));
         let snapshots = Arc::new(RwLock::new(HashMap::<String, SnapshotEntry>::new()));
@@ -126,6 +129,7 @@ impl FakeServer {
         let snap503 = snapshot_503.clone();
         let snap_delay = snapshot_delay_ms.clone();
         let exec_arc = exec.clone();
+        let trades_arc = trades.clone();
         let rform = reject_forming.clone();
         let ep_arc = epoch.clone();
         let snap_arc = snapshots.clone();
@@ -159,6 +163,7 @@ impl FakeServer {
                             let snap503 = snap503.clone();
                             let snap_delay = snap_delay.clone();
                             let exec_arc = exec_arc.clone();
+                            let trades_arc = trades_arc.clone();
                             let rform = rform.clone();
                             let ep_arc = ep_arc.clone();
                             let snap_arc = snap_arc.clone();
@@ -290,6 +295,19 @@ impl FakeServer {
                                 let method = parts[0];
                                 let path_and_query = parts[1];
                                 let path = path_and_query.split('?').next().unwrap_or("");
+
+                                if path.starts_with("/api/v1/market/trades/") {
+                                    if let Some(resp) = trades_arc.respond(path_and_query) {
+                                        let delay = trades_arc.page_delay_ms();
+                                        if delay > 0 && path.ends_with("/history") {
+                                            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                                        }
+                                        let _ = socket.write_all(resp.head().as_bytes()).await;
+                                        let _ = socket.write_all(&resp.body).await;
+                                        let _ = socket.shutdown().await;
+                                        return;
+                                    }
+                                }
 
                                 // Command routes (Q-048 / Q-069)
                                 let is_paged_route = path.ends_with("/orders")
@@ -685,6 +703,7 @@ impl FakeServer {
             snapshot_503,
             snapshot_delay_ms,
             exec,
+            trades,
             reject_forming,
             epoch,
             snapshots,
@@ -835,6 +854,59 @@ impl FakeServer {
         let ep = self.epoch.read().await.clone();
         let text = exec_envelope(topic, seq, &ep, payload).to_string();
         let _ = self.command_tx.send(ServerCommand::SendText(text)).await;
+    }
+
+    /// Script for the trade snapshot and history routes.
+    pub fn trades(&self) -> Arc<TradeFake> {
+        self.trades.clone()
+    }
+
+    /// Delivers a `trades` batch to the connected client.
+    pub async fn send_trades(
+        &self,
+        epoch: &str,
+        seq: i64,
+        context: &crate::trades::feed::SourceContext,
+        rows: &crate::trades::history::TradeColumns,
+    ) {
+        let header = EnvelopeHeader {
+            topic: "trades".to_string(),
+            schema_major: 1,
+            seq,
+            epoch: epoch.to_string(),
+            producer_id: "fake".to_string(),
+            origin_ts: "2026-10-01T12:00:00Z".to_string(),
+            payload_kind: "arrow_ipc".to_string(),
+            payload_schema: "schema/api/arrow/trades.schema.json".to_string(),
+            key: Some(json!({ "symbol": context.symbol })),
+        };
+        let arrow = crate::stream::trade_arrow::encode_arrow_trades(context, rows).unwrap();
+        let _ = self
+            .command_tx
+            .send(ServerCommand::SendBinary(make_binary_frame(
+                &header, &arrow,
+            )))
+            .await;
+    }
+
+    /// Delivers a `trades.status` entry to the connected client.
+    pub async fn send_trade_status(&self, epoch: &str, seq: i64, status: serde_json::Value) {
+        let envelope = json!({
+            "topic": "trades.status",
+            "schema_major": 1,
+            "seq": seq,
+            "epoch": epoch,
+            "producer_id": "fake",
+            "origin_ts": "2026-10-01T12:00:00Z",
+            "payload_kind": "control",
+            "payload_schema": "schema/stream/payloads/trade-source-status.schema.json",
+            "key": { "symbol": status["symbol"] },
+            "payload": status,
+        });
+        let _ = self
+            .command_tx
+            .send(ServerCommand::SendText(envelope.to_string()))
+            .await;
     }
 
     pub fn set_reject_forming(&self, val: bool) {

@@ -1689,8 +1689,8 @@ dependencies = [
 
 [[package]]
 name = "q-buffers"
-version = "2026.9.29"
-source = "git+https://github.com/GuilhermeFortuna/q_core.git?tag=v2026.09.29#b3e53e268124aa43fc32fe45bf3d086a0110d6a9"
+version = "2026.10.2"
+source = "git+https://github.com/GuilhermeFortuna/q_core.git?tag=v2026.10.02#981174e10c05fe4ee3afcdca0ad402230c5e41bf"
 dependencies = [
  "serde",
  "serde_json",
@@ -1698,8 +1698,8 @@ dependencies = [
 
 [[package]]
 name = "q-engine"
-version = "2026.9.29"
-source = "git+https://github.com/GuilhermeFortuna/q_core.git?tag=v2026.09.29#b3e53e268124aa43fc32fe45bf3d086a0110d6a9"
+version = "2026.10.2"
+source = "git+https://github.com/GuilhermeFortuna/q_core.git?tag=v2026.10.02#981174e10c05fe4ee3afcdca0ad402230c5e41bf"
 dependencies = [
  "q-buffers",
  "q-indicators",
@@ -1707,13 +1707,13 @@ dependencies = [
 
 [[package]]
 name = "q-indicators"
-version = "2026.9.29"
-source = "git+https://github.com/GuilhermeFortuna/q_core.git?tag=v2026.09.29#b3e53e268124aa43fc32fe45bf3d086a0110d6a9"
+version = "2026.10.2"
+source = "git+https://github.com/GuilhermeFortuna/q_core.git?tag=v2026.10.02#981174e10c05fe4ee3afcdca0ad402230c5e41bf"
 
 [[package]]
 name = "q-io"
-version = "2026.9.29"
-source = "git+https://github.com/GuilhermeFortuna/q_core.git?tag=v2026.09.29#b3e53e268124aa43fc32fe45bf3d086a0110d6a9"
+version = "2026.10.2"
+source = "git+https://github.com/GuilhermeFortuna/q_core.git?tag=v2026.10.02#981174e10c05fe4ee3afcdca0ad402230c5e41bf"
 dependencies = [
  "arrow",
  "libc",
@@ -1724,8 +1724,8 @@ dependencies = [
 
 [[package]]
 name = "q-qt"
-version = "2026.9.29"
-source = "git+https://github.com/GuilhermeFortuna/q_core.git?tag=v2026.09.29#b3e53e268124aa43fc32fe45bf3d086a0110d6a9"
+version = "2026.10.2"
+source = "git+https://github.com/GuilhermeFortuna/q_core.git?tag=v2026.10.02#981174e10c05fe4ee3afcdca0ad402230c5e41bf"
 dependencies = [
  "cxx",
  "cxx-qt",

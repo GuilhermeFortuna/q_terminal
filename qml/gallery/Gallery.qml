@@ -31,6 +31,36 @@ ApplicationWindow {
                 ConnectionIndicator { text: "GALLERY BUILD"; role: Semantic.positive }
             }
 
+            Text { text: "VOLUME STUDIES (Q-082)"; color: Theme.accent; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabel; font.weight: Typography.weightBold }
+            RowLayout {
+                Layout.fillWidth: true; spacing: Theme.spaceMd
+                Repeater {
+                    model: ["volume", "volume-stale"]
+                    ColumnLayout {
+                        id: volumeState
+                        required property string modelData
+                        Layout.fillWidth: true; spacing: Theme.spaceXs
+                        Text { text: volumeState.modelData.toUpperCase(); color: Theme.textMuted; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                        ChartPreview { previewState: volumeState.modelData; Layout.fillWidth: true; Layout.preferredHeight: Spacing.galleryChartHeight }
+                    }
+                }
+            }
+
+            Text { text: "TRADE TAPE (Q-082)"; color: Theme.accent; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabel; font.weight: Typography.weightBold }
+            GridLayout {
+                Layout.fillWidth: true; columns: 4; columnSpacing: Theme.spaceMd; rowSpacing: Theme.spaceMd; uniformCellWidths: true
+                Repeater {
+                    model: ["live", "partial", "loading", "backfill", "stale", "capacity", "unavailable", "unknown"]
+                    ColumnLayout {
+                        id: tapeState
+                        required property string modelData
+                        Layout.fillWidth: true; spacing: Theme.spaceXs
+                        Text { text: tapeState.modelData.toUpperCase(); color: Theme.textMuted; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                        TapePreview { previewState: tapeState.modelData; Layout.fillWidth: true; Layout.preferredHeight: Spacing.galleryChartHeight }
+                    }
+                }
+            }
+
             Text { text: "CHART STATES"; color: Theme.accent; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabel; font.weight: Typography.weightBold }
             RowLayout {
                 Layout.fillWidth: true; spacing: Theme.spaceMd
@@ -183,9 +213,9 @@ ApplicationWindow {
                         anchors.fill: parent
                         anchors.margins: Theme.spaceSm
                         spacing: Theme.spaceXs
-                        Text { text: "TAPE PLACEHOLDER"; color: Theme.textMuted; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
-                        Text { text: "Tape"; color: Theme.textPrimary; font.family: Theme.uiFont; font.pixelSize: Theme.typeBodySmall; font.bold: true }
-                        Text { text: "Tape data is not available yet"; color: Theme.textMuted; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                        Text { text: "DOM PLACEHOLDER"; color: Theme.textMuted; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
+                        Text { text: "DOM"; color: Theme.textPrimary; font.family: Theme.uiFont; font.pixelSize: Theme.typeBodySmall; font.bold: true }
+                        Text { text: "Reserved for a later release."; color: Theme.textMuted; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
                         Text { text: "Honest placeholder copy"; color: Theme.textTertiary; font.family: Theme.uiFont; font.pixelSize: Theme.typeLabelSmall }
                     }
                 }

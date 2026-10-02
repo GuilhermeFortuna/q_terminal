@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import qml
 import "ChartAxis.js" as ChartAxis
+import "StudyParams.js" as StudyParams
 
 Item {
     id: root
@@ -104,9 +105,14 @@ Item {
             var values = JSON.parse(root.feed.study_values_json(activeBarIndex));
             var vwapUnavailable = JSON.parse(root.feed.study_list_json()).vwap_unavailable || "";
             for (var i = 0; i < specs.length; ++i) {
+                var entry = values.find(function (value) { return value.id === specs[i].id; });
+                if (specs[i].volume) {
+                    // Tape studies carry their own legend name and readout, units and coverage included.
+                    specs[i].text = entry && entry.text ? entry.text : "—";
+                    continue;
+                }
                 specs[i].name = specs[i].kind === "vwap" ? "VWAP"
                     : specs[i].kind[0].toUpperCase() + specs[i].kind.slice(1) + " " + specs[i].period;
-                var entry = values.find(function (value) { return value.id === specs[i].id; });
                 var oscillator = specs[i].kind === "rsi" || specs[i].kind === "atr";
                 specs[i].text = specs[i].kind === "vwap" && vwapUnavailable ? vwapUnavailable
                     : (!entry || entry.value === null ? "—"
@@ -831,9 +837,13 @@ Item {
                     var latestIndex = root.feed.has_forming ? root.feed.bar_count : root.feed.bar_count - 1;
                     var values = JSON.parse(root.feed.study_values_json(latestIndex));
                     for (var i = 0; i < specs.length; ++i) {
+                        var entry = values.find(function (value) { return value.id === specs[i].id; });
+                        if (specs[i].volume) {
+                            specs[i].text = entry && entry.text ? entry.text : "—";
+                            continue;
+                        }
                         specs[i].name = specs[i].kind === "vwap" ? "VWAP"
                             : specs[i].kind[0].toUpperCase() + specs[i].kind.slice(1) + " " + specs[i].period;
-                        var entry = values.find(function (value) { return value.id === specs[i].id; });
                         var oscillator = specs[i].kind === "rsi" || specs[i].kind === "atr";
                         specs[i].text = specs[i].kind === "vwap" && list.vwap_unavailable ? list.vwap_unavailable
                             : (!entry || entry.value === null ? "—"
@@ -894,28 +904,28 @@ Item {
                     }
 
                     Text {
-                        visible: chipHover.hovered && chip.modelData.kind !== "vwap"
+                        visible: chipHover.hovered && chip.modelData.kind !== "vwap" && StudyParams.editable(chip.modelData)
                         text: "−"
                         color: Theme.textSecondary
                         font.family: Theme.uiFont
                         font.pixelSize: Theme.typeLabelSmall
-                        Accessible.name: "Decrease study period"
+                        Accessible.name: "Decrease study parameter"
                         HoverHandler { cursorShape: Qt.PointingHandCursor }
                         TapHandler {
-                            onTapped: root.feed.update_study(chip.modelData.id, Math.max(1, chip.modelData.period - 1), chip.modelData.source, chip.modelData.num_std);
+                            onTapped: StudyParams.step(root.feed, chip.modelData, -1)
                         }
                     }
 
                     Text {
-                        visible: chipHover.hovered && chip.modelData.kind !== "vwap"
+                        visible: chipHover.hovered && chip.modelData.kind !== "vwap" && StudyParams.editable(chip.modelData)
                         text: "+"
                         color: Theme.textSecondary
                         font.family: Theme.uiFont
                         font.pixelSize: Theme.typeLabelSmall
-                        Accessible.name: "Increase study period"
+                        Accessible.name: "Increase study parameter"
                         HoverHandler { cursorShape: Qt.PointingHandCursor }
                         TapHandler {
-                            onTapped: root.feed.update_study(chip.modelData.id, chip.modelData.period + 1, chip.modelData.source, chip.modelData.num_std);
+                            onTapped: StudyParams.step(root.feed, chip.modelData, 1)
                         }
                     }
 
