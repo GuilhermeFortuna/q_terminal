@@ -41,6 +41,7 @@ fn main() {
         let execution_rows = read_arg_i32(&args, "--execution-rows", 0);
         let markers = read_arg_i32(&args, "--markers", 0);
         let overlays = read_arg_i32(&args, "--overlays", 0);
+        let trades = read_arg_i32(&args, "--trades", 0);
         let scenario = read_arg_string(&args, "--scenario", "historical");
         std::process::exit(q_terminal::run_bench_frames(
             visible_buckets,
@@ -49,6 +50,7 @@ fn main() {
             execution_rows,
             markers,
             overlays,
+            trades,
             scenario,
         ));
     }
@@ -57,6 +59,7 @@ fn main() {
         config::Config::load(),
         false,
         auto_close_ms as u64,
+        0,
         0,
         0,
         0,

@@ -781,7 +781,10 @@ impl StudySet {
             let Some(analysis) = inputs.analysis(spec.volume) else {
                 continue;
             };
-            let rows = labels
+            // Bars before the session's first one have no tape: skip them without a lookup.
+            let first_open = analysis.bars().first().map_or(i64::MAX, |b| b.open_ms);
+            let start = labels.partition_point(|&label| self.utc_of(label, trades) < first_open);
+            let rows = labels[start..]
                 .iter()
                 .filter_map(|&label| {
                     analysis
@@ -1086,17 +1089,11 @@ impl StudySet {
                             _ => bar.trade_rate,
                         }
                     };
-                    let at = |label: i64| -> (i64, Option<f64>) {
-                        let found = rows
-                            .binary_search_by_key(&label, |(t, _)| *t)
-                            .ok()
-                            .and_then(|i| value(&rows[i].1));
-                        (label, found.and_then(finite_opt))
-                    };
-                    let mut pts: Vec<(i64, Option<f64>)> = (0..n).map(|i| at(ms_at(i))).collect();
-                    if let Some((t, ..)) = forming {
-                        pts.push(at(markers::normalize_ms(t)));
-                    }
+                    // Only the session's bars have points; earlier chart bars stay gaps.
+                    let pts: Vec<(i64, Option<f64>)> = rows
+                        .iter()
+                        .map(|(label, bar)| (*label, value(bar).and_then(finite_opt)))
+                        .collect();
                     let (suffix, label) = match spec.kind {
                         StudyKind::Delta => ("delta", "Delta"),
                         StudyKind::CumulativeDelta => ("cvd", "CVD"),

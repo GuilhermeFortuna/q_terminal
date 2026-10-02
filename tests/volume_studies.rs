@@ -158,8 +158,12 @@ fn bars_before_the_loaded_tape_are_unavailable_gaps_not_zeros() {
     let bars = local_bars(5, -2);
     rebuild(&mut set, &feed, &bars);
     let cvd = series(&set, "-cvd");
-    assert_eq!((cvd[0].1, cvd[1].1), (None, None));
-    assert!(cvd[2].1.is_some());
+    let at = |i: usize| cvd.iter().find(|p| p.0 == ms_label(&bars, i));
+    assert!(
+        at(0).is_none() && at(1).is_none(),
+        "no point where the tape never reached"
+    );
+    assert!(at(2).and_then(|p| p.1).is_some());
     let values: serde_json::Value =
         serde_json::from_str(&set.values_json(ms_label(&bars, 0))).unwrap();
     assert_eq!(values[0]["text"], "no tape for this bar");

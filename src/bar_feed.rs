@@ -207,6 +207,14 @@ pub mod ffi {
         #[qinvokable]
         fn bench_populate(self: Pin<&mut BarFeed>, bars: i64, markers: i64, overlays: i64);
 
+        /// Benchmark only: a fixture session behind the four tape studies.
+        #[qinvokable]
+        fn bench_trades(self: Pin<&mut BarFeed>);
+
+        /// Benchmark only: `count` more live prints, then the studies redraw.
+        #[qinvokable]
+        fn bench_trade_burst(self: Pin<&mut BarFeed>, count: i64);
+
         /// Fills the feed with deterministic bars for gallery captures: `count` completed
         /// bars and one forming bar, in whole cents.
         #[qinvokable]
@@ -539,6 +547,8 @@ pub struct BarFeedRust {
     trades: Option<TradeHandle>,
     /// Replay synchronously: the fixture session is captured the moment it is built.
     trades_blocking: bool,
+    /// Benchmark transport sequence of the next synthetic burst.
+    bench_seq: i64,
     /// Large-print markers of the tape studies, kept apart from the execution markers.
     trade_markers: Vec<Marker>,
     bar_tick_volume: Vec<i64>,
@@ -680,6 +690,7 @@ impl BarFeedRust {
             study_set: StudySet::new(),
             trades: None,
             trades_blocking: false,
+            bench_seq: 0,
             trade_markers: Vec::new(),
             bar_tick_volume: Vec::new(),
             bar_real_volume: Vec::new(),
@@ -1930,6 +1941,41 @@ impl ffi::BarFeed {
             }
         }
         self.as_mut().notify_props(before);
+    }
+
+    pub fn bench_trades(mut self: std::pin::Pin<&mut Self>) {
+        self.as_mut()
+            .bind_fixture_trades(QString::from("live"), 480);
+        for kind in ["delta", "cumulative_delta", "trade_rate", "large_prints"] {
+            let params = VolumeParams::default();
+            let kind = StudyKind::parse(kind).expect("known kind");
+            let _ = self
+                .as_mut()
+                .rust_mut()
+                .study_set
+                .add_volume_study(kind, params);
+        }
+        self.as_mut().rust_mut().sync_trade_params();
+        self.as_mut().rust_mut().refresh_studies();
+    }
+
+    pub fn bench_trade_burst(mut self: std::pin::Pin<&mut Self>, count: i64) {
+        let Some(handle) = self.as_ref().rust().trades.clone() else {
+            return;
+        };
+        let seq = self.as_ref().rust().bench_seq;
+        let next = handle.mutate(|feed| {
+            let start = feed
+                .history()
+                .iter_rev()
+                .next()
+                .map_or(0, |t| t.time_msc + 1);
+            let rows =
+                crate::trades::fixture::burst_rows(start, count.max(0) as usize, 16, seq as u64);
+            crate::trades::fixture::publish_burst(feed, 101 + seq, rows)
+        });
+        self.as_mut().rust_mut().bench_seq = next - 101;
+        self.as_mut().rust_mut().refresh_studies();
     }
 
     pub fn bench_populate(

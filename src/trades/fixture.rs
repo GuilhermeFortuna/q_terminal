@@ -74,6 +74,50 @@ pub fn preview_rows(minutes: usize, prints_per_minute: usize, sides_known: bool)
     cols
 }
 
+/// `count` live prints spread over `span_ms` from `start_ms`, one burst of a dense tape. Prints
+/// sharing a millisecond take successive occurrences, as the gateway numbers them.
+pub fn burst_rows(start_ms: i64, count: usize, span_ms: i64, seed: u64) -> TradeColumns {
+    let mut rng = Lcg(seed ^ 0x2545_f491_4f6c_dd1d);
+    let mut cols = TradeColumns::default();
+    let span = span_ms.max(1);
+    let mut occurrence = 0u32;
+    let mut previous = i64::MIN;
+    for i in 0..count {
+        let t = start_ms + (i as i64 * span) / count.max(1) as i64;
+        occurrence = if t == previous { occurrence + 1 } else { 0 };
+        previous = t;
+        let price = (3800 + (rng.next() % 12) as i64) as f64 / 100.0;
+        let volume = if rng.next() % 100 < 2 {
+            120.0
+        } else {
+            (1 + rng.next() % 8) as f64
+        };
+        let flags = match rng.next() % 100 {
+            0..=44 => BUY,
+            45..=84 => SELL,
+            _ => UNKNOWN,
+        };
+        cols.push(t, price, volume, flags, occurrence);
+    }
+    cols
+}
+
+/// Applies a burst to a live feed as transport sequence `seq`; returns the next one.
+pub fn publish_burst(feed: &mut TradeFeed, seq: i64, rows: TradeColumns) -> i64 {
+    if let Some(context) = feed.context().cloned() {
+        feed.on_delivery(
+            EPOCH,
+            seq,
+            super::feed::Delivery::Batch(Box::new(super::feed::DecodedBatch {
+                context,
+                columns: rows,
+                invalid_rows: 0,
+            })),
+        );
+    }
+    seq + 1
+}
+
 fn snapshot(
     rows: usize,
     frozen_seq: i64,

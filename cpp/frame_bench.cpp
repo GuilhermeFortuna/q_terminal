@@ -65,7 +65,8 @@ struct WindowStats {
 };
 
 void print_stats(const WindowStats& stats, int visible_buckets, int execution_rows, int markers,
-                 int overlays, const QString& scenario, unsigned long long rust_allocations) {
+                 int overlays, int trades, const QString& scenario,
+                 unsigned long long rust_allocations) {
     const QString name = stats.window->title();
     if (stats.frame_ms.empty()) {
         std::cout << "frame_bench window=\"" << name.toStdString() << "\" buckets="
@@ -96,7 +97,7 @@ void print_stats(const WindowStats& stats, int visible_buckets, int execution_ro
     std::cout << "frame_bench window=\"" << name.toStdString() << "\" scenario="
               << scenario.toStdString() << " buckets=" << visible_buckets
               << " execution_rows=" << execution_rows << " markers=" << markers
-              << " overlays=" << overlays << " frames=" << sorted.size() << " p50_ms=" << pct(0.50)
+              << " overlays=" << overlays << " trades_per_frame=" << trades << " frames=" << sorted.size() << " p50_ms=" << pct(0.50)
               << " p95_ms=" << pct(0.95) << " p99_ms=" << pct(0.99) << " max_ms=" << sorted.back()
               << " scene_syncs=" << totals.syncs
               << " avg_completed_vertices_per_frame=" << totals.completedVertices / frames
@@ -117,7 +118,7 @@ void print_stats(const WindowStats& stats, int visible_buckets, int execution_ro
 
 void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar_count,
                      int duration_ms, int execution_rows, int markers, int overlays,
-                     const QString& scenario) {
+                     int trades, const QString& scenario) {
     // The shell root is not a window. With Q_BENCH_WINDOWS=both both compositions are
     // opened, so the chart and the tables render in separate windows.
     QObject* root = engine.rootObjects().isEmpty() ? nullptr : engine.rootObjects().first();
@@ -227,10 +228,14 @@ void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar
 
     BarFeed* overlayFeed = nullptr;
     OverlayChartItem* overlay_item = nullptr;
-    if (markers > 0 || overlays > 0) {
+    if (markers > 0 || overlays > 0 || trades > 0) {
         // Markers and overlays sit on their own feed and item, over the bar chart.
         overlayFeed = new BarFeed(window);
         overlayFeed->bench_populate(live_edge ? safe_bars : safe_buckets, markers, overlays);
+        if (trades > 0) {
+            // Four tape studies over a fixture session, fed a live burst every frame.
+            overlayFeed->bench_trades();
+        }
         overlay_item = new OverlayChartItem(chart->parentItem());
         overlay_item->setParentItem(chart->parentItem());
         overlay_item->setSize(chart->size());
@@ -275,12 +280,15 @@ void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar
     auto* tick = new int(0);
     auto* current_forming_time = new qint64(forming_time);
     QObject::connect(window, &QQuickWindow::beforeRendering, window,
-                     [series, overlayFeed, overlay_item, chart, tick, scenario, forming_open,
+                     [series, overlayFeed, overlay_item, chart, tick, scenario, forming_open, trades,
                       current_forming_time, safe_bars, safe_buckets, low_price, high_price]() mutable {
         ++*tick;
         if (overlayFeed != nullptr) {
             // Worst case: the overlay buffers are rebuilt and uploaded every frame.
             overlayFeed->setOverlay_revision(overlayFeed->getOverlay_revision() + 1);
+            if (trades > 0) {
+                overlayFeed->bench_trade_burst(trades);
+            }
         }
         const double delta = std::sin(static_cast<double>(*tick) * 0.07) * 0.7;
         const double close = forming_open + delta;
@@ -319,12 +327,12 @@ void run_frame_bench(QQmlApplicationEngine& engine, int visible_buckets, int bar
     stopTimer->setSingleShot(true);
     QObject::connect(stopTimer, &QTimer::timeout, window,
                      [all, allocation_started, visible_buckets, execution_rows, markers, overlays,
-                      scenario]() {
+                      trades, scenario]() {
                          const unsigned long long rust_allocations =
                              *allocation_started ? q_terminal_bench_allocations_stop() : 0;
                          for (WindowStats* stats : *all) {
                              print_stats(*stats, visible_buckets, execution_rows, markers, overlays,
-                                         scenario, rust_allocations);
+                                         trades, scenario, rust_allocations);
                          }
                          const auto windows = QGuiApplication::topLevelWindows();
                          for (QWindow* w : windows) {

@@ -46,6 +46,7 @@ pub mod ffi {
             execution_rows: i32,
             markers: i32,
             overlays: i32,
+            trades: i32,
             scenario: &QString,
         );
     }

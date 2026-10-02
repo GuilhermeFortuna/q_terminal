@@ -87,6 +87,7 @@ pub fn run_windowed() -> i32 {
     startup::run_slice(config::Config::load())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn run_bench_frames(
     visible_buckets: i32,
     bar_count: i32,
@@ -94,6 +95,7 @@ pub fn run_bench_frames(
     execution_rows: i32,
     markers: i32,
     overlays: i32,
+    trades: i32,
     scenario: &str,
 ) -> i32 {
     startup::run_slice_opts(
@@ -105,6 +107,7 @@ pub fn run_bench_frames(
         execution_rows,
         markers,
         overlays,
+        trades,
         visible_buckets,
         bar_count,
         scenario,
