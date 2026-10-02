@@ -208,3 +208,22 @@ pub fn fake_snapshot(
         pages: rows.chunks(page_rows.max(1)).map(columns).collect(),
     }
 }
+
+use q_terminal::trades::feed::{Delivery as FeedDelivery, TradeFeed};
+
+pub const MIN: i64 = 60_000;
+
+/// A live feed that loaded `rows` as one snapshot, grouped into `interval_ms` bars.
+pub fn live_feed(rows: &[Row], interval_ms: i64) -> TradeFeed {
+    let mut feed = TradeFeed::new();
+    feed.set_interval_ms(interval_ms);
+    feed.retarget(SYMBOL);
+    let gen = feed.load_generation();
+    let snap = snapshot(SYMBOL, GENERATION, "snap-1", rows.len() as i64, 100);
+    feed.begin_snapshot(gen, &snap).unwrap();
+    feed.apply_page(gen, &page_headers(&snap), &columns(rows), 0)
+        .unwrap();
+    feed.finish_snapshot(gen).unwrap();
+    let _: Option<FeedDelivery> = None;
+    feed
+}

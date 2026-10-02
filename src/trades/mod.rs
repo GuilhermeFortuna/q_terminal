@@ -8,6 +8,7 @@ pub mod analysis;
 pub mod feed;
 pub mod history;
 pub mod model;
+pub mod notify;
 pub mod time;
 
 pub use feed::{TradeFeed, TradeHandle};
