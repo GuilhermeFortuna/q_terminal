@@ -10,6 +10,35 @@ use chart_context::{
 };
 
 #[test]
+fn retarget_notifies_qml_of_symbol_and_timeframe_changes() {
+    let _guard = chart_bridge::QT_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    chart_bridge::ensure_application();
+    unsafe {
+        let ctx = chart_bridge::make_test_chart_context() as *mut chart_context::ffi::ChartContext;
+        chart_context::set_configured(ctx, "CCM$", "1m");
+        let symbol_changes = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let timeframe_changes = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let symbol_counter = symbol_changes.clone();
+        let timeframe_counter = timeframe_changes.clone();
+        let mut pin = std::pin::Pin::new_unchecked(&mut *ctx);
+        let _symbol_guard = pin.as_mut().on_active_symbol_changed(move |_| {
+            symbol_counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        });
+        let _timeframe_guard = pin.as_mut().on_active_timeframe_changed(move |_| {
+            timeframe_counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        });
+        chart_context::notify_retarget(ctx, "WDO$", "5m");
+        assert_eq!(symbol_changes.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(
+            timeframe_changes.load(std::sync::atomic::Ordering::SeqCst),
+            1
+        );
+    }
+}
+
+#[test]
 fn format_last_bar_time_unavailable_for_zero() {
     assert_eq!(format_last_bar_time(0), "Last bar unavailable");
     assert_eq!(format_last_bar_time(-1), "Last bar unavailable");

@@ -57,9 +57,19 @@ pub fn resolve_initial_target(
 
     let (saved_sym, saved_tf, saved_mode, saved_dep_id, saved_man_sym, saved_man_tf, saved_vb) =
         if let Some(p) = saved_prefs {
+            // Earlier versions could autosave the feed's startup placeholder before
+            // configuration reached the chart. Recover the last operator target.
+            let (saved_symbol, saved_timeframe) = if p.symbol.trim() == "DEFAULT" {
+                (
+                    p.last_manual_symbol.as_deref().unwrap_or(""),
+                    p.last_manual_timeframe.as_deref().unwrap_or(""),
+                )
+            } else {
+                (p.symbol.as_str(), p.timeframe.as_str())
+            };
             (
-                Some(p.symbol.trim()).filter(|s| !s.is_empty()),
-                Some(p.timeframe.trim()).filter(|s| !s.is_empty()),
+                Some(saved_symbol.trim()).filter(|s| !s.is_empty()),
+                Some(saved_timeframe.trim()).filter(|s| !s.is_empty()),
                 Some(p.mode.as_str()),
                 p.followed_deployment_id
                     .clone()
@@ -428,14 +438,7 @@ pub fn setup_slice(config: &Result<Config, ConfigError>) -> SliceContext {
                             ConnectionState::Reconnecting { .. } => "reconnecting",
                             ConnectionState::Unavailable => "disconnected",
                         };
-                        let age = 0.0;
-                        let engine_mut = engine_addr as *mut cxx_qt_lib::QQmlApplicationEngine;
-                        let status = chart_bridge::find_window_ops_status(
-                            std::pin::Pin::new_unchecked(&mut *engine_mut),
-                        );
-                        if status != 0 {
-                            chart_bridge::ops_status_set_stream(status, ops_state, age);
-                        }
+                        chart_bridge::post_ops_stream_state(engine_addr, ops_state, 0.0);
                     }
                 }));
 

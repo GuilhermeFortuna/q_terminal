@@ -15,6 +15,58 @@ fn dummy_bar(t: i64, close: f64) -> BarColumns {
 }
 
 #[tokio::test]
+async fn mt5_routing_key_loads_the_requested_futures_snapshot() {
+    let server = FakeServer::start().await;
+    server
+        .send_bar(
+            "bars.completed",
+            100,
+            "WDO$",
+            "M5",
+            BarColumns::single(1_790_957_700_000_000, 5243.0, 5245.0, 5241.5, 5243.5, 100.0),
+        )
+        .await;
+    // The most recent topic entry belongs to a different instrument. The client must
+    // request WDO$|M5, including the escaped dollar sign, rather than use that entry.
+    server
+        .send_bar(
+            "bars.completed",
+            101,
+            "CCM$",
+            "M1",
+            BarColumns::single(1_790_957_700_000_000, 70.0, 71.0, 69.0, 70.0, 100.0),
+        )
+        .await;
+    let sink = BarSink::new();
+    let client = StreamClient::start(
+        Config {
+            api_base: server.api_base(),
+            symbol: "WDO$".into(),
+            timeframe: "5m".into(),
+            operator: "operator".into(),
+        },
+        sink.clone(),
+    );
+    for _ in 0..100 {
+        if client.counters().applied > 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    let delivered = sink.drain();
+    client.shutdown();
+    server.shutdown().await;
+    let completed = delivered
+        .into_iter()
+        .find_map(|delivery| match delivery {
+            stream::sink::BarDelivery::Completed(bars) => Some(bars),
+            stream::sink::BarDelivery::Forming(_) => None,
+        })
+        .expect("requested futures snapshot must arrive");
+    assert_eq!(completed.close[0].to_bits(), 5243.5f64.to_bits());
+}
+
+#[tokio::test]
 async fn test_connect_snapshot_live_happy_path() {
     let server = FakeServer::start().await;
     server

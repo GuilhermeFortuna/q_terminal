@@ -99,6 +99,34 @@ pub enum TopicFilter {
     None,
 }
 
+/// Converts the terminal's display forms (for example `1m`) to the market stream's
+/// wire form (`M1`). Publisher routing keys and payload envelopes use MT5 timeframe
+/// codes, while the chart UI uses the number-first spelling.
+pub fn stream_timeframe(timeframe: &str) -> String {
+    let value = timeframe.trim();
+    if value.is_empty() {
+        return String::new();
+    }
+
+    let upper = value.to_ascii_uppercase();
+    if let Some((unit, _)) = upper.split_once(|c: char| c.is_ascii_digit()) {
+        // Prefix form: M1, H4, D1. Keep this form when the code is recognized.
+        if unit.len() == 1 && matches!(unit, "S" | "M" | "H" | "D" | "W") {
+            return upper;
+        }
+    }
+
+    let suffix = upper.chars().last().unwrap();
+    if matches!(suffix, 'S' | 'M' | 'H' | 'D' | 'W') {
+        let amount = &upper[..upper.len() - suffix.len_utf8()];
+        if !amount.is_empty() && amount.bytes().all(|byte| byte.is_ascii_digit()) {
+            return format!("{suffix}{amount}");
+        }
+    }
+
+    upper
+}
+
 impl<P> TopicState<P> {
     /// A state for a topic whose entries are all relevant (execution topics).
     pub fn unfiltered(topic: &str) -> Self {
@@ -243,7 +271,7 @@ pub fn on_event<P>(state: &mut TopicState<P>, event: Event<P>) -> Vec<Action<P>>
                 if symbol != *target_symbol {
                     return vec![Action::Drop(DropReason::WrongSymbol)];
                 }
-                if timeframe != *target_timeframe {
+                if stream_timeframe(&timeframe) != stream_timeframe(target_timeframe) {
                     return vec![Action::Drop(DropReason::WrongTimeframe)];
                 }
             }

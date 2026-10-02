@@ -12,6 +12,9 @@ fn test_startup_config_error_opens_window_showing_error() {
         .lock()
         .unwrap_or_else(|e| e.into_inner());
     let err = ConfigError::MissingField("api_base".into());
+    let _config_home = tempfile::tempdir().expect("temp config home");
+    // This integration test binary runs with --test-threads=1.
+    unsafe { std::env::set_var("XDG_CONFIG_HOME", _config_home.path()) };
     let ctx = setup_slice(&Err(err));
     assert!(!ctx.feed_ptr.is_null());
     let mut probe = chart_bridge::make_status_strip_probe();
@@ -34,6 +37,9 @@ fn test_startup_unreachable_api_opens_window_retrying() {
         timeframe: "1m".into(),
         operator: "operator".into(),
     };
+    let _config_home = tempfile::tempdir().expect("temp config home");
+    // This integration test binary runs with --test-threads=1.
+    unsafe { std::env::set_var("XDG_CONFIG_HOME", _config_home.path()) };
     let ctx = setup_slice(&Ok(config));
     assert!(!ctx.feed_ptr.is_null());
     let mut probe = chart_bridge::make_status_strip_probe();

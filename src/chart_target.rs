@@ -457,6 +457,7 @@ pub fn install_bar_drainer(sink: &BarSink, feed: *mut chart_bridge::BarFeed) {
         for delivery in deliveries {
             match delivery {
                 BarDelivery::Completed(cols) => {
+                    let cols = crate::history::time::bars_to_utc(cols.into());
                     for i in 0..cols.time.len() {
                         unsafe {
                             chart_bridge::post_feed_completed_bar(
@@ -472,6 +473,7 @@ pub fn install_bar_drainer(sink: &BarSink, feed: *mut chart_bridge::BarFeed) {
                     }
                 }
                 BarDelivery::Forming(cols) => {
+                    let cols = crate::history::time::bars_to_utc(cols.into());
                     if let Some(&t) = cols.time.first() {
                         unsafe {
                             chart_bridge::post_feed_forming_bar(

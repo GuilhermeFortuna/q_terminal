@@ -115,6 +115,9 @@ async fn test_slice_end_to_end_lake_to_live_vertices_and_no_polling() {
     };
 
     // 3. Start slice
+    let _config_home = tempfile::tempdir().expect("temp config home");
+    // QT_TEST_MUTEX serializes shell startup and preference access.
+    unsafe { std::env::set_var("XDG_CONFIG_HOME", _config_home.path()) };
     let ctx = startup::setup_slice(&Ok(config));
     assert!(!ctx.feed_ptr.is_null());
     let feed = ctx.feed_ptr;
@@ -212,10 +215,17 @@ async fn test_slice_end_to_end_lake_to_live_vertices_and_no_polling() {
             "expected 4 history + 1 snapshot + 1 live completed = 6 completed bars"
         );
 
-        // Must be [1_000_000, 1_060_000, 1_120_000, 1_180_000, 1_240_000, 1_300_000]
+        // Brasília wall-clock microseconds are converted to UTC before chart storage.
         assert_eq!(
             times,
-            vec![1_000_000, 1_060_000, 1_120_000, 1_180_000, 1_240_000, 1_300_000]
+            vec![
+                10_801_000_000,
+                10_801_060_000,
+                10_801_120_000,
+                10_801_180_000,
+                10_801_240_000,
+                10_801_300_000,
+            ]
         );
 
         // Assert strictly ascending (no duplicates)

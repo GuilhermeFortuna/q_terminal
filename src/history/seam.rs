@@ -3,6 +3,7 @@ use q_buffers::frame::BarColumns;
 /// Drops history bars at or after `first_streamed_time`, so history and live
 /// never duplicate or reorder a bar.
 pub fn trim_to_seam(bars: BarColumns, first_streamed_time: Option<i64>) -> BarColumns {
+    let bars = super::time::bars_to_utc(bars);
     let cutoff = match first_streamed_time {
         Some(time) => time,
         None => return bars,

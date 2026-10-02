@@ -93,7 +93,8 @@ pub fn compute_condition(feed: &BarFeedRust) -> (String, String) {
     if feed.history_loading {
         return ("Loading".to_string(), "warning".to_string());
     }
-    if feed.live_only && feed.bar_count == 0 {
+    let has_bars = feed.bar_count > 0 || feed.has_forming;
+    if feed.live_only && !has_bars {
         return ("Loading".to_string(), "warning".to_string());
     }
     if feed.data_age_ms < 0 || feed.last_time <= 0 {
@@ -111,7 +112,7 @@ pub fn compute_condition(feed: &BarFeedRust) -> (String, String) {
         };
         return (label, "stale".to_string());
     }
-    if conn == "live" && feed.bar_count > 0 {
+    if conn == "live" && has_bars {
         return ("Live".to_string(), "positive".to_string());
     }
     ("Loading".to_string(), "warning".to_string())
@@ -237,6 +238,31 @@ pub mod ffi {
     impl cxx_qt::Threading for ChartContext {}
 }
 
+#[derive(Clone, Default)]
+struct PublishedProperties {
+    symbol_line: QString,
+    source_label: QString,
+    source_tooltip: QString,
+    condition_label: QString,
+    condition_role: QString,
+    last_bar_label: QString,
+    is_switching: bool,
+    revision: i64,
+    chart_mode: QString,
+    is_manual: bool,
+    is_diverged: bool,
+    target_error: QString,
+    active_symbol: QString,
+    active_timeframe: QString,
+    configured_symbol: QString,
+    configured_timeframe: QString,
+    recent_symbols_json: QString,
+    last_manual_symbol: QString,
+    last_manual_timeframe: QString,
+    followed_deployment_id: QString,
+    is_session_override: bool,
+}
+
 pub struct ChartContextRust {
     pub symbol_line: QString,
     pub source_label: QString,
@@ -260,6 +286,7 @@ pub struct ChartContextRust {
     pub followed_deployment_id: QString,
     pub is_session_override: bool,
 
+    published: PublishedProperties,
     targeter: Option<std::sync::Arc<crate::chart_target::ChartTargeter>>,
     following_name: Option<String>,
     pending_symbol: String,
@@ -293,6 +320,7 @@ impl Default for ChartContextRust {
             last_manual_timeframe: QString::from(""),
             followed_deployment_id: QString::from(""),
             is_session_override: false,
+            published: PublishedProperties::default(),
             targeter: None,
             following_name: None,
             pending_symbol: String::new(),
@@ -546,92 +574,119 @@ impl ChartContextRust {
 }
 
 impl ffi::ChartContext {
+    /// Rust projections assign fields directly. Emit only the properties that changed
+    /// since the previous publication; generated setters cannot detect these assignments.
     fn sync_props(mut self: std::pin::Pin<&mut Self>) {
-        let (
-            symbol_line,
-            source_label,
-            source_tooltip,
-            condition_label,
-            condition_role,
-            last_bar_label,
-            is_switching,
-            chart_mode,
-            is_manual,
-            is_diverged,
-            target_error,
-            active_symbol,
-            active_timeframe,
-            configured_symbol,
-            configured_timeframe,
-            recent_symbols_json,
-            last_manual_symbol,
-            last_manual_timeframe,
-            followed_deployment_id,
-            is_session_override,
-            revision,
-        ) = {
+        let (dep_id, is_override) = {
             let r = self.rust();
-            let dep_id = if let Some(targeter) = &r.targeter {
-                if let Some((id, ..)) = targeter.following_target() {
-                    QString::from(&id)
-                } else {
-                    r.followed_deployment_id.clone()
-                }
-            } else {
-                r.followed_deployment_id.clone()
-            };
+            let dep_id = r
+                .targeter
+                .as_ref()
+                .and_then(|t| t.following_target())
+                .map(|(id, ..)| QString::from(&id))
+                .unwrap_or_else(|| r.followed_deployment_id.clone());
             let is_override = r
                 .targeter
                 .as_ref()
                 .map(|t| t.is_session_override())
                 .unwrap_or(r.is_session_override);
-            (
-                r.symbol_line.clone(),
-                r.source_label.clone(),
-                r.source_tooltip.clone(),
-                r.condition_label.clone(),
-                r.condition_role.clone(),
-                r.last_bar_label.clone(),
-                r.is_switching,
-                r.chart_mode.clone(),
-                r.is_manual,
-                r.is_diverged,
-                r.target_error.clone(),
-                r.active_symbol.clone(),
-                r.active_timeframe.clone(),
-                r.configured_symbol.clone(),
-                r.configured_timeframe.clone(),
-                r.recent_symbols_json.clone(),
-                r.last_manual_symbol.clone(),
-                r.last_manual_timeframe.clone(),
-                dep_id,
-                is_override,
-                r.revision,
-            )
+            (dep_id, is_override)
         };
-        self.as_mut().set_symbol_line(symbol_line);
-        self.as_mut().set_source_label(source_label);
-        self.as_mut().set_source_tooltip(source_tooltip);
-        self.as_mut().set_condition_label(condition_label);
-        self.as_mut().set_condition_role(condition_role);
-        self.as_mut().set_last_bar_label(last_bar_label);
-        self.as_mut().set_is_switching(is_switching);
-        self.as_mut().set_chart_mode(chart_mode);
-        self.as_mut().set_is_manual(is_manual);
-        self.as_mut().set_is_diverged(is_diverged);
-        self.as_mut().set_target_error(target_error);
-        self.as_mut().set_active_symbol(active_symbol);
-        self.as_mut().set_active_timeframe(active_timeframe);
-        self.as_mut().set_configured_symbol(configured_symbol);
-        self.as_mut().set_configured_timeframe(configured_timeframe);
-        self.as_mut().set_recent_symbols_json(recent_symbols_json);
-        self.as_mut().set_last_manual_symbol(last_manual_symbol);
-        self.as_mut()
-            .set_last_manual_timeframe(last_manual_timeframe);
-        self.as_mut()
-            .set_followed_deployment_id(followed_deployment_id);
-        self.as_mut().set_is_session_override(is_session_override);
-        self.as_mut().set_revision(revision);
+        {
+            let mut r = self.as_mut().rust_mut();
+            r.followed_deployment_id = dep_id;
+            r.is_session_override = is_override;
+        }
+        let after = {
+            let r = self.rust();
+            PublishedProperties {
+                symbol_line: r.symbol_line.clone(),
+                source_label: r.source_label.clone(),
+                source_tooltip: r.source_tooltip.clone(),
+                condition_label: r.condition_label.clone(),
+                condition_role: r.condition_role.clone(),
+                last_bar_label: r.last_bar_label.clone(),
+                is_switching: r.is_switching,
+                revision: r.revision,
+                chart_mode: r.chart_mode.clone(),
+                is_manual: r.is_manual,
+                is_diverged: r.is_diverged,
+                target_error: r.target_error.clone(),
+                active_symbol: r.active_symbol.clone(),
+                active_timeframe: r.active_timeframe.clone(),
+                configured_symbol: r.configured_symbol.clone(),
+                configured_timeframe: r.configured_timeframe.clone(),
+                recent_symbols_json: r.recent_symbols_json.clone(),
+                last_manual_symbol: r.last_manual_symbol.clone(),
+                last_manual_timeframe: r.last_manual_timeframe.clone(),
+                followed_deployment_id: r.followed_deployment_id.clone(),
+                is_session_override: r.is_session_override,
+            }
+        };
+        let before = std::mem::replace(&mut self.as_mut().rust_mut().published, after.clone());
+        if before.symbol_line != after.symbol_line {
+            self.as_mut().symbol_line_changed();
+        }
+        if before.source_label != after.source_label {
+            self.as_mut().source_label_changed();
+        }
+        if before.source_tooltip != after.source_tooltip {
+            self.as_mut().source_tooltip_changed();
+        }
+        if before.condition_label != after.condition_label {
+            self.as_mut().condition_label_changed();
+        }
+        if before.condition_role != after.condition_role {
+            self.as_mut().condition_role_changed();
+        }
+        if before.last_bar_label != after.last_bar_label {
+            self.as_mut().last_bar_label_changed();
+        }
+        if before.is_switching != after.is_switching {
+            self.as_mut().is_switching_changed();
+        }
+        if before.chart_mode != after.chart_mode {
+            self.as_mut().chart_mode_changed();
+        }
+        if before.is_manual != after.is_manual {
+            self.as_mut().is_manual_changed();
+        }
+        if before.is_diverged != after.is_diverged {
+            self.as_mut().is_diverged_changed();
+        }
+        if before.target_error != after.target_error {
+            self.as_mut().target_error_changed();
+        }
+        if before.active_symbol != after.active_symbol {
+            self.as_mut().active_symbol_changed();
+        }
+        if before.active_timeframe != after.active_timeframe {
+            self.as_mut().active_timeframe_changed();
+        }
+        if before.configured_symbol != after.configured_symbol {
+            self.as_mut().configured_symbol_changed();
+        }
+        if before.configured_timeframe != after.configured_timeframe {
+            self.as_mut().configured_timeframe_changed();
+        }
+        if before.recent_symbols_json != after.recent_symbols_json {
+            self.as_mut().recent_symbols_json_changed();
+        }
+        if before.last_manual_symbol != after.last_manual_symbol {
+            self.as_mut().last_manual_symbol_changed();
+        }
+        if before.last_manual_timeframe != after.last_manual_timeframe {
+            self.as_mut().last_manual_timeframe_changed();
+        }
+        if before.followed_deployment_id != after.followed_deployment_id {
+            self.as_mut().followed_deployment_id_changed();
+        }
+        if before.is_session_override != after.is_session_override {
+            self.as_mut().is_session_override_changed();
+        }
+        if before.revision != after.revision {
+            self.as_mut().revision_changed();
+        }
     }
 
     pub fn set_configured(mut self: std::pin::Pin<&mut Self>, symbol: QString, timeframe: QString) {

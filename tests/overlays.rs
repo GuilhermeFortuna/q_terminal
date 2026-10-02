@@ -106,6 +106,9 @@ async fn a_completed_bar_triggers_exactly_one_chart_request() {
         timeframe: "1m".into(),
         operator: "operator".into(),
     };
+    let _config_home = tempfile::tempdir().expect("temp config home");
+    // QT_TEST_MUTEX serializes shell startup and preference access.
+    unsafe { std::env::set_var("XDG_CONFIG_HOME", _config_home.path()) };
     let ctx = startup::setup_slice(&Ok(config));
     let feed = ctx.feed_ptr;
     let targeter = ctx.targeter.as_ref().unwrap().clone();

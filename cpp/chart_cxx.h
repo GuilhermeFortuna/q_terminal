@@ -288,6 +288,7 @@ void ops_status_mark_postgres_down(std::uintptr_t status);
 void ops_status_apply_health(std::uintptr_t status, rust::Str health_json);
 void ops_status_apply_positions(std::uintptr_t status, rust::Str positions_json);
 void ops_status_set_stream(std::uintptr_t status, rust::Str state, double age_s);
+void post_ops_stream_state(std::uintptr_t engine, rust::Str state, double age_s);
 void execution_controls_setup(std::uintptr_t controls, rust::Str api_base, rust::Str operator_name);
 void execution_controls_bind_handle(std::uintptr_t controls);
 void execution_controls_update_health(

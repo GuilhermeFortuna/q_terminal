@@ -1278,6 +1278,7 @@ impl BarFeedRust {
             shortfall,
             reason,
         } = loaded;
+        let bars = crate::history::time::bars_to_utc(bars);
         let bar_count = bars.time.len();
         if bar_count > 0 {
             self.series_label = bars.label;
@@ -1363,6 +1364,14 @@ impl BarFeedRust {
     }
 
     pub fn apply_delivery(&mut self, delivery: BarDelivery) {
+        let delivery = match delivery {
+            BarDelivery::Completed(bars) => {
+                BarDelivery::Completed(crate::history::time::bars_to_utc(bars))
+            }
+            BarDelivery::Forming(bars) => {
+                BarDelivery::Forming(crate::history::time::bars_to_utc(bars))
+            }
+        };
         if let Some(time) = delivery_first_time(&delivery) {
             self.history.record_stream_time(time);
         }
@@ -2263,7 +2272,9 @@ impl ffi::BarFeed {
 
 impl Default for BarFeedRust {
     fn default() -> Self {
-        Self::new("DEFAULT", "1m")
+        // An unconfigured feed has no target. Chart context sync must not publish
+        // a placeholder over the restored operator preferences during startup.
+        Self::new("", "")
     }
 }
 

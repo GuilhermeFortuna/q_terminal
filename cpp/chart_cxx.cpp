@@ -1226,6 +1226,20 @@ void ops_status_apply_positions(std::uintptr_t status, rust::Str positions_json)
         QString::fromUtf8(positions_json.data(), static_cast<int>(positions_json.size())));
 }
 
+void post_ops_stream_state(std::uintptr_t engine_addr, rust::Str state, double age_s) {
+    if (!engine_addr) return;
+    auto* engine = reinterpret_cast<QQmlApplicationEngine*>(engine_addr);
+    const QString qstate = QString::fromUtf8(state.data(), static_cast<int>(state.size()));
+    // Both the object lookup and property mutation must run on the engine's Qt thread.
+    // Qt discards this callback if the engine is destroyed before delivery.
+    QMetaObject::invokeMethod(engine, [engine, qstate, age_s]() {
+        const auto status = find_window_ops_status(*engine);
+        if (status) {
+            reinterpret_cast<OpsStatus*>(status)->set_stream_info(qstate, age_s);
+        }
+    }, Qt::QueuedConnection);
+}
+
 void ops_status_set_stream(std::uintptr_t status, rust::Str state, double age_s) {
     if (!status) {
         return;

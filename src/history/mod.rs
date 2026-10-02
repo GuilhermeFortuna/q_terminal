@@ -10,6 +10,7 @@ pub mod load;
 pub mod manifest;
 #[allow(dead_code)]
 pub mod seam;
+pub mod time;
 #[allow(dead_code)]
 pub mod verify;
 

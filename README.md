@@ -94,6 +94,10 @@ The live chart slice provides a read-only, reactive candlestick chart window dis
 ### What It Shows
 
 - **Candlestick Chart (`BarChartItem`)**: Custom Qt Quick item drawing completed bars and the active forming bar with batched `QSGGeometryNode` triangle geometry.
+- **Bar timestamps**: Lake and stream bars carry naïve São Paulo wall-clock opens;
+  REST history carries UTC instants. The terminal converts wall-clock opens to UTC
+  with Qt's `America/Sao_Paulo` time zone before joining history and live bars, preserving
+  historical daylight-saving offsets. Chart storage and history seam comparisons use UTC.
 - **Viewport (`Viewport.qml`)**: Reactive viewport tracking the newest bar on the right edge, maintaining sticky price bounds with vertical padding margins, and resizing dynamically.
 - **Chart Pane (`ChartPane.qml`)**: Integrates the candlestick item with time and price gridlines and axis tick labels mapped directly to viewport coordinates.
 - **Status Strip (`StatusStrip.qml`)**: Real-time status displaying:

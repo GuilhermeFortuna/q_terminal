@@ -19,6 +19,16 @@ fn bar(t: i64, close: f64) -> BarColumns {
     BarColumns::single(t, close - 0.5, close + 0.5, close - 1.0, close, 100.0)
 }
 
+// These stream fixtures encode microseconds on the 1970 Brasília wall clock (UTC-3).
+const UTC_OFFSET_US: i64 = 10_800_000_000;
+
+fn isolated_config_home() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("temp config home");
+    // QT_TEST_MUTEX serializes the tests that create a shell and read preferences.
+    unsafe { std::env::set_var("XDG_CONFIG_HOME", dir.path()) };
+    dir
+}
+
 fn feed_times(feed: *mut chart_bridge::BarFeed) -> Vec<i64> {
     unsafe {
         (0..chart_bridge::feed_bar_times_len(feed))
@@ -80,11 +90,22 @@ fn stale_generation_is_dropped_and_counted() {
     assert_eq!(feed.bar_times, vec![180]);
 }
 
+// Qt's application and QML animation timers belong to one thread for their entire
+// lifetime. Run shell scenarios together: libtest creates a new thread per test.
 #[tokio::test(flavor = "current_thread")]
+async fn chart_retargeting_scenarios() {
+    switch_shows_only_the_new_symbol_even_mid_burst().await;
+    following_to_manual_switches_mode_and_retargets().await;
+    deployment_change_during_manual_does_not_retarget().await;
+    manual_to_following_restores_selected_deployment().await;
+    rapid_target_changes_drop_interleaved_stale_bars().await;
+}
+
 async fn switch_shows_only_the_new_symbol_even_mid_burst() {
     let _guard = chart_bridge::QT_TEST_MUTEX
         .lock()
         .unwrap_or_else(|e| e.into_inner());
+    let _config_home = isolated_config_home();
     chart_bridge::ensure_application();
     chart_bridge::register_chart_types();
 
@@ -110,7 +131,10 @@ async fn switch_shows_only_the_new_symbol_even_mid_burst() {
     let feed = ctx.feed_ptr;
     let targeter = ctx.targeter.as_ref().expect("targeter").clone();
 
-    until("PETR4 bars", || feed_times(feed).contains(&1_000)).await;
+    until("PETR4 bars", || {
+        feed_times(feed).contains(&(UTC_OFFSET_US + 1_000))
+    })
+    .await;
     let gen_before = unsafe { chart_bridge::feed_target_generation(feed) };
 
     // Switch while PETR4 frames are still arriving.
@@ -148,12 +172,15 @@ async fn switch_shows_only_the_new_symbol_even_mid_burst() {
             .await;
     }
 
-    until("VALE3 bars", || feed_times(feed).contains(&9_000)).await;
+    until("VALE3 bars", || {
+        feed_times(feed).contains(&(UTC_OFFSET_US + 9_000))
+    })
+    .await;
     tokio::time::sleep(Duration::from_millis(300)).await;
     chart_bridge::process_events();
     let times = feed_times(feed);
     assert!(
-        times.iter().all(|t| *t >= 9_000),
+        times.iter().all(|t| *t >= UTC_OFFSET_US + 9_000),
         "no PETR4 bar after the switch: {times:?}"
     );
 
@@ -169,7 +196,7 @@ async fn switch_shows_only_the_new_symbol_even_mid_burst() {
     assert!(targeter.select(None).is_some());
     assert_eq!(symbol(feed), "PETR4");
     until("PETR4 back", || !feed_times(feed).is_empty()).await;
-    assert!(feed_times(feed).iter().all(|t| *t < 9_000));
+    assert!(feed_times(feed).iter().all(|t| *t < UTC_OFFSET_US + 9_000));
 }
 
 #[test]
@@ -191,11 +218,11 @@ fn disconnect_keeps_bars_and_reports_disconnected_condition() {
     assert_eq!(role, "critical");
 }
 
-#[tokio::test(flavor = "current_thread")]
 async fn following_to_manual_switches_mode_and_retargets() {
     let _guard = chart_bridge::QT_TEST_MUTEX
         .lock()
         .unwrap_or_else(|e| e.into_inner());
+    let _config_home = isolated_config_home();
     chart_bridge::ensure_application();
     chart_bridge::register_chart_types();
 
@@ -220,7 +247,10 @@ async fn following_to_manual_switches_mode_and_retargets() {
     let feed = ctx.feed_ptr;
     let targeter = ctx.targeter.as_ref().expect("targeter").clone();
 
-    until("initial PETR4", || feed_times(feed).contains(&1_000)).await;
+    until("initial PETR4", || {
+        feed_times(feed).contains(&(UTC_OFFSET_US + 1_000))
+    })
+    .await;
     assert_eq!(targeter.mode(), chart_target::ChartMode::Following);
     assert!(targeter.is_following());
 
@@ -236,7 +266,10 @@ async fn following_to_manual_switches_mode_and_retargets() {
     assert_eq!(target.symbol, "VALE3");
     assert_eq!(targeter.mode(), chart_target::ChartMode::Following);
 
-    until("VALE3 bars", || feed_times(feed).contains(&2_000)).await;
+    until("VALE3 bars", || {
+        feed_times(feed).contains(&(UTC_OFFSET_US + 2_000))
+    })
+    .await;
 
     // Operator requests manual target: switches to Manual mode and retargets
     let manual_target = targeter
@@ -254,14 +287,17 @@ async fn following_to_manual_switches_mode_and_retargets() {
     );
     assert_eq!(unsafe { chart_bridge::feed_marker_count(feed) }, 0);
 
-    until("ITUB4 bars", || feed_times(feed).contains(&3_000)).await;
+    until("ITUB4 bars", || {
+        feed_times(feed).contains(&(UTC_OFFSET_US + 3_000))
+    })
+    .await;
 }
 
-#[tokio::test(flavor = "current_thread")]
 async fn deployment_change_during_manual_does_not_retarget() {
     let _guard = chart_bridge::QT_TEST_MUTEX
         .lock()
         .unwrap_or_else(|e| e.into_inner());
+    let _config_home = isolated_config_home();
     chart_bridge::ensure_application();
     chart_bridge::register_chart_types();
 
@@ -280,7 +316,10 @@ async fn deployment_change_during_manual_does_not_retarget() {
     let feed = ctx.feed_ptr;
     let targeter = ctx.targeter.as_ref().expect("targeter").clone();
 
-    until("initial PETR4", || feed_times(feed).contains(&1_000)).await;
+    until("initial PETR4", || {
+        feed_times(feed).contains(&(UTC_OFFSET_US + 1_000))
+    })
+    .await;
 
     // Enter manual mode
     targeter
@@ -318,11 +357,11 @@ async fn deployment_change_during_manual_does_not_retarget() {
     );
 }
 
-#[tokio::test(flavor = "current_thread")]
 async fn manual_to_following_restores_selected_deployment() {
     let _guard = chart_bridge::QT_TEST_MUTEX
         .lock()
         .unwrap_or_else(|e| e.into_inner());
+    let _config_home = isolated_config_home();
     chart_bridge::ensure_application();
     chart_bridge::register_chart_types();
 
@@ -341,7 +380,10 @@ async fn manual_to_following_restores_selected_deployment() {
     let feed = ctx.feed_ptr;
     let targeter = ctx.targeter.as_ref().expect("targeter").clone();
 
-    until("initial PETR4", || feed_times(feed).contains(&1_000)).await;
+    until("initial PETR4", || {
+        feed_times(feed).contains(&(UTC_OFFSET_US + 1_000))
+    })
+    .await;
 
     // Enter manual mode
     targeter
@@ -374,11 +416,11 @@ async fn manual_to_following_restores_selected_deployment() {
     until("PETR4 back", || !feed_times(feed).is_empty()).await;
 }
 
-#[tokio::test(flavor = "current_thread")]
 async fn rapid_target_changes_drop_interleaved_stale_bars() {
     let _guard = chart_bridge::QT_TEST_MUTEX
         .lock()
         .unwrap_or_else(|e| e.into_inner());
+    let _config_home = isolated_config_home();
     chart_bridge::ensure_application();
     chart_bridge::register_chart_types();
 
@@ -406,7 +448,10 @@ async fn rapid_target_changes_drop_interleaved_stale_bars() {
     let feed = ctx.feed_ptr;
     let targeter = ctx.targeter.as_ref().expect("targeter").clone();
 
-    until("initial PETR4", || feed_times(feed).contains(&1_000)).await;
+    until("initial PETR4", || {
+        feed_times(feed).contains(&(UTC_OFFSET_US + 1_000))
+    })
+    .await;
 
     // Rapid target changes
     let t1 = targeter.request_manual("SYM1", "1m").unwrap().unwrap();
@@ -417,14 +462,23 @@ async fn rapid_target_changes_drop_interleaved_stale_bars() {
     assert_eq!(t2.generation + 1, t3.generation);
     assert_eq!(symbol(feed), "SYM3");
 
-    until("SYM3 bars", || feed_times(feed).contains(&4_000)).await;
+    until("SYM3 bars", || {
+        feed_times(feed).contains(&(UTC_OFFSET_US + 4_000))
+    })
+    .await;
     tokio::time::sleep(Duration::from_millis(200)).await;
     chart_bridge::process_events();
 
     let times = feed_times(feed);
-    assert!(times.contains(&4_000));
-    assert!(!times.contains(&2_000), "stale SYM1 bars dropped");
-    assert!(!times.contains(&3_000), "stale SYM2 bars dropped");
+    assert!(times.contains(&(UTC_OFFSET_US + 4_000)));
+    assert!(
+        !times.contains(&(UTC_OFFSET_US + 2_000)),
+        "stale SYM1 bars dropped"
+    );
+    assert!(
+        !times.contains(&(UTC_OFFSET_US + 3_000)),
+        "stale SYM2 bars dropped"
+    );
 }
 
 #[test]

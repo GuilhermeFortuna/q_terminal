@@ -6,7 +6,9 @@ use crate::stream::exec_session::{ExecSession, Net};
 use crate::stream::frame::{classify_text, split_binary, ControlFrame, ServerFrame};
 use crate::stream::policy::EXECUTION_TOPICS;
 use crate::stream::sink::BarSink;
-use crate::stream::topic_state::{on_event, Action, Event, TopicFilter, TopicState};
+use crate::stream::topic_state::{
+    on_event, stream_timeframe, Action, Event, TopicFilter, TopicState,
+};
 use crate::stream::trade_session::{self, TradeSession, TRADE_TOPICS};
 use crate::trades::feed::{ResyncReason, TradeHandle};
 use futures_util::{SinkExt, StreamExt};
@@ -98,7 +100,7 @@ fn bar_topic_state(topic: &str, target: &BarTarget) -> TopicState {
         topic,
         topic == "bars.forming",
         &target.symbol,
-        &target.timeframe,
+        &stream_timeframe(&target.timeframe),
     )
 }
 
@@ -266,6 +268,7 @@ impl StreamClient {
 
         let shared_clone = shared.clone();
         let shutdown_rx = shutdown_tx.subscribe();
+        let mut cancellation_rx = shutdown_tx.subscribe();
         let is_shutdown_clone = is_shutdown.clone();
         let (target_tx, target_rx) = watch::channel(BarTarget {
             symbol: config.symbol.clone(),
@@ -285,15 +288,19 @@ impl StreamClient {
                     .expect("failed to build tokio runtime");
 
                 rt.block_on(async move {
-                    run_client_loop(
-                        config,
-                        sinks,
-                        shared_clone,
-                        shutdown_rx,
-                        is_shutdown_clone,
-                        target_rx,
-                    )
-                    .await;
+                    // Cancel the entire loop, including pending connections and HTTP
+                    // snapshots, before joining this runtime thread on the Qt thread.
+                    tokio::select! {
+                        _ = cancellation_rx.recv() => {},
+                        _ = run_client_loop(
+                            config,
+                            sinks,
+                            shared_clone,
+                            shutdown_rx,
+                            is_shutdown_clone,
+                            target_rx,
+                        ) => {},
+                    }
                 });
             })
             .expect("spawn stream client thread");
@@ -385,7 +392,7 @@ async fn fetch_and_apply_snapshot(
         return;
     }
     let key = match &state.filter {
-        TopicFilter::Bars { symbol, timeframe } => Some(format!("{symbol}:{timeframe}")),
+        TopicFilter::Bars { symbol, timeframe } => Some(format!("{symbol}|{timeframe}")),
         TopicFilter::None => None,
     };
     let url = match &key {

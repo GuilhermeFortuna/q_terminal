@@ -359,6 +359,7 @@ pub mod chart {
         unsafe fn ops_status_apply_health(status: usize, health_json: &str);
         unsafe fn ops_status_apply_positions(status: usize, positions_json: &str);
         unsafe fn ops_status_set_stream(status: usize, state: &str, age_s: f64);
+        unsafe fn post_ops_stream_state(engine: usize, state: &str, age_s: f64);
         unsafe fn execution_controls_setup(controls: usize, api_base: &str, operator_name: &str);
         unsafe fn execution_controls_bind_handle(controls: usize);
         unsafe fn execution_controls_update_health(
@@ -393,11 +394,11 @@ pub use chart::{
     ops_status_apply_health, ops_status_apply_positions, ops_status_mark_api_offline,
     ops_status_mark_postgres_down, ops_status_set_stream, post_execution_models_sync,
     post_feed_completed_bar, post_feed_forming_bar, post_feed_overlays, post_feed_stream_state,
-    process_events, setup_window_auto_close, setup_window_feed, shell_eval, shell_grab_windows,
-    shell_quit_on_last_window_closed, shell_visible_window_count, BarFeed, ChartIdentityProbe,
-    ChartIdentityProbeResult, ChartPaneProbe, ChartPaneProbeResult, EmptyStateProbe,
-    EmptyStateProbeResult, ExecutionModels, ProbeResult, ProbeVertex, StatusStripProbe,
-    StatusStripProbeResult, ViewportProbe, ViewportProbeResult,
+    post_ops_stream_state, process_events, setup_window_auto_close, setup_window_feed, shell_eval,
+    shell_grab_windows, shell_quit_on_last_window_closed, shell_visible_window_count, BarFeed,
+    ChartIdentityProbe, ChartIdentityProbeResult, ChartPaneProbe, ChartPaneProbeResult,
+    EmptyStateProbe, EmptyStateProbeResult, ExecutionModels, ProbeResult, ProbeVertex,
+    StatusStripProbe, StatusStripProbeResult, ViewportProbe, ViewportProbeResult,
 };
 
 pub fn register_chart_types() {
