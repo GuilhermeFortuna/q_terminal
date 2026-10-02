@@ -19,12 +19,12 @@
 
 ## Ordered implementation
 
-- [ ] 1. Vendor Q-079, pin Q-081 and add fake trade snapshots/pages/status to the existing server harness. Add tests/trade_feed.rs for subscribe/buffer/history/watermark joins, duplicates, expiry and target generations.
-- [ ] 2. Implement typed trade decode/sink and src/trades feed/history modules with bounded columnar cache and shared process ownership. Test source correction, cache limit, disconnect, late pages and timeframe-only rebuild.
-- [ ] 3. Project Q-081 outputs into study panes/readout and bounded large-print markers. Add tests/volume_studies.rs for exact kernel agreement, UTC/local bar alignment, threshold edits and historical unavailable regions.
-- [ ] 4. Register the Quantower tape reference in docs/design/references.md; adapt the tape panel with a virtualized model and display-only filters. Inspect gallery captures incrementally and record adaptations in components.md.
-- [ ] 5. Add v4 typed volume-study/tape settings and migrations on Q-077 autosave. Test close/reopen with changed threshold, row filters and layout; keep existing price-study serialization valid.
-- [ ] 6. Extend frame benchmark fixtures for a dense trade burst while candles and studies are active; document the exact fixture load. Update BOUNDARY.md/README/workspaces docs and run the gates before review.
+- [x] 1. Vendor Q-079, pin Q-081 and add fake trade snapshots/pages/status to the existing server harness. Add tests/trade_feed.rs for subscribe/buffer/history/watermark joins, duplicates, expiry and target generations.
+- [x] 2. Implement typed trade decode/sink and src/trades feed/history modules with bounded columnar cache and shared process ownership. Test source correction, cache limit, disconnect, late pages and timeframe-only rebuild.
+- [x] 3. Project Q-081 outputs into study panes/readout and bounded large-print markers. Add tests/volume_studies.rs for exact kernel agreement, UTC/local bar alignment, threshold edits and historical unavailable regions.
+- [x] 4. Register the Quantower tape reference in docs/design/references.md; adapt the tape panel with a virtualized model and display-only filters. Inspect gallery captures incrementally and record adaptations in components.md.
+- [x] 5. Add v4 typed volume-study/tape settings and migrations on Q-077 autosave. Test close/reopen with changed threshold, row filters and layout; keep existing price-study serialization valid.
+- [x] 6. Extend frame benchmark fixtures for a dense trade burst while candles and studies are active; document the exact fixture load. Update BOUNDARY.md/README/workspaces docs and run the gates before review.
 
 ## Review focus
 
