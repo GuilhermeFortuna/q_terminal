@@ -20,6 +20,7 @@ pub mod shell;
 pub mod startup;
 pub mod stream;
 pub mod studies;
+pub mod trades;
 pub mod workspace;
 
 pub use bridge::execution_controls;
